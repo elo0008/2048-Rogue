@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>2048 Rogue - Roguelike 2048 Puzzle Prototype</title>
+  <meta name="description" content="A playable roguelike 2048 prototype with permanent stone hazards, draftable relics, and deterministic tactical play.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app-container" class="app-container">
+    <!-- Top Header -->
+    <header class="game-header">
+      <div class="title-row">
+        <h1 class="game-title">2048 ROGUE</h1>
+        <div id="passive-relics-container" class="passive-relics-container" aria-label="Passive Relics"></div>
+      </div>
+
+      <div class="hazard-row">
+        <div id="hazard-telegraph" class="hazard-telegraph" aria-live="polite">
+          <span class="hazard-label">HAZARD:</span>
+          <span id="hazard-status" class="hazard-status">Next stone in <strong id="stone-countdown">75</strong> <span id="hazard-unit">moves</span></span>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card score-card">
+          <div class="stat-label">SCORE</div>
+          <div id="stat-score" class="stat-value large-value">0</div>
+        </div>
+        <div class="stat-card moves-card">
+          <div class="stat-label">MOVES</div>
+          <div id="stat-moves" class="stat-value">0</div>
+        </div>
+        <div class="stat-card tile-card">
+          <div class="stat-label">MAX TILE</div>
+          <div id="stat-max-tile" class="stat-value">0</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Hint / Status banner -->
+    <div id="status-hint-bar" class="status-hint-bar" aria-live="assertive">
+      <span id="status-hint-text">Use Arrow Keys, WASD, or Swipe to slide</span>
+    </div>
+
+    <!-- Foresight Honest Preview Bar -->
+    <div id="foresight-bar" class="foresight-bar hidden" aria-live="polite">
+      <div class="foresight-title">FORESIGHT:&nbsp;</div>
+      <div class="foresight-values">Next: <span id="foresight-tile-1" class="foresight-val">-</span> <span id="foresight-tile-2" class="foresight-val">-</span></div>
+      <div id="foresight-stone-due" class="foresight-stone hidden">STONE DUE</div>
+    </div>
+
+    <!-- Stuck State Banner -->
+    <div id="stuck-banner" class="stuck-banner hidden" aria-live="assertive">
+      <span class="stuck-banner-text">No swipes left, use an ability</span>
+    </div>
+
+    <!-- 4x4 Board -->
+    <main class="board-wrapper">
+      <div id="game-board" class="game-board" touch-action="none">
+        <!-- 16 grid cell backgrounds -->
+        <div class="grid-cell" data-index="0"></div>
+        <div class="grid-cell" data-index="1"></div>
+        <div class="grid-cell" data-index="2"></div>
+        <div class="grid-cell" data-index="3"></div>
+        <div class="grid-cell" data-index="4"></div>
+        <div class="grid-cell" data-index="5"></div>
+        <div class="grid-cell" data-index="6"></div>
+        <div class="grid-cell" data-index="7"></div>
+        <div class="grid-cell" data-index="8"></div>
+        <div class="grid-cell" data-index="9"></div>
+        <div class="grid-cell" data-index="10"></div>
+        <div class="grid-cell" data-index="11"></div>
+        <div class="grid-cell" data-index="12"></div>
+        <div class="grid-cell" data-index="13"></div>
+        <div class="grid-cell" data-index="14"></div>
+        <div class="grid-cell" data-index="15"></div>
+
+        <!-- Dynamic tile elements rendered in board -->
+        <div id="tiles-layer" class="tiles-layer"></div>
+        <!-- Foresight ghost tiles layer -->
+        <div id="ghost-layer" class="ghost-layer"></div>
+      </div>
+    </main>
+
+    <!-- Ability Bar BELOW Board -->
+    <div id="ability-bar" class="ability-bar" aria-label="Player Abilities">
+      <!-- Dynamic ability buttons inserted here -->
+    </div>
+
+    <!-- Targeting Mode Cancel Bar -->
+    <div id="targeting-bar" class="targeting-bar hidden" aria-live="polite">
+      <span id="targeting-instruction" class="targeting-instruction">Select a tile</span>
+      <button id="btn-cancel-targeting" class="btn btn-cancel-targeting" type="button">Cancel (Esc)</button>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+    <!-- Last Stand Full Screen Flash & Banner -->
+    <div id="last-stand-banner" class="last-stand-banner hidden">
+      <div class="last-stand-content">
+        <span class="last-stand-sub">CRITICAL THRESHOLD TRIGGERED</span>
+        <h2 class="last-stand-title">LAST STAND</h2>
+        <span class="last-stand-desc">Low value tiles disintegrated &bull; Play on!</span>
+      </div>
+    </div>
+
+    <!-- Draft Modal Overlay -->
+    <div id="draft-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="draft-title">
+      <div class="draft-card-container">
+        <div class="draft-header">
+          <span class="draft-badge">TACTICAL ACQUISITION</span>
+          <h2 id="draft-title" class="draft-title">CHOOSE A RELIC</h2>
+          <p class="draft-subtitle">Select one artifact to augment your run</p>
+        </div>
+
+        <div id="draft-offers-row" class="draft-offers-row">
+          <!-- 3 offered relic cards inserted here -->
+        </div>
+
+        <div class="draft-owned-section">
+          <div class="draft-owned-title">ALREADY OWNED:</div>
+          <div id="draft-owned-chips" class="draft-owned-chips">
+            <!-- currently owned relics -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Relic Tooltip Popover -->
+    <div id="relic-popover" class="relic-popover hidden" role="tooltip" aria-hidden="true">
+      <div id="popover-title" class="popover-title"></div>
+      <div id="popover-desc" class="popover-desc"></div>
+    </div>
+
+    <!-- Start Screen Overlay -->
+    <div id="start-overlay" class="modal-overlay" role="dialog" aria-modal="true">
+      <div class="start-card">
+        <span class="start-kicker">VERTICAL SLICE PROTOTYPE</span>
+        <h2 class="start-title">2048 ROGUE</h2>
+        <div class="start-best-row">BEST: <span id="start-best-score">0</span></div>
+        <p class="start-desc">
+          Slide numbers to merge them. Permanent stone hazards spawn on a schedule. Draft powerful relics to manipulate space, break stones, and survive.
+        </p>
+        <button id="btn-play-start" class="btn btn-primary btn-large" type="button" aria-label="Start Game">START</button>
+        <div id="start-build-id" class="start-build-footer" style="margin-top: 16px; font-size: 0.65rem; color: #8892b0; font-family: monospace; letter-spacing: 0.05em; text-align: center;">BUILD: __BUILD_ID__</div>
+      </div>
+    </div>
+
+    <!-- Game Over Screen Overlay -->
+    <div id="end-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="end-title">
+      <div class="end-card">
+        <span class="end-kicker">RUN CONCLUDED</span>
+        <h2 id="end-title" class="end-title">GAME OVER</h2>
+
+        <!-- SCORE headline -->
+        <div class="end-score-hero">
+          <span class="end-score-label">SCORE</span>
+          <div class="end-score-val-wrap">
+            <span id="end-score" class="end-score-val">0</span>
+            <span id="end-new-best-badge" class="badge-new-best hidden">NEW BEST</span>
+          </div>
+        </div>
+
+        <div class="end-summary-grid">
+          <div class="end-summary-item">
+            <span class="summary-label">MOVES</span>
+            <span id="end-moves" class="summary-val">0</span>
+          </div>
+          <div class="end-summary-item">
+            <span class="summary-label">MAX TILE</span>
+            <span id="end-max-tile" class="summary-val">0</span>
+          </div>
+          <div class="end-summary-item">
+            <span class="summary-label">DRAFTS SEEN</span>
+            <span id="end-drafts" class="summary-val">0</span>
+          </div>
+          <div class="end-summary-item">
+            <span class="summary-label">RUN SEED</span>
+            <span id="end-seed" class="summary-val">0</span>
+          </div>
+        </div>
+
+        <div class="end-relics-section">
+          <span class="summary-label">RELICS OWNED</span>
+          <div id="end-relics-list" class="end-relics-list"></div>
+        </div>
+
+        <div class="end-actions">
+          <button id="btn-play-again" class="btn btn-primary" type="button">Play Again</button>
+          <button id="btn-copy-log" class="btn btn-secondary" type="button">Copy Run Log</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Optional Debug Panel (?debug=1) -->
+    <aside id="debug-panel" class="debug-panel hidden" aria-label="Debug Panel">
+      <div class="debug-header">DEBUG INSPECTOR (?debug=1)</div>
+      <div class="debug-grid">
+        <div class="debug-row"><span>Seed:</span> <strong id="dbg-seed">-</strong></div>
+        <div class="debug-row"><span>Move:</span> <strong id="dbg-move">-</strong></div>
+        <div class="debug-row"><span>Tile RNG Draws:</span> <strong id="dbg-tile-rng">-</strong></div>
+        <div class="debug-row"><span>Stone RNG Draws:</span> <strong id="dbg-stone-rng">-</strong></div>
+        <div class="debug-row"><span>Draft RNG Draws:</span> <strong id="dbg-draft-rng">-</strong></div>
+      </div>
+      <div class="debug-subhead">Relic Activations:</div>
+      <div id="dbg-activations" class="debug-activations"></div>
+    </aside>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

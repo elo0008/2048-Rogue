@@ -1,0 +1,4479 @@
+{
+  "meta": {
+    "createdAt": "2026-10-04T17:23:22.118Z",
+    "numSeedsGreedy": 50,
+    "numSeedsExpectimax": 20,
+    "configs": [
+      "no_relics",
+      "forced_diagonal_merge",
+      "forced_fault_line",
+      "forced_mason",
+      "forced_foresight",
+      "forced_siphon",
+      "forced_shatter",
+      "forced_last_stand",
+      "draft_60"
+    ]
+  },
+  "runs": {
+    "greedy:no_relics:1": {
+      "hash": "7fc000b0f4e4c0baf6d795893f0f3bcf1c07964254bb02b526b0abf3269855f4",
+      "moveCount": 146,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:1": {
+      "hash": "0c6accc5af85316842aa4b37b5638078ae14e6ea2d8cd9575ed0ae387b1ee265",
+      "moveCount": 242,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:1": {
+      "hash": "a4a2203686e704961d73de753e7177146c40a4c9e742d02d6c0c7249f1784fec",
+      "moveCount": 248,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:1": {
+      "hash": "f8b43a699abb9b0862574b7058208d19da7a2eb97ef30d85ff144f2e9e07f934",
+      "moveCount": 148,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:1": {
+      "hash": "eeb9a00023c7dd0491b2c31f3b4fc3b45c9008a79b0f8aa022c8c5129463aa68",
+      "moveCount": 166,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:1": {
+      "hash": "25c912fe08939a3b119d266b136750368722e0b4977ffb033e80ec7c222aec7b",
+      "moveCount": 171,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:1": {
+      "hash": "17eca65366d78c3333c14e27eba839f949b221807ca9d56eaf267c3d5e53c5b9",
+      "moveCount": 146,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:1": {
+      "hash": "d73801d5044f9bd76ce6d09cba28ca374735d73bb3533a1763049b1650cff054",
+      "moveCount": 175,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:1": {
+      "hash": "54f1c3e5d96e3ff80820436895fffdd0e4687c38dcaa8a6c16f014cc648eb317",
+      "moveCount": 235,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "mason"
+      ]
+    },
+    "greedy:no_relics:2": {
+      "hash": "54b1d0283c14380e1051f5d7b77bb6ad87817ebb540f32bc217e8f7dd67f0f66",
+      "moveCount": 177,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:2": {
+      "hash": "dd8ae6952394c8f4e2cf059211dcaef4a9b1e27da34a0c17f86c782291419d72",
+      "moveCount": 146,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:2": {
+      "hash": "7ae96abe4e6b4737dcd3d2c0696c6048a1ac13cf5c2e188fefdc4838230f3fbb",
+      "moveCount": 198,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:2": {
+      "hash": "2af6141f7bc7658aab4a9f4dfb4ae6e6d4f98bd0a5a3d175ca6802d787abc253",
+      "moveCount": 177,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:2": {
+      "hash": "555b640df979fd7a7d699ddd7685659ad1c55f15d60d73d87e056f61b660208d",
+      "moveCount": 177,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:2": {
+      "hash": "fb87d0f8ad5d2470d9453a209981938d0b0894fcd8c8f2dc5b2e9cefaefdd407",
+      "moveCount": 243,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:2": {
+      "hash": "95513f9b77511c9250e4e8138d5f9c59eccca3dedcb817e249d621567e39a6d9",
+      "moveCount": 177,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:2": {
+      "hash": "4e1a196cff7c00d45f8858860c2ace367af642539e1957ece8004e2079591499",
+      "moveCount": 208,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:2": {
+      "hash": "106e0ac50c81255c8b59e293cde5deb5ef76440057cfe348ffb5c55413dc0120",
+      "moveCount": 265,
+      "relics": [
+        "fault_line",
+        "last_stand",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:3": {
+      "hash": "0b65962e32dd8671e1ffbd3dff183849617172a999a7e8a9e11e0b73d8b8c6af",
+      "moveCount": 94,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:3": {
+      "hash": "29542ed2eb6dd4ab2c12622b8ae903cc1932f3e4123228b7dc8d1a4126019a66",
+      "moveCount": 145,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:3": {
+      "hash": "9c5e729ef7c6bbc5a30e5d12106f7052f7f7410ee114fb20d34484b22634307e",
+      "moveCount": 117,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:3": {
+      "hash": "99ce8aa38f166cbe1f73b57b492071fb8680678ecce12ba8a6e88697e1e46b56",
+      "moveCount": 94,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:3": {
+      "hash": "96744313fbd6aee9835cf70689f27b5846ab33c16f4361c3fbc356d4660599fa",
+      "moveCount": 94,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:3": {
+      "hash": "fc509707ae2887992a5bfdef857212371b7b0882c62cb087f9d7def09001708b",
+      "moveCount": 208,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:3": {
+      "hash": "8a8d1527febb935915482dc848156401fb3314c3773f5e2f23b22271b537b3c5",
+      "moveCount": 94,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:3": {
+      "hash": "a67993b5a02cb22f312b69ddfb417dd68c260ecaafae7383cfc8d1423cc44f29",
+      "moveCount": 139,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:3": {
+      "hash": "8a8d1527febb935915482dc848156401fb3314c3773f5e2f23b22271b537b3c5",
+      "moveCount": 94,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:4": {
+      "hash": "b460af0bcf4fa3029cbb05e32e49723be66f5f25ad8451cc6cd769a1156f3ad9",
+      "moveCount": 137,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:4": {
+      "hash": "de363ec47057df3be5ba00f65de8ec13318a9762051d650dce3c3ec16e6f2b7d",
+      "moveCount": 230,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:4": {
+      "hash": "346ba371452abdc9b8e05fe0e8ac69f84a3a6e3aca5a8b343a460473172a958b",
+      "moveCount": 216,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:4": {
+      "hash": "6f97d8431aab338b2af639773fd9e1606a702e1a7a23f184f17650fd1ed69c14",
+      "moveCount": 137,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:4": {
+      "hash": "8a2be6dbb9de36ef1658e8983917812699af1a1ada47ec2657aa79d4be88bc6e",
+      "moveCount": 141,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:4": {
+      "hash": "96c8873c1877aeff97e75b5d4eaea6803bb11a4c6af6a36432d91839c7d759f4",
+      "moveCount": 165,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:4": {
+      "hash": "199a3143746b675ae0fbe5c9cfd22272f62d64eeab8d128d8b16f8b7add204b7",
+      "moveCount": 137,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:4": {
+      "hash": "7c3cd51794a03af0638d8159fb3247840c77d8de9fec287049ab0e5739b36334",
+      "moveCount": 252,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:4": {
+      "hash": "b8914edad9fe9864f709374f35b5e57c03c8f82a18468e1260c60d1244fb792e",
+      "moveCount": 293,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:5": {
+      "hash": "7dc8a5a0c16fc0c7098b0d1f1c7ee2681f386ee7b9990114f62a73d306e355a0",
+      "moveCount": 199,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:5": {
+      "hash": "b08a2434323122d0c6b21d49496a23316264a09796227f065e5e8238d3353e5b",
+      "moveCount": 243,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:5": {
+      "hash": "9c9db041fcc710048b840408691ba6232493b135283d4599e3a747556a3c20be",
+      "moveCount": 191,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:5": {
+      "hash": "22d11a66721190d507a18284f1670ecd41e446c5e91e583893af39507b38de86",
+      "moveCount": 151,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:5": {
+      "hash": "41fd360411912a415c0eaf8e908438934022bc43daec39c8d03c3dcf12f0b2d5",
+      "moveCount": 211,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:5": {
+      "hash": "dc158cb38b9a3e4337ee00270bcfd909f6f3cb1871956d1438d88742476b3d4d",
+      "moveCount": 122,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:5": {
+      "hash": "855fcec01f807389e3225f6d3718e526a87d78092d51c35abeb683e7248bb929",
+      "moveCount": 199,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:5": {
+      "hash": "95f08ffaee0ba43dcbe761f1981690a930d1bee5f10427026ed2b8c035598a5a",
+      "moveCount": 253,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:5": {
+      "hash": "27612eb7825255c23fe1b415017457bde11b4c5e57574833faf86354bdd54e7f",
+      "moveCount": 164,
+      "relics": [
+        "fault_line",
+        "foresight"
+      ]
+    },
+    "greedy:no_relics:6": {
+      "hash": "d3320b6eb0539402cc7eaa21b48ad6bc4dc30011cb25e74bf4e90e6c32f4ae22",
+      "moveCount": 151,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:6": {
+      "hash": "ab591656f60b793f3473869b3028864a01358f475f919a183b1283aebc678f46",
+      "moveCount": 244,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:6": {
+      "hash": "15c12d9f9ba64e7b2cc3f9d2bec9f981c31c6560f944c5b7fbdc5754f133265c",
+      "moveCount": 140,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:6": {
+      "hash": "2ec59e462c0193a0794e0c8871f9a4db9123a882df7aecc66820b8ab572968dd",
+      "moveCount": 138,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:6": {
+      "hash": "f4d15a41d1462690388beb143707034151f27d557dd15d65cb10a86caf2c1ebb",
+      "moveCount": 151,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:6": {
+      "hash": "53760b735dc94a1e1113bfeaa2ad8ae3c5596d77bc6487cb7be6049cd3935fb0",
+      "moveCount": 149,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:6": {
+      "hash": "6a35f393da1538e11f5a487b41a0c93f1c872cd39f8816e3cf90c30a1484391d",
+      "moveCount": 151,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:6": {
+      "hash": "cb4d7f50f9808be1112571bb5802a7e3afb9291f1e9987ab80080ede163ce39c",
+      "moveCount": 203,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:6": {
+      "hash": "0b9e3b23c5988100a64a3d10a65b5ee8a9836576e2c0df35062c1279a79c795c",
+      "moveCount": 138,
+      "relics": [
+        "mason",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:7": {
+      "hash": "288a06871447c2d68f8cc1f009be56f43e7dc5ed694d6e013cfcbbd690686e04",
+      "moveCount": 201,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:7": {
+      "hash": "b4c4c5fdd7eb7be07fe7209d18ce66abe6c14f25bce24fce8914d057ab8fab41",
+      "moveCount": 214,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:7": {
+      "hash": "05ffca435ec924e366f9b2d90290ad0e8224dd2fe22477f4a32c883452e4f449",
+      "moveCount": 152,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:7": {
+      "hash": "bc845cfd35abe419592cb551dafcd0e47f063bd5126f680f86891b3ded98efb6",
+      "moveCount": 140,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:7": {
+      "hash": "6f8370d161a44d96ea41e4d5206b356f06f3d3cde3eac3cb92d5d8dda5db1104",
+      "moveCount": 201,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:7": {
+      "hash": "f354d6230e05d384e80f52fa78d78d5bad785f1e140ec1a52ab189cf2acad266",
+      "moveCount": 126,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:7": {
+      "hash": "d54730d7880c72ade4a5c94550f3a044e13bcdd931d43955fb2f205b94e14c24",
+      "moveCount": 201,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:7": {
+      "hash": "75b276f7c27ec131270df953e48c57b29e0c7681d0c9d4cc98921a432ab23ed5",
+      "moveCount": 233,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:7": {
+      "hash": "fb067184fadad14c0fc874dec51fbc50ecdfec4b3a20f682872aae830ee17cc0",
+      "moveCount": 140,
+      "relics": [
+        "mason",
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:8": {
+      "hash": "bd48cec6b1894eb5c368a9dd6eb05c5c3294123307842b0802b1bcc79c1c8be4",
+      "moveCount": 135,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:8": {
+      "hash": "4ac80d930dc58a11aa06893c43166f94c59e74fad5b605da44360313e14da8a3",
+      "moveCount": 227,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:8": {
+      "hash": "aa213596767c05a4459ec3f403815338f0a18cc59d6438fa2814379ea0b00012",
+      "moveCount": 135,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:8": {
+      "hash": "2ad9b967d488c4e06981d82202dad12609f79bbd13928f8c6b13fa2c01e31f10",
+      "moveCount": 115,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:8": {
+      "hash": "3d2408f1e8052d735d40d0aea4973880257e16bda3dc28f1fc7e0c591da3b9e7",
+      "moveCount": 168,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:8": {
+      "hash": "28f97f130f2e9d18528ae4486eebcef3ecac95c17b451070ea6008f371d66729",
+      "moveCount": 201,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:8": {
+      "hash": "5b506232f82d97d90cb32f9c3c0d18ec1c524cd4c677d762098fee83d46a55dd",
+      "moveCount": 145,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:8": {
+      "hash": "8cef17dd0df81985bf7d0f5edad5df630f59c67ec3df3773898f218a7ec5c357",
+      "moveCount": 196,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:8": {
+      "hash": "bc23808337e8c37cece95c55dd8c84ad2a5999619b283ca95a11807a29e50a37",
+      "moveCount": 245,
+      "relics": [
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:9": {
+      "hash": "0fcd48303e575297c31a3af65e4fbbc35762155d3a4ea2179473dd3b274e34c4",
+      "moveCount": 196,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:9": {
+      "hash": "bfd3950acd3e9bf12ffd667a5911da7aba3760e42bafa1fd124d9548c69a18f4",
+      "moveCount": 241,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:9": {
+      "hash": "ace56798a375e6df63fe0185038d090362033b3c38345ceb7bae544072144d33",
+      "moveCount": 196,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:9": {
+      "hash": "3a2a28024b57fc716f81bfe172327826505db60639a06bf77e2bf944bf0946d3",
+      "moveCount": 196,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:9": {
+      "hash": "4edd88041a3ab278dfe768c02524eebeda97e3f3522d47bbff4c1868f570e856",
+      "moveCount": 157,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:9": {
+      "hash": "1751192c4d69e38487f40aca75b894dcfadf77c900575a8cf51368b02d43820b",
+      "moveCount": 182,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:9": {
+      "hash": "5a632b8f92940d486af692d0a002bfd0f81df411b14b48097bb6bc3e6e852bf4",
+      "moveCount": 196,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:9": {
+      "hash": "30a4c2dbb4bb9d935f8d5d7d8234defa6c602b12ae57f8937375f551d15d6d78",
+      "moveCount": 242,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:9": {
+      "hash": "b1afecce1ed4bfc6be8962f6707e8d07bc01de26c67982cafd0fe5c8824cc64e",
+      "moveCount": 242,
+      "relics": [
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason"
+      ]
+    },
+    "greedy:no_relics:10": {
+      "hash": "1dcff660df9f1531b1b218dc9c36bd20bba906fa77e740762dfe9ee3e9e93909",
+      "moveCount": 145,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:10": {
+      "hash": "bfcf94622b2e53ce44b4da145239697b7819749032779e8200fd1ec7398133bd",
+      "moveCount": 296,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:10": {
+      "hash": "9899843e8db8321522ceac77a858bd10d32ccc8fd46ba3f966a663c4a1bba09a",
+      "moveCount": 142,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:10": {
+      "hash": "c42a4c96cf36a0076220b6fa4681f02889ae2bb2d9c7996c9731c9e8b4840922",
+      "moveCount": 171,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:10": {
+      "hash": "6fd35ba234079228c2f78d4ff3def50e667b57c60e2f389b2e01651210e9c05c",
+      "moveCount": 145,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:10": {
+      "hash": "6c06f3d5ef9ea26bf9fb340c1bccb71e91b13cc2846df438513ca0e4c2f41d4f",
+      "moveCount": 175,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:10": {
+      "hash": "8c354f287e361a0e06bebcdabb39aa4a7fc40d43e9c4b1389ff950747a6c7097",
+      "moveCount": 210,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:10": {
+      "hash": "c40487d706baeb43671bdb15d9a999c4a4357d35e842ac681c1ce7f75523238f",
+      "moveCount": 171,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:10": {
+      "hash": "ea291253cdf55765cb3091e5d13ae0815d2bcdc2be085f1e2c4e2aff3be02558",
+      "moveCount": 185,
+      "relics": [
+        "fault_line",
+        "foresight",
+        "last_stand"
+      ]
+    },
+    "greedy:no_relics:11": {
+      "hash": "94542cdcdee7796459fa6635942428b71aefcac33c9d9d9b62dbd49f79b53268",
+      "moveCount": 135,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:11": {
+      "hash": "7beb1b0a2849cb2a2f18d9874577805ab578a6a07dccd0058fff353214f10d77",
+      "moveCount": 174,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:11": {
+      "hash": "c0dbb4f91dd9cd2dad0e51a9ddd8e1a2c7fc81dfb8d8a6f646e75fef71c6a196",
+      "moveCount": 135,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:11": {
+      "hash": "5c9bb63b37841e67cfad432b036d831933efb0edc26feef802d3af774bacf57a",
+      "moveCount": 135,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:11": {
+      "hash": "b1184067ce70c0e42aeb8dc319563103c50ebab4b9e82c9ded9c74ade18bb813",
+      "moveCount": 139,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:11": {
+      "hash": "d2a7ce2927864679ef01f4a8a805d0e5dc065741aadd37a4577ad2f2ed683333",
+      "moveCount": 200,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:11": {
+      "hash": "7889ac6666c6de6a113c7fb995402c679579cc244bbfbef5aa38e09691586477",
+      "moveCount": 135,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:11": {
+      "hash": "494349f1bbb2bb7b78246335e54151d1f61cbf288dbcabbf8cbc6dd60a203602",
+      "moveCount": 187,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:11": {
+      "hash": "1f63f705f0296073ef04c4933db3d41f25aa1ca9fdc76529b29471497b8620cc",
+      "moveCount": 233,
+      "relics": [
+        "last_stand",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:12": {
+      "hash": "e4e69aa0f9b0e1eb3265c6d038469e1818c387d0e4e42f7656fdb9f9fd5472bf",
+      "moveCount": 229,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:12": {
+      "hash": "e53d6e32dc1a3db328420189fcd29d8db4a0920d4047a98ce7c1b6c6a94f8430",
+      "moveCount": 149,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:12": {
+      "hash": "2261b886177c402c72733f975c95c3da47b20c66508d229845766f1bc05c7aad",
+      "moveCount": 135,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:12": {
+      "hash": "76f29330eabec79582db642364f85e4bf1e367114f9c57fd5b1d8cff2429e823",
+      "moveCount": 243,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:12": {
+      "hash": "ef1c1586d86a30b3e5d9ca1d46b69d641e9960355bcb4584b99b8b36bfbe488f",
+      "moveCount": 148,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:12": {
+      "hash": "d82b6ed484bcac43b69b8e0c34fa84bbcd778722ee9b08421fb0190ca35c65f0",
+      "moveCount": 164,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:12": {
+      "hash": "21b3e4cef81aeea849cd9a4fff0eb0bb82783315465ba300a984f9a05742fb19",
+      "moveCount": 229,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:12": {
+      "hash": "d71a476d6269b7c4a93576ea526101d10087547c4bee4e5ab0ed510589b87888",
+      "moveCount": 264,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:12": {
+      "hash": "72ec3918510fac1937471de24b071a164f961dbf49487a172092f97365897bde",
+      "moveCount": 148,
+      "relics": [
+        "fault_line",
+        "foresight"
+      ]
+    },
+    "greedy:no_relics:13": {
+      "hash": "03e0d6d2ddefcd93fc5d2e7786ea792d52571b77f57dcc54bc8f0f9c1b44571d",
+      "moveCount": 171,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:13": {
+      "hash": "5bd8df56dadae2cf8378723da56a600d84d5ad7c50ac733decf11eadfcefc53c",
+      "moveCount": 240,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:13": {
+      "hash": "11a8acbea9fff3ce04c21370296381c9cdb766f73b0ae4ced5e5cb3e8f45ca39",
+      "moveCount": 217,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:13": {
+      "hash": "a026fcaf52ec9475a8ebbd70829b54998586b87172e686d5307da50453513dc9",
+      "moveCount": 155,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:13": {
+      "hash": "7d257529f0d09184d01588d5074ee0d38f893afceed2ede2f6a94b20fbbfb352",
+      "moveCount": 171,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:13": {
+      "hash": "78aaae4aa401842a53291b4a5ff86c90ea8e2a7ed35bc7ab01381346f044a502",
+      "moveCount": 190,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:13": {
+      "hash": "158c0fcd66b6472eb6582b6883cad041c1f5857c51e100926acda86902f4f386",
+      "moveCount": 171,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:13": {
+      "hash": "eb776c5801d6469c5b4327707c70c8396d7cdb68a544d9c45e40ed8a5d5b7e27",
+      "moveCount": 206,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:13": {
+      "hash": "8954e1fe7cfb016907b22f87007b20126d42d1aa578b2470324f3a8d08ebdab0",
+      "moveCount": 271,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "last_stand",
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:14": {
+      "hash": "b00ab045f56787a731c8094f8fffde1e08c68983daf37062fd77b271912da66f",
+      "moveCount": 240,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:14": {
+      "hash": "1a72a5502e5e31d8ed8d9d3efc1f57ed0ac83223f5bbd51cb5e639f66b9afbaa",
+      "moveCount": 242,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:14": {
+      "hash": "e8a740bdf9a78248970ef89a8e878be08f7cb9a1cbde41bfc7fae5e68331483f",
+      "moveCount": 179,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:14": {
+      "hash": "c2b74b4b9cc51e4bdf582817c8d35cd87e6f43c78f4e7fcb8e9849180c41b7b1",
+      "moveCount": 145,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:14": {
+      "hash": "05712f8b9d45e8ddba77b44775b58547f780b37c70592fa745671ebd8540496e",
+      "moveCount": 173,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:14": {
+      "hash": "0785aaeecce55f7af65ef4f75ab7d10a173053702a62936cf1c293589f8b7394",
+      "moveCount": 149,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:14": {
+      "hash": "a8cc3a627f230e59f89aa2cb7a675b8a836122a1494af38d3e459951ae18443b",
+      "moveCount": 240,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:14": {
+      "hash": "55936d326fddfdf2277c7e388265e95404b00eaf5f0ed758bc6ffcbb58ccd2ac",
+      "moveCount": 261,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:14": {
+      "hash": "2ac50d1a2a09cdfa3f0ecdfb66c8b56af0d87d4f0b179e3163491ae9a914a7f0",
+      "moveCount": 184,
+      "relics": [
+        "fault_line",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:15": {
+      "hash": "d5e6612586fcf2db1259a47f38885a3aef523f8f27a9a5e8cd33cc993430632d",
+      "moveCount": 143,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:15": {
+      "hash": "5c2df4e6780d0871434652d414f1c9a421a6763936e71870a849e1fb721f4246",
+      "moveCount": 200,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:15": {
+      "hash": "e565b5bb87403579973e9c465a23ea23757833ce712c6da9edb399d7bc0f64f4",
+      "moveCount": 146,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:15": {
+      "hash": "d907a59ec2236e7a64a6df349c4fbc283c2c4eb8f3776c1b22107c8378a8d04c",
+      "moveCount": 209,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:15": {
+      "hash": "d42aee7fcc469df254a36933092e78cac5cda6cadb929ff9892de58f4788f258",
+      "moveCount": 143,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:15": {
+      "hash": "31d8ddc73bb34d1bf84337edd1b229849c7440362a627678f1c78c3e012617fc",
+      "moveCount": 94,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:15": {
+      "hash": "053acab51d8ab0be453eba7e966af2a13fe36fc6a9f7c373830aab9aa908c9d9",
+      "moveCount": 143,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:15": {
+      "hash": "82d2bcf3c913f5e35961e27729f9b8bb9e59b4af039302006da46f5fe0f438e4",
+      "moveCount": 185,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:15": {
+      "hash": "96c72f3c842d90d6b840b99f0ac7652da97b02e935316d313f1812b581017726",
+      "moveCount": 208,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "mason"
+      ]
+    },
+    "greedy:no_relics:16": {
+      "hash": "c5ecda95c968f5943b848afdee337ce10938257bb72f13c94d2df29617a47e98",
+      "moveCount": 134,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:16": {
+      "hash": "2ad2410f3ebd86c31e605de44766aca67366d322ab1c4c1919b561045b3a0886",
+      "moveCount": 167,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:16": {
+      "hash": "21e11324307c31d68e8d13302032e2edebaf94ae7e179927d1e33d536e14c910",
+      "moveCount": 134,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:16": {
+      "hash": "3f537d9fd33973a9e7f0c8a4682b35f41dc7c0b59290233fae5e6bf0022e2b8b",
+      "moveCount": 134,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:16": {
+      "hash": "647edb44fe5fd2833b02281cb24e2c533be3a92200a8e623843a07d0ddbfb03f",
+      "moveCount": 181,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:16": {
+      "hash": "eaf1153f248b860acfd9d671177005c301ac45ae4b55c4151e6e31fca6a817a9",
+      "moveCount": 263,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:16": {
+      "hash": "732d7df49fff2d6049d5d3d549001499d4de94687a25a075cb932bc20469264e",
+      "moveCount": 134,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:16": {
+      "hash": "7a77da5f6b5af50a56411ff2b7faf350ff2b05ceae7e07c2a5b078e80a8cffd1",
+      "moveCount": 178,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:16": {
+      "hash": "3530f922dd238c38b9ad7ffeb158d85baf86f998e1b630dd76bdb85f9ee40736",
+      "moveCount": 134,
+      "relics": [
+        "fault_line",
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:17": {
+      "hash": "2b2a4985cd4f09b52cb81e2e18302030e3d6362b39803f58b45cec5b4d04c8e7",
+      "moveCount": 137,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:17": {
+      "hash": "720b4c8eff087d091c1b04ec4be40cb9aafac312ef5ffdadbdd152ba87c4b639",
+      "moveCount": 199,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:17": {
+      "hash": "4b07a5effbc4dd1cc7e8febd24223c05f3525074325c7c08cb8fc9426cb622c2",
+      "moveCount": 137,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:17": {
+      "hash": "2ab0f71b4a9273d6e85898c32fc432df6c05094176c3beacc57feac4fa902887",
+      "moveCount": 137,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:17": {
+      "hash": "795c2a1e79c6e0a64c9fce1be8020cf2e51b87957893955c2cde6ca3a5d2a321",
+      "moveCount": 157,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:17": {
+      "hash": "2f41d892d7baab2e8d52e9dfbe56f741c804e4d17fc7a657a02f240f45c76ce0",
+      "moveCount": 121,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:17": {
+      "hash": "ea43b11c330d5477b79268f415077abb0a922229893049bd30507554e1a12c2f",
+      "moveCount": 137,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:17": {
+      "hash": "e17bd0b6420a650f26b8293399b469c5e18f13638654a52103abd5808344370a",
+      "moveCount": 164,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:17": {
+      "hash": "74c70ab807d42c55292ce42b22f9dbda7db3f32ae63ea8071e39e57782ffa185",
+      "moveCount": 331,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:18": {
+      "hash": "cfe45683970954036ae0d465252ba7841503140b57262df76b898b6812524f4a",
+      "moveCount": 139,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:18": {
+      "hash": "a899de842dc85e1baafa6f3ec2f58dbaa485d309095a6bdb3d0413019ebff44b",
+      "moveCount": 318,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:18": {
+      "hash": "d5f10378844d00d283df0442f7c2c480867e7b0c29204edf22216315175041b8",
+      "moveCount": 210,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:18": {
+      "hash": "779b536539116b2981baeae135929708832f4dccc9013cfdd8e8837017deb134",
+      "moveCount": 197,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:18": {
+      "hash": "eaf517931180353e1961ac0ec7b5ed140f91d56eb1ea8fc4c5d7d743df8e8e51",
+      "moveCount": 147,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:18": {
+      "hash": "63fdc2f91e0442fcc98b755a7eb5ebaff8d0c19e1916e07f1248d95255cbb1b9",
+      "moveCount": 232,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:18": {
+      "hash": "d0288ad85dd19f92173e9fc4be81b68502a67d273fbe79b50d9b23663b0d185f",
+      "moveCount": 139,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:18": {
+      "hash": "f23e82c36d762b8c9b84df49251a8a76f91ccca8a0410bdc2b64c86a00a96321",
+      "moveCount": 207,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:18": {
+      "hash": "508743415fdcab64fcb82866dfada020bf9cd1c71cd0a5541e58f742115a7ebc",
+      "moveCount": 280,
+      "relics": [
+        "diagonal_merge",
+        "last_stand",
+        "mason",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:19": {
+      "hash": "e360fd16a22f8e6979d95ad4ccc22af720b56030495f572fe2ed9108e3cc5566",
+      "moveCount": 94,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:19": {
+      "hash": "8befd278160da9254ec2d1ec16ffcf228f153732c8ab2b02095f1f000aebc769",
+      "moveCount": 152,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:19": {
+      "hash": "91b797ba8d8bb55daf878a7a292ab1dd74801064e5f25de85852ae75eea6215e",
+      "moveCount": 94,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:19": {
+      "hash": "9cf2edf102d2e3d8b477598b97d33b85c50ede904ff35de5b12a779d6ddf05cd",
+      "moveCount": 94,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:19": {
+      "hash": "03a0c9b6d9611d7e3417b69d9a9985253e565439d978cd8a99edb3216a09f9a6",
+      "moveCount": 94,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:19": {
+      "hash": "45a521bfb680f8c3e8c642859367fb320fc9a8b536de512fe4aff112a1816064",
+      "moveCount": 132,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:19": {
+      "hash": "92048a651ba84b41591f51ff79a80ed4c7a9262d57bba632948b910c62b58ed3",
+      "moveCount": 94,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:19": {
+      "hash": "a122d7913f4a048fa9227ca16ba6a2d9cfd9b5e4c337b90efb3062d8a85b487e",
+      "moveCount": 171,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:19": {
+      "hash": "03a0c9b6d9611d7e3417b69d9a9985253e565439d978cd8a99edb3216a09f9a6",
+      "moveCount": 94,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:no_relics:20": {
+      "hash": "ad5b82b1487b3643b7dbc3059eb312dde695343cac936bd7ad2fe7947b3d4816",
+      "moveCount": 149,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:20": {
+      "hash": "548a3401ee41d8f8599bf294d7f363bf3b839d761d315202812819440cf062fa",
+      "moveCount": 135,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:20": {
+      "hash": "c93dc2cc4a7deb59d8e46c31c2dee646ec41763f9ec71da5644d568234c8bb4b",
+      "moveCount": 128,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:20": {
+      "hash": "bb182cebf9e830a4abedd0d42015c8f3d6760bc404e60181a2503f931a755dbb",
+      "moveCount": 147,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:20": {
+      "hash": "b66cd05fe76cd54c379656be30fc9554040fdaff7997de5b43fa955513124a26",
+      "moveCount": 149,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:20": {
+      "hash": "5b2f740a98dedec58a944276697736f53211f0bfbd452774e9b184572bfdf2cc",
+      "moveCount": 171,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:20": {
+      "hash": "60096426e636af67cc981196dcb21fe157e122ebccbadff620c2c564ca03a827",
+      "moveCount": 149,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:20": {
+      "hash": "0cf6ca373f73fb13a70a1ccf639b3c75d81938eb572f97137634d4ec1a567003",
+      "moveCount": 213,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:20": {
+      "hash": "9cb3c60e841e5d21823820a5cb942a4c4cad9fb7609fd26ed4962c838f32eda0",
+      "moveCount": 171,
+      "relics": [
+        "fault_line",
+        "foresight"
+      ]
+    },
+    "greedy:no_relics:21": {
+      "hash": "223b27b4072f53be8ee1766e4b891866122cef8b6d258f712ca302144b42cc00",
+      "moveCount": 188,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:21": {
+      "hash": "227f32441c464de27fbb314116673cc1df5c29950e63e3fbde722d4a7253c359",
+      "moveCount": 224,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:21": {
+      "hash": "48460f764e519b9416a91c02bd28d1737ef962617381d3adfa0ec08d39d70f6e",
+      "moveCount": 171,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:21": {
+      "hash": "9cab697b3d8c956a2e7eef89b5517aa507c18066871ca22a7efcc141990a3bcb",
+      "moveCount": 163,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:21": {
+      "hash": "38ef57cbd7da816ce1ebfd3ce41881c6899026caafeaab384385fa38af14b32c",
+      "moveCount": 188,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:21": {
+      "hash": "7daf481088e57621f38e1c23433999810981536ce1b3a525423129a8d5ec2e7e",
+      "moveCount": 136,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:21": {
+      "hash": "63ffe2983d72d9b88c087ef37051abdf6d4816ce705579d825666aa2980a75d8",
+      "moveCount": 188,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:21": {
+      "hash": "9caec0711bd8bd9115e8ca1782f4cf59d09963a3f2d4ee6092f2d70551e649bc",
+      "moveCount": 255,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:21": {
+      "hash": "780296d5a9976d16cfd142e61fcbadefd0a9b4b9f65742ae7ff3fb22d90aae56",
+      "moveCount": 240,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "mason"
+      ]
+    },
+    "greedy:no_relics:22": {
+      "hash": "dc7706f996fdc978f228f43d0aef7b2c31d087511ac7042a3200200d74b9fb4d",
+      "moveCount": 108,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:22": {
+      "hash": "8581ac7102ee1f73d95b8fbfdd7f9466d82fc2258a20722ffe00fa5f9bc3763a",
+      "moveCount": 136,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:22": {
+      "hash": "9096e8c11b12c02f5fae2ffdb756bf7f8d660452c4bee9fdb9aeef37d8a20417",
+      "moveCount": 108,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:22": {
+      "hash": "d95ab834fba119acdd8bafeb21a80e3a880ec420c70b328909c356a2fd1affe5",
+      "moveCount": 108,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:22": {
+      "hash": "b1482ca968c2775f1a2e1dcafa20c80dad521e3335eb98703bc3f45059006b82",
+      "moveCount": 155,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:22": {
+      "hash": "460a0427282f00786a4a2531e9d4449e595a56df67afac331db4921a3b6cc424",
+      "moveCount": 103,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:22": {
+      "hash": "6b4e72b8528961bf2349ca05f276c44f07bc546095305a0f3e61d46ad4004120",
+      "moveCount": 108,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:22": {
+      "hash": "aa9b697be86c73aab76f525cb0a501cfa6740e6e38ada7de285aa2ea62da6cc2",
+      "moveCount": 204,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:22": {
+      "hash": "d95ab834fba119acdd8bafeb21a80e3a880ec420c70b328909c356a2fd1affe5",
+      "moveCount": 108,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:no_relics:23": {
+      "hash": "30345912bb86ac5ad2c46a3ff48071420e2b0623050f482b567765a46ace9f0d",
+      "moveCount": 164,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:23": {
+      "hash": "975c249aa370d0b34464fb4235466b2d0df43f47ab7fb9231d3ab57bc3561c16",
+      "moveCount": 205,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:23": {
+      "hash": "f496d311acfd0f5e373eb7f5658646bb061955f91288b685b73c709be41cacff",
+      "moveCount": 174,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:23": {
+      "hash": "205745dac877f6f4c5e9f389d1ca26e8772cf1054d8c6238c50dc49b758efbf9",
+      "moveCount": 137,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:23": {
+      "hash": "fde282ceb129fd959c4510c93326d174b332abbe25abf95304ae6824f0e51f46",
+      "moveCount": 164,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:23": {
+      "hash": "021fcb92166373957ef3077f95ec71503c36c5f458ccbaa88c7d93c86c0d9b95",
+      "moveCount": 106,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:23": {
+      "hash": "8c023df34eb03776934c0027aac6bd8f660f3e00bbb8b037485182586095bab5",
+      "moveCount": 164,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:23": {
+      "hash": "6646f58595b8d613bdf8fa3c8b711061b03069c70e6ee71caffe0f939e0728e1",
+      "moveCount": 182,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:23": {
+      "hash": "b20a50c1dc1076f5817aa10429d4869e75bfb075a8f4cc7cc7d866771fbea64f",
+      "moveCount": 137,
+      "relics": [
+        "foresight",
+        "mason"
+      ]
+    },
+    "greedy:no_relics:24": {
+      "hash": "74d5e50e3dad2df666a20078c23222e727dd2865ca88ddb22e3597f42534f287",
+      "moveCount": 145,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:24": {
+      "hash": "27ec17c9fd23616bbc482e03a5f77c178f99679ff39b50170ca06d281541a225",
+      "moveCount": 215,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:24": {
+      "hash": "cb4fa6fd61163e016d3193bf2a57f25282c5be6f9a3ed4a806469c6a539046c3",
+      "moveCount": 200,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:24": {
+      "hash": "af1cd3016dc5e8a39818eedb013488cec0f92e78f1ed5717cf37515eac32b69b",
+      "moveCount": 196,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:24": {
+      "hash": "1cc5cb21c09b0f0900ea3f280bebd66e2259d3f6d406e8e7c138dcfd6286a547",
+      "moveCount": 145,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:24": {
+      "hash": "5d0eccfbaf72f74bd88adbaefa45879407ac26ab13e28a9abb012e3aaf432053",
+      "moveCount": 133,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:24": {
+      "hash": "aa71eadf0a19e41de4479184a5334bfacbe0ee2f25da21fd0f86ab786e8461f3",
+      "moveCount": 145,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:24": {
+      "hash": "e69b2fc6c619da0360f3ed7cae2dd8b6abd0468e5bde3eabe65b5ee0a0343a78",
+      "moveCount": 215,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:24": {
+      "hash": "94dc98f758fa5b544ea6bc63f2d62f0a80a004c52de6ce997df7b29abda3b196",
+      "moveCount": 357,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "last_stand",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:25": {
+      "hash": "6ec093f6b1493c68d2febeb7b1a19ae5ed7b4020b8454324a0cee49e5dfba1a5",
+      "moveCount": 232,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:25": {
+      "hash": "048bcff35655b3a573a181ed3621a9c4e5c5da1a41acfbf5221428a5b6103896",
+      "moveCount": 239,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:25": {
+      "hash": "7d37bfbcd5aeebe023c4994e09147d7ebc0b0542ad03df5ee7ed61bddf4358c7",
+      "moveCount": 120,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:25": {
+      "hash": "bde7732df070da91ff4d252bf871d9a09dc00aa33fcb992ebc9585ff7c46d0b3",
+      "moveCount": 217,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:25": {
+      "hash": "9b0993522e93dbcaaa2248c2352ef4f98cf6636265e0b4e3502c3bb40be4fb71",
+      "moveCount": 200,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:25": {
+      "hash": "5b614729066a2097f7471d27d396443d8cee5c74fa329dbd3752bd248f7fa191",
+      "moveCount": 190,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:25": {
+      "hash": "55de311b8d25ef11f053b57ec81e6e3bc39b2a8e0fc93bc1e661cb64dac457c4",
+      "moveCount": 236,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:25": {
+      "hash": "1b4383c9898d9a7fd4db4f4f98a89c5492fabcad330cb03ee407e0981e05d68b",
+      "moveCount": 258,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:25": {
+      "hash": "ac8d07d4ee3022c88c15400b886f152ecb19de3ce3ecbe24a20ecc66cddb8090",
+      "moveCount": 120,
+      "relics": [
+        "fault_line",
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:26": {
+      "hash": "a29ece28c4bc7b122e78f9d7b1ddc404685ad186a345f74890ce83c27ff88889",
+      "moveCount": 146,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:26": {
+      "hash": "8438872d335695e7a6b2f6806869c80724522f8cc62e7d55562810f949d66f95",
+      "moveCount": 223,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:26": {
+      "hash": "7a2fee7d321445d9be00edc8da568083dcce3893bc000f62509eb692d2d47133",
+      "moveCount": 157,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:26": {
+      "hash": "6b854ef382ddc6b671f10572f6272fbd526966f2d68c97cce6088f4406d49291",
+      "moveCount": 120,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:26": {
+      "hash": "e78b03606435dafbc1eb4d8d578e7802ccea5235ddc5de264ded87f351be7221",
+      "moveCount": 123,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:26": {
+      "hash": "1ee8c57b0d8fd48aa5e42f7806e65d6f38d990da8fab0de9d60b3db2de47e68b",
+      "moveCount": 137,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:26": {
+      "hash": "52bbc643e78423e6673555a7dbfcc10333986f4d4c5d7bab9f1a6a9a2ea569ac",
+      "moveCount": 146,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:26": {
+      "hash": "cf8d91ea5fba1605bd8187d1e289168f7846f6b1cbc26c704eb8dded16cde0f3",
+      "moveCount": 203,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:26": {
+      "hash": "5b5e97818c2ae35f499e9381de40720f019fc57cc954b26f7ce5557b53628a44",
+      "moveCount": 120,
+      "relics": [
+        "diagonal_merge",
+        "mason"
+      ]
+    },
+    "greedy:no_relics:27": {
+      "hash": "03661cd5f72c95821e832394a38fdd127bdbaeeb52461de30a844f2060ad9a9d",
+      "moveCount": 128,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:27": {
+      "hash": "dd2df9ab76e0d28592d658ed68d1871173d8ac6bd0e7279f653bf512cfbb72cc",
+      "moveCount": 316,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:27": {
+      "hash": "a5d1ab9c6464dede9b1613a26b1ae8ec8420392cfb6ac72d130a25be176fd46d",
+      "moveCount": 174,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:27": {
+      "hash": "fc0aeb0c017130dd9cebb1e30364b96bb59e4d8a6f80104c93a71c937c5a4b83",
+      "moveCount": 180,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:27": {
+      "hash": "369953a00bfc0549acac64cfc9cd965387ac7a073b5117b73d744cf8ad31b9ab",
+      "moveCount": 139,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:27": {
+      "hash": "fa1d9788d5a5d4e5412bdf08e9cc2c93b95fb380e1c2e661154b3ddd2d6c4ea7",
+      "moveCount": 135,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:27": {
+      "hash": "a8fcedde7a37011b297ffa96e773639fb235afe2369b969e9cc36b3613aa31d6",
+      "moveCount": 128,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:27": {
+      "hash": "11b8cd027c1c29a6f745d423b5b2ac2763d183cfdf4a0f8ad46c7aac95158ecf",
+      "moveCount": 190,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:27": {
+      "hash": "e2b46e5959539ef24320a86479bc0b46321d639b30c623259ce17019dde44498",
+      "moveCount": 169,
+      "relics": [
+        "fault_line",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:28": {
+      "hash": "fc447e4483d711630e48319abc815914a1576f03d5631d5737c3b62c9299ce10",
+      "moveCount": 145,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:28": {
+      "hash": "cb6876e708285c1575d2e16c9e6cc05bd196de0c9f669bae25f65079389d2bc7",
+      "moveCount": 203,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:28": {
+      "hash": "ac532f2fcd7027e1c32fb7bd86cb01821de60998c1bcf9d15f2c226cbb1e595d",
+      "moveCount": 144,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:28": {
+      "hash": "c49348cd6431e91228e935038649ce345cb1ed89d99e75ce58695b21f8d5ffdb",
+      "moveCount": 145,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:28": {
+      "hash": "da33d4a420f127d4fdfb061ac9ac96170b43a0808417d8b90355867c2fbeb624",
+      "moveCount": 135,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:28": {
+      "hash": "389313226608a2bdab7fed0acd8d5238e6f57f29f524c7981d0fca95c6dedbe8",
+      "moveCount": 143,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:28": {
+      "hash": "6d4ee5d428323b1546e0dcc41b8db301d6c6718e53423877996d41d645a6046f",
+      "moveCount": 145,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:28": {
+      "hash": "3d5e322cf8e68bd64758597c3ea056af9e52a3528bf0e4daf9dc9a817942055d",
+      "moveCount": 227,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:28": {
+      "hash": "2cdf01d85886c8e4a7d386492327f03e50f2dd5e67c3401fa38f023a6c28a1a4",
+      "moveCount": 145,
+      "relics": [
+        "fault_line",
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:29": {
+      "hash": "a837e0e1f670480863a03bee40f1c3047a775e52a7ba52986eec994cb4d847c4",
+      "moveCount": 92,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:29": {
+      "hash": "67b44a8a5049d9a4fb7f74d199c57dd4c27cad61d3e8a79555cf2d93fc4c3308",
+      "moveCount": 197,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:29": {
+      "hash": "27c1a07046f5b89239bbc26bbe5d66a236af99381b2df518bce314603c41bb04",
+      "moveCount": 92,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:29": {
+      "hash": "ab5ad3886b2693ea3c14f12f9c6a0539da36ef38092b4f067fcdf35b2ba729be",
+      "moveCount": 92,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:29": {
+      "hash": "b2ffff0762634d6503b08ae47f56b1cdbdfa37a5f03ca944a9630552e091862c",
+      "moveCount": 92,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:29": {
+      "hash": "607a3ae7e3843206edd5d3439b44f4c95c03b3a734f651500a6123f1def7be47",
+      "moveCount": 255,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:29": {
+      "hash": "34b2e72dad6319c2eee9d93a8fdbd278de935e80eba2a74fa70f70b01c9aa450",
+      "moveCount": 92,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:29": {
+      "hash": "f6fc0e0b9cd2435689ce73ac23bcc121554d943b6ae1f9060e5ba16b4767e453",
+      "moveCount": 171,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:29": {
+      "hash": "ab5ad3886b2693ea3c14f12f9c6a0539da36ef38092b4f067fcdf35b2ba729be",
+      "moveCount": 92,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:no_relics:30": {
+      "hash": "0711f9e000d6cf730007e8ba77c77c2b9e194870f38f5cd22ecd655b0983d959",
+      "moveCount": 146,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:30": {
+      "hash": "b1632f768b1d0c8e7dc149fc2ea847897646ebd71f00d992d60a61bc7a4e9429",
+      "moveCount": 207,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:30": {
+      "hash": "8073bf5797af1ec190aaf6f5dc716e24c3a7a27fd2a48aed0d9b7217c7585fad",
+      "moveCount": 126,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:30": {
+      "hash": "f67c82ab704ecdeb3ebfb7128f366aad16cf90e5c866282a3c5d4e3fc8ffd71c",
+      "moveCount": 92,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:30": {
+      "hash": "a656fa5f63f2351d0fe8eb04a28eadc289fc45d7109dd0756964900c74b88464",
+      "moveCount": 146,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:30": {
+      "hash": "8d820f5d35e9a4aac6984b104cbc66396c58d93b998c11dc02200125a34aa28d",
+      "moveCount": 170,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:30": {
+      "hash": "599011890e246aa933496066cf1b105eab191a2f9090ba35e6f1ac4ba2131243",
+      "moveCount": 146,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:30": {
+      "hash": "d3422c4721e9c68b12b4e89aec2b4a871954d7b6e793de6de808e36cac108295",
+      "moveCount": 202,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:30": {
+      "hash": "873648151b23834bf66cfbb4febaf2f52e5e37e83a4187a5245433ecaaaf64bd",
+      "moveCount": 231,
+      "relics": [
+        "fault_line",
+        "foresight",
+        "last_stand"
+      ]
+    },
+    "greedy:no_relics:31": {
+      "hash": "d37929c25698651b2369ea763a1c210a4223cfbaa5269f83d6e7a81e34cadafe",
+      "moveCount": 118,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:31": {
+      "hash": "29f42e0d6e2ff42c34fcc7ceab4073ed3dedda489d588fc6605e37e351ed5017",
+      "moveCount": 223,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:31": {
+      "hash": "b78b64697188d7d8cebf70eb56dc022a793b6eb787a542265c0ea8561a2ec2b1",
+      "moveCount": 118,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:31": {
+      "hash": "62cd4c6e35f3f8a8079ec686cad83f2004be999f390c752fe8e2c8c5a8d63f2a",
+      "moveCount": 170,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:31": {
+      "hash": "478b58f41110cc86603e0a80557046f574d6fe13825a73d12f1a50c363cff360",
+      "moveCount": 170,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:31": {
+      "hash": "5e125fcb99eabed8bb4b3aba2da3c76133e3240a050729c33c529a263abfd2c4",
+      "moveCount": 175,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:31": {
+      "hash": "8b4140c772c689444f74b526463672cb0377af59361429e211605a065ee36fc1",
+      "moveCount": 118,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:31": {
+      "hash": "83557708e4ca7f84011c70f7c0e526888b161287c178ca35251c31a9dec14962",
+      "moveCount": 180,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:31": {
+      "hash": "8d9fc420c4acb939500a5a9c595f016272e94ba8befa2da3555e30037d1386c6",
+      "moveCount": 218,
+      "relics": [
+        "foresight",
+        "last_stand",
+        "mason"
+      ]
+    },
+    "greedy:no_relics:32": {
+      "hash": "f92775f521d2c2ad0d54fe541a3c28e746ce98201f4b21b16f65879beb9adbe3",
+      "moveCount": 135,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:32": {
+      "hash": "8901bbb62f870a228c79f05664c79e9a3d8bb401351414c5ea2ab7406616de0f",
+      "moveCount": 233,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:32": {
+      "hash": "489f30c902cfac01a57e5b6ee70cfac67185ea696bfe0f2596fb5a1479ff379d",
+      "moveCount": 224,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:32": {
+      "hash": "1fba98c40f7221f178445c6d18e4f8cb62c9800fc43fad5dd8338a7777523d4d",
+      "moveCount": 132,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:32": {
+      "hash": "61d9e8c98df14539fca0c33c961adf68cb96fbe2fc5683699d67ae7b4ef5bc61",
+      "moveCount": 216,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:32": {
+      "hash": "67beb2889cb92511ef9117dd321d66a4b73ddf150a7bf5a37fccf81ad6b2b633",
+      "moveCount": 184,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:32": {
+      "hash": "d79aeed8a5eabaa0538538b9b9eef9f23f4cdb4733dcbdbc04e7d44553502b5f",
+      "moveCount": 135,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:32": {
+      "hash": "70d6217757ea37ef085ba57f7dd2dcccc65cd1f5cab4d76506d967c6ed44bd6f",
+      "moveCount": 246,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:32": {
+      "hash": "ab8f179ec6eeed062795cf2b0aa53f4223e381f345511099924ca4cfbe93fb13",
+      "moveCount": 347,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "last_stand",
+        "mason",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:33": {
+      "hash": "b55711a4bcd4ad925df5cb800408b1584f3df79909308fca8d76e315db31e691",
+      "moveCount": 191,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:33": {
+      "hash": "d79de9d0a0d80e73ce18b65aaee6e3b7f324462ea4536e7955388f84c2ee42f2",
+      "moveCount": 215,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:33": {
+      "hash": "5f3494addff1f725e56434be02fac346c15bf7014acea906c2c6c93bb7f21ef0",
+      "moveCount": 199,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:33": {
+      "hash": "9502a1125883d7e24200dfa533ae4d20c923ef38cb3236937736181d26555cae",
+      "moveCount": 181,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:33": {
+      "hash": "cf03e4cb1c2652da758535bef13224fb8c832150f598e192ba1db843880d0b59",
+      "moveCount": 191,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:33": {
+      "hash": "5eae5cfea4d3d753b2ecba05b3a464bb0fb857d65142ea255d0428e20c632568",
+      "moveCount": 145,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:33": {
+      "hash": "fd882f8270d0da8893d99a776bada3d037292de6ef104d901003e6ed239c2a99",
+      "moveCount": 191,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:33": {
+      "hash": "59bdacde1229e84313e7f156e0fbe74d5c01ae87ff74b9a693b38c10a2033148",
+      "moveCount": 212,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:33": {
+      "hash": "43ca6d9b2ec317493a978f71fb544f9848858d59e030a1f8873f9b84602585d5",
+      "moveCount": 212,
+      "relics": [
+        "foresight",
+        "last_stand",
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:34": {
+      "hash": "a5bd56ef09c2b61dfb61ae73d981a66194c8978a46db8a410994e16169f344c2",
+      "moveCount": 152,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:34": {
+      "hash": "7577b0289ff914d07eda0f446164b089c167387ac183b4dcee8d5dd83d8c4fcc",
+      "moveCount": 224,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:34": {
+      "hash": "3aebce691ad92da8434046e13494227d258a65023ecbab527042fc7c3587389d",
+      "moveCount": 142,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:34": {
+      "hash": "3400ca907e6c6de7cc737ecf7e10e683b92d46c95bd538715ac9ed5475ad232e",
+      "moveCount": 152,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:34": {
+      "hash": "af32e12a23f225a5fda9f0ce940b16e34aa2b879922e7e9528f6d7ed39748250",
+      "moveCount": 173,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:34": {
+      "hash": "9d1c9da99eec53f0c854bd5759fb1ad81b1229ef56a39a4c326a205b15bce94b",
+      "moveCount": 247,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:34": {
+      "hash": "3c4b3dce2ce77e1700012b6ebcb0bd6546044db3b4d4f5112e8caa24e0a42297",
+      "moveCount": 152,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:34": {
+      "hash": "a9a06bcd2d2cf80a5d7fd36b9ae8abb632216c6a538722c1845271ad45355923",
+      "moveCount": 173,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:34": {
+      "hash": "061fc7dd9bf931faadb34aaa7e3ee45f4e83e94b1ca5ddfbaef1f21cdd8f258d",
+      "moveCount": 293,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "last_stand",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:35": {
+      "hash": "ce2f244a7e978e3932644c8611c54b150789cda4f1a476a91899aad56dedb465",
+      "moveCount": 137,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:35": {
+      "hash": "9f4d575006884aa3262980d08c8298957a6a40b524b2af6bd262472165f394f5",
+      "moveCount": 158,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:35": {
+      "hash": "09775d3bb2a9e225f2bf648628305a6d5e8797e156facc7fa96da4892969f31c",
+      "moveCount": 147,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:35": {
+      "hash": "a48f3aff813fa6db3a92d4a8b46e3ace09511d11594f2cefb1ceb95d12c54662",
+      "moveCount": 150,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:35": {
+      "hash": "6b8f49dc2637ac44eb878cd589b11d33fcfaabd4b417726232a55605a09b4794",
+      "moveCount": 137,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:35": {
+      "hash": "2b08651d8b1b56e892e7475f0133df90f1ed32cd475d36bf070c0d307296ae45",
+      "moveCount": 195,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:35": {
+      "hash": "afbe4577b2f52f8e27ca2bb9c85d7309752df9cd4f679130de948f84e29b15e4",
+      "moveCount": 137,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:35": {
+      "hash": "33d5cbac64963f291a5cc67752670d9e825d8bacccc5d624f6c5e96e7437afff",
+      "moveCount": 156,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:35": {
+      "hash": "d51dfbb081a23215fc217019abc538f59273aa1a36a26f152e119b75b0518654",
+      "moveCount": 240,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:36": {
+      "hash": "f30063529436f00a4063bf1824059001d12661ffd71860caab5165be4835f3db",
+      "moveCount": 119,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:36": {
+      "hash": "e3b3e2c7965316a6aee0ab97419cd347bd42f33699ef6495f49e2bebf985500f",
+      "moveCount": 155,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:36": {
+      "hash": "6e3733637dd0df50a2088850f7788cd2d2176612c82e2b2b721a59386856d980",
+      "moveCount": 109,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:36": {
+      "hash": "fc5601696d7992798b7c55154083c2acf2f43764e565c8ed5cc46ff57d338385",
+      "moveCount": 193,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:36": {
+      "hash": "1b44b863ec3dfdc773c2e1a321e97fe3a4b75fbddb94f5a72c70cd98b274a291",
+      "moveCount": 119,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:36": {
+      "hash": "d087d07858e1ff3099323d8b0429508aa802e07dade51bb3249a5bcfbded82be",
+      "moveCount": 141,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:36": {
+      "hash": "3a9c37c9f28506e871ed7821cbf851d74dff62ca3f243c69e602cc96e70e66ea",
+      "moveCount": 119,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:36": {
+      "hash": "fe8f95c3d1e75f89bd34db306d0b5fa2eb39d69d3b0a008de37653e7de602ab5",
+      "moveCount": 178,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:36": {
+      "hash": "a7a9fa73863f15fc0d9fd616eeaa9c6977cd323fbd0ac44342d1bb34abea2831",
+      "moveCount": 301,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:37": {
+      "hash": "9eca9155747d79794edc567c9d9b4a09370924d3a69eee6b83743861288472e3",
+      "moveCount": 103,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:37": {
+      "hash": "3078fce10e58b59aab2161461b86b99224ac3d97616b1fe36ba0b868c502eb9c",
+      "moveCount": 209,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:37": {
+      "hash": "f9c292091bd916f15786134bc95035fbda9543e89e5da622034e0864290b00be",
+      "moveCount": 103,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:37": {
+      "hash": "01cc23bdf9fb52e2ce8a65c5c9518a1333363abc7835c1a034f8dc08d131d5af",
+      "moveCount": 103,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:37": {
+      "hash": "63e4e31668bd2572731ac417e1a330ea8b49ddd4378747ecb33c189224b94cde",
+      "moveCount": 103,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:37": {
+      "hash": "8dc06d549d6da542a639d5d6788c51ce8ef1ff7bb972b0549a096e7b5cc3e56f",
+      "moveCount": 242,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:37": {
+      "hash": "156f38a21756048fddc92351ce99a5bf1e599723efeb678bfbb5592b21dded52",
+      "moveCount": 103,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:37": {
+      "hash": "1c30f317ba900b3611937f4cf38a3614dba5b4a82b66f5d41ba3fe3035ab2b8c",
+      "moveCount": 149,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:37": {
+      "hash": "01cc23bdf9fb52e2ce8a65c5c9518a1333363abc7835c1a034f8dc08d131d5af",
+      "moveCount": 103,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:no_relics:38": {
+      "hash": "e227724e3042e6307813cda8ea90c17bbe442ef836ed4974aa73cbc1d3408649",
+      "moveCount": 153,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:38": {
+      "hash": "9291681f0ba26c75dea03cd65b739d4fda3018ae328a46e051b9afdb332163ac",
+      "moveCount": 233,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:38": {
+      "hash": "26cc8b65010632d9f737b0554fb3dcee4f7805064f8a5c1190c0a56604e67c58",
+      "moveCount": 200,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:38": {
+      "hash": "a38e2257f991f3cbdfe3505f78406c8954fc3e556c85c54adcb7fda82cd6399c",
+      "moveCount": 159,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:38": {
+      "hash": "16e43894082ec495fc69763605b2e8546c4fcfa93d981136372e41b9af322cd5",
+      "moveCount": 138,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:38": {
+      "hash": "58f7068fec4632d0a49c7880dd0519a8830a3f2765f174fc8e57e24d24afae69",
+      "moveCount": 170,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:38": {
+      "hash": "870a28a90c0f2abf67fdff4d42b142b4b7fc73a8528594b32c02da36d6fab9ba",
+      "moveCount": 153,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:38": {
+      "hash": "38b3862fd511a4ce14386242bb9fc2f6960474fba2ad0da740637ac4675a8311",
+      "moveCount": 204,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:38": {
+      "hash": "9f64442588b9fa65226e35cef45e17bba8cb13aef416b38b24094c54b23f70ae",
+      "moveCount": 187,
+      "relics": [
+        "last_stand",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:39": {
+      "hash": "efc39b8e9349317038b0be26956cee79234d6c7de482439cef182e9fd1010a74",
+      "moveCount": 99,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:39": {
+      "hash": "02298c9f39454e8179b15b154f4efcf0026c6a740b93835112c39303ac2eca68",
+      "moveCount": 223,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:39": {
+      "hash": "d210a7ed42ce7422c99372461584ab58071c14f385c890c629d3b5afbd6edf35",
+      "moveCount": 99,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:39": {
+      "hash": "073e2f4bdddafaebb3dde768d1d5975b1a10da1038b5d8cca9088cd377a13864",
+      "moveCount": 99,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:39": {
+      "hash": "012b282ab54a7a328506b0b1cc29ac296ab1aff2fa44b8246bec7d1fc815e07e",
+      "moveCount": 99,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:39": {
+      "hash": "5c525974aa78e1b34dae8fc8a2bb444976fa43c0bd9616fa47a7d0d554d09d79",
+      "moveCount": 161,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:39": {
+      "hash": "1cfda43829141b7f77f41d81593acf6a476853016326bb7ee92e7226be5a0e82",
+      "moveCount": 99,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:39": {
+      "hash": "a0b2181c551685dd6403e61c7d66e29d797216492e2a1facccbc3242dbcef880",
+      "moveCount": 177,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:39": {
+      "hash": "d210a7ed42ce7422c99372461584ab58071c14f385c890c629d3b5afbd6edf35",
+      "moveCount": 99,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:no_relics:40": {
+      "hash": "5e49b6728a24786346239e8f4a293b33dcdc059bbcf19a0ca25801e3b539874d",
+      "moveCount": 153,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:40": {
+      "hash": "58af695d1c4346d6dab8153c0815c060a3364f71a1d4c7e57f63cc5c1797a5ec",
+      "moveCount": 225,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:40": {
+      "hash": "9116d3ebf3aca64bb8c0f04acda8e35a79f3bffe9c92d6bc21b35f477689e99a",
+      "moveCount": 210,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:40": {
+      "hash": "9d2e3878d9264012b7c55f27206ebd3ff551d2749054f99acda8b29729b4b2a4",
+      "moveCount": 176,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:40": {
+      "hash": "4935661e9dbf9f33a6de8865284f0943d86115ee254a2aad875c0cc52cabc55a",
+      "moveCount": 195,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:40": {
+      "hash": "809a718f10512cc1852748b06295ff6ad857ec3e0dfb58c351bbdb4f1b22d8a5",
+      "moveCount": 240,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:40": {
+      "hash": "563395485ef2ba82e81c38871fb2e29bd7bbf3ae07c340631994a3ed49eb23a2",
+      "moveCount": 153,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:40": {
+      "hash": "2faf9e0fb9c85e0e57497fdd3ed95c715af8d50b3b00d0bf7a1001b28d3e1788",
+      "moveCount": 198,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:40": {
+      "hash": "5f5787750b847edd62468878241ee92661d8243132754512ba7ed40baff9ec4f",
+      "moveCount": 210,
+      "relics": [
+        "fault_line",
+        "mason",
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:41": {
+      "hash": "907e8d483ef3d4d21aed1f8612596ad6ba7b08b8bd0b9fa971813ffe59ad8b95",
+      "moveCount": 132,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:41": {
+      "hash": "1c5fb1a017c160bb92832e19f1fc431209c033b2e7f86903de175c07e4d2e6ca",
+      "moveCount": 212,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:41": {
+      "hash": "26c1b066ba335ad8dbeeffebd84f9690e23dc3584aebf9364cff5d5dfb3e4071",
+      "moveCount": 172,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:41": {
+      "hash": "9971536d1f88d87f4f059ae0a88a9e9abe3954168176b9f167c9309a46af017d",
+      "moveCount": 177,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:41": {
+      "hash": "7392a5e196a98df9115535d722bafee0e8fba21b8838feee7f7d51876caf39c1",
+      "moveCount": 138,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:41": {
+      "hash": "f1e5405753accd26d319de835f7ed580bced5143bbb965e24c74349acfeaabe3",
+      "moveCount": 184,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:41": {
+      "hash": "00c9299f644834b374b80746152d8b4759c1c02837aea8c814bb525fe4a104da",
+      "moveCount": 132,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:41": {
+      "hash": "b1b73fde654179cb8d635db5ad4465936f743a2f14a8ea72247b2336bc83b70c",
+      "moveCount": 188,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:41": {
+      "hash": "1c79cb5952b313b185d446a3b11eb0c49605debb46bc8df60571d64175f7df81",
+      "moveCount": 260,
+      "relics": [
+        "diagonal_merge",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:42": {
+      "hash": "4c9f63cda131020afbd6e8b64284fdfe173f372ec4dbb2e7eb32e6fab7acd74a",
+      "moveCount": 141,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:42": {
+      "hash": "3158dda79dcf0fee71d4e1a367ecda40c4e43ad171b030b90b6c5f350a0e1547",
+      "moveCount": 198,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:42": {
+      "hash": "a2f0e65c2aee62e4f35a1d8e54099d96056f21c5adf18fc6bc620e0aa76ae2b4",
+      "moveCount": 200,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:42": {
+      "hash": "256cb6b7db15b3042f13ef62c8d8b3e6fab867d48f5ec11c3d1240c00c5fb5f8",
+      "moveCount": 135,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:42": {
+      "hash": "33facb598ebff1f32f7d3838471d7122894941f76b22ec68c134f4bebf5760bd",
+      "moveCount": 141,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:42": {
+      "hash": "11cdea635a40ebf10884077d3fe469b7559f4c663d2cd6dce8fd6276faee828d",
+      "moveCount": 138,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:42": {
+      "hash": "18811d1a534a13a38b4bc3e41bbc30ad4c2846382287ae2d6f7036fbc24ed0c2",
+      "moveCount": 141,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:42": {
+      "hash": "abc4b47eac1b859a98e70a221ba7c003aa6c5107376ef6e6f70a695c0fdb154a",
+      "moveCount": 184,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:42": {
+      "hash": "fd8ce9b21434a23b07793c6d5e80b90b64de51c3c8bcd7eebaffe744f93a6bfb",
+      "moveCount": 220,
+      "relics": [
+        "fault_line",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:43": {
+      "hash": "268a5f2914b3d39c85f68dd78ff61f0be37333c86a8f1192f215869cd1b80840",
+      "moveCount": 109,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:43": {
+      "hash": "766a651d8433de3ffcb2c6af830211f960139b00a5e1bb81ace06f041ba7323b",
+      "moveCount": 254,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:43": {
+      "hash": "5d77d7ddb83c1c4ba1a45407125752b64e2c28ef440a06a375cf0fb585eaa25f",
+      "moveCount": 131,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:43": {
+      "hash": "e3a253c9bf03dbd58413c60e81cd4a6ca7c821feebe044b7c58891c46caea2b5",
+      "moveCount": 109,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:43": {
+      "hash": "8d3ae207837c673e30caba6f4922337eca8f6989fea657ddbbde5838d3060a2e",
+      "moveCount": 195,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:43": {
+      "hash": "4efc664c3b9d8001bc592733bd66e1804e4dca4b3e49c7693427578c7edf6006",
+      "moveCount": 218,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:43": {
+      "hash": "94f8c69d1447f56218340bb5fb5a6758ee3043ee4d3e8554ebee8c6776884e52",
+      "moveCount": 109,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:43": {
+      "hash": "6f5c6209fd78c8248e05871a4f2f7215cf00e9006844909a69fd6f3f6e233af8",
+      "moveCount": 195,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:43": {
+      "hash": "94f8c69d1447f56218340bb5fb5a6758ee3043ee4d3e8554ebee8c6776884e52",
+      "moveCount": 109,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:44": {
+      "hash": "a3d14a863037c8fef35d4d15bb7eb826c9d1cfd68fdce98c177db1154cd888c4",
+      "moveCount": 158,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:44": {
+      "hash": "3f8a26d74630706452f744334f82270cbfe51b7a30d8a7843a862a1efa28d869",
+      "moveCount": 191,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:44": {
+      "hash": "befaad2ff2c475c66b7bf888db0b5df73b4b9f6e40e176c087f16bb1fac31082",
+      "moveCount": 158,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:44": {
+      "hash": "88c1f202eab276ba1ecdf57604b43ad926ea07a838c38281cc06c14ea9a3e44f",
+      "moveCount": 141,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:44": {
+      "hash": "77c4e56b530e15964e90f2ec35a37aa31be361865bba896886910c309e0bbe42",
+      "moveCount": 175,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:44": {
+      "hash": "1e62eb65f88f364ff95d883241495c2ad7fe559fb8e5b284be3e785db86eed66",
+      "moveCount": 188,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:44": {
+      "hash": "2b18dc45c88ac19501c0714ca92abffd3330b8dedb46aae89391852249858b9d",
+      "moveCount": 158,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:44": {
+      "hash": "44ea5d66334029825feb7abcd7a62c2498091206e656cecca46177b7a4404a30",
+      "moveCount": 243,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:44": {
+      "hash": "66e42387aa1b5a9ce2c21b10e918563dd48c27db5656f30a7d7c65778f57c161",
+      "moveCount": 346,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "mason",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:45": {
+      "hash": "e92945ef347ee36d107fb1f510adb61519d8443a3cdf3e42505896c83e65c742",
+      "moveCount": 131,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:45": {
+      "hash": "eadae7e9d49dca71bdc6a93c85ffc17f0b0822ab245942ff7bfda39ea3e242af",
+      "moveCount": 261,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:45": {
+      "hash": "fe44f19d2661fe0bfe5b39953bc8db53ff32f403dfc3205c444fcb6074d80171",
+      "moveCount": 131,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:45": {
+      "hash": "370ec6b131600c2cb13740adc8d412bc8d95c61e0876879c1efd7e41cf0737df",
+      "moveCount": 141,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:45": {
+      "hash": "0bf33846e3025a0f113f692f75ed8b9e7be5107ed070114b23a6d66549792101",
+      "moveCount": 166,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:45": {
+      "hash": "6ad9ae9d3e41466470574c5e53d17fabd208767a397e72d6c927bba26568e288",
+      "moveCount": 160,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:45": {
+      "hash": "afbdc93c4f68c24cfc01423b0927d27a956a7c11abf0bffbfe94f27cb8f7065b",
+      "moveCount": 131,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:45": {
+      "hash": "ba2e1d919a2c395a007bf9fcf03fadca201cfa8375a28e0cbbd9694e3bee0f6a",
+      "moveCount": 197,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:45": {
+      "hash": "1bf53fb51c540c7c7444259004157cc1441ee3b1d00b1de3cf2e18aa71fdf7eb",
+      "moveCount": 240,
+      "relics": [
+        "diagonal_merge",
+        "foresight",
+        "mason",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:46": {
+      "hash": "ff87bd05a856c5af2dd3d1d933bd280428678fd648cc9434140658ce6af29b6f",
+      "moveCount": 141,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:46": {
+      "hash": "cb8a2cbe2065b3e2ed653ae87dd152955f375c1576343ca28ba035e7364d24d6",
+      "moveCount": 199,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:46": {
+      "hash": "284088ab2d58550600d95a99451573d332822df0e7185e0fcd6bb91405224ae7",
+      "moveCount": 141,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:46": {
+      "hash": "d0387d92e9f48807fab2c17ecf4019de9ac01edcc455a723746d29a290d7696f",
+      "moveCount": 212,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:46": {
+      "hash": "48b3d5658e70b2f0ef2f0f42a9e95a6f81ab1f757b6ae413667a39ae5585c8d0",
+      "moveCount": 139,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:46": {
+      "hash": "0790ceb0299ab46e5663107847c63b80fcd5118b852251ec139b137ecf1d94b5",
+      "moveCount": 183,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:46": {
+      "hash": "9591f04da5edeb6ca3b9f1cbeaa1bdc889fde00eb119c595bec37350c3cb7248",
+      "moveCount": 141,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:46": {
+      "hash": "fbd2645314f427131e57b81e35dfb5e69b655593c5e33830f2098900dc745230",
+      "moveCount": 238,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:46": {
+      "hash": "28a64436729d73c7f25539c3d1c704261cf42adc9d78f3fadb8be98c4ec4dfb6",
+      "moveCount": 151,
+      "relics": [
+        "shatter",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:47": {
+      "hash": "d2cba5484a2d6cdc88d7009f38de55a90e1cc45b48bf2ea5c1f38ea822be8427",
+      "moveCount": 216,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:47": {
+      "hash": "5af2fd6bbf283378abe86a0532bf073ebdd6c449886df7bc4f522cc301f8ccc9",
+      "moveCount": 137,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:47": {
+      "hash": "898f776e70e04fd9b69c83715492b06952cba3e4ccd276b66405d07d6ce99735",
+      "moveCount": 139,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:47": {
+      "hash": "bdd79e89b109c3d7ee6ff3e3711d244133d2cb9a68b8fefedbc992565c7b54ff",
+      "moveCount": 205,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:47": {
+      "hash": "5c4dbef0ffc24b19f04b96f21df257a9f7e09836100bb52f9bd125a961561837",
+      "moveCount": 155,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:47": {
+      "hash": "3268b0526248d5542df9532688c8361fb7b8b5b4506bd58ca482a3a1875c2c90",
+      "moveCount": 172,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:47": {
+      "hash": "7a27fd2fd02fd73fd7bf5a82730d804ba0f1b644d8d837ab4700d7ff74b9f101",
+      "moveCount": 216,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:47": {
+      "hash": "1667c7f790c05665c2c9b8d7474dca775ff426129fe6f15e6344a211230fe9f8",
+      "moveCount": 248,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:47": {
+      "hash": "97c1095d5895e33532acd3dfc5d8db2f743cc5eec8a67a2e2158e8758828defa",
+      "moveCount": 229,
+      "relics": [
+        "fault_line",
+        "last_stand",
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:48": {
+      "hash": "34954e05383ef68b29fafb1c963138a109f6565fa4227a8eb44fdbfb5ffce9c8",
+      "moveCount": 137,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:48": {
+      "hash": "4f3572cfc945117a88390022d2969f7c01fdfe10f6344987236bfce54d3068b3",
+      "moveCount": 241,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:48": {
+      "hash": "7e996c259c113ba6f3067473724649e10f6fea0e52cc28c405a6d7d38dfc9da8",
+      "moveCount": 96,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:48": {
+      "hash": "08c520472257dc29b409266fd077f8a587e0bb92c88b7975b469f8323b3d38a4",
+      "moveCount": 105,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:48": {
+      "hash": "ec14caf22a8ecb34f8eacc80e08a34fb97c23fe039c2fe8a23f4c7d322ce0c7a",
+      "moveCount": 137,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:48": {
+      "hash": "397a8dcdefeaf64401e2479a831c8153dd56d3f6f4a5fd66e3477e88e9ff061f",
+      "moveCount": 161,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:48": {
+      "hash": "18d59adeb7091f123b9efe05331a7560bf630207573dd59078e3df37410698a4",
+      "moveCount": 137,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:48": {
+      "hash": "d35ad0133d07827d230ce21e9d5e383d23c7c97e3cfd890d771cadd17504fab1",
+      "moveCount": 181,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:48": {
+      "hash": "80f16bf0939d82663221ad23eda12f8944870e08dda8cda21c32449190af7dd7",
+      "moveCount": 206,
+      "relics": [
+        "diagonal_merge",
+        "foresight",
+        "shatter"
+      ]
+    },
+    "greedy:no_relics:49": {
+      "hash": "4ae6e422c061f035d7fe093a9f91339ec1b9a4b348992cbe0c904d22ae099a68",
+      "moveCount": 121,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:49": {
+      "hash": "8da27201a6e304e49b395344f5a545a590e2704da0254cf0da352276d64a9155",
+      "moveCount": 211,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:49": {
+      "hash": "a7ccbd01b4658103ea0d72b3936b3b6625fe11e93cc4dfdeda1679025edb88bf",
+      "moveCount": 186,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:49": {
+      "hash": "18410ae29ef19d24bf6cfd060bb977d8877be2a409ab4ea3f9d4b2c79ab03dd5",
+      "moveCount": 159,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:49": {
+      "hash": "8e69473be7ad22e232ba76fe6e0e333724506e91eb8262955e2086414dcb3678",
+      "moveCount": 121,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:49": {
+      "hash": "731fa9a8d4fdd3aa2f31f4d51f7126309669703b0af98dffd01ac1a3db37d29e",
+      "moveCount": 183,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:49": {
+      "hash": "ba6312c95ebe3ff123ab65525c69f4cd8ea78d8286c5adb718e37e3f803cc7f3",
+      "moveCount": 121,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:49": {
+      "hash": "ed97080947c6ccbb28dcb823ab87efefcae172fd435274e9aa96d047d1ba9e53",
+      "moveCount": 163,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:49": {
+      "hash": "344af372ea43103c6248269a3a5cdc89c1dcf76883fce02a13ccb2765741d113",
+      "moveCount": 254,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "mason",
+        "siphon"
+      ]
+    },
+    "greedy:no_relics:50": {
+      "hash": "04be5fc9feb1233919f8c3b7b74a942d71046803503a0b3c46354328d67e3611",
+      "moveCount": 140,
+      "relics": []
+    },
+    "greedy:forced_diagonal_merge:50": {
+      "hash": "d50b268b326f15de63006eaeb5dc28ff1c95f1389f4ee0a70ad409d061c28e0a",
+      "moveCount": 210,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "greedy:forced_fault_line:50": {
+      "hash": "1142ae45b58ea38a90bff76681abf67ce596693e8da2035b8f08b867ae0f353f",
+      "moveCount": 166,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "greedy:forced_mason:50": {
+      "hash": "0612c0154e958df5de3c785385e2fc26070131b9adc55799a77010ff4a53daf6",
+      "moveCount": 140,
+      "relics": [
+        "mason"
+      ]
+    },
+    "greedy:forced_foresight:50": {
+      "hash": "384a414894d6cc19007acab04006d08bf649cb3466ddd4a268fdd31f69b76a72",
+      "moveCount": 140,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "greedy:forced_siphon:50": {
+      "hash": "c44482dc5eb2337d5b8972168fa11ce981a38465fe701d44bc8af44a9d5bb111",
+      "moveCount": 141,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "greedy:forced_shatter:50": {
+      "hash": "bbc3980fc9ac24c6d2590c94b201d48ebc43ff1b2bb3ead349409093864cbc7d",
+      "moveCount": 140,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "greedy:forced_last_stand:50": {
+      "hash": "6019e2064d7bc294e2d6d76c1da7629806dfc8713b523b168ca1278c8fc1ebb9",
+      "moveCount": 209,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "greedy:draft_60:50": {
+      "hash": "0ff95fcd5cece7882bb1cf491e43077fd02e359c99f8b2f279142afdccff3126",
+      "moveCount": 460,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:1": {
+      "hash": "b482f4b730d45c1a8d1ca77c637ccd08d3a1788470433955d7b2d0f2b0490ffa",
+      "moveCount": 221,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:1": {
+      "hash": "82c1ac1046fce820d764a308c9334e4c3f76b730c1770932f966e30dab3a2443",
+      "moveCount": 315,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:1": {
+      "hash": "b0118cb6f209e7103389f985af2a066e1e4722638df19b5bb665f919039cd26c",
+      "moveCount": 327,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:1": {
+      "hash": "c43439079ae6de564df3231e7313415168d835fb71a333b7adfdda726f79cbee",
+      "moveCount": 221,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:1": {
+      "hash": "99edcd3d1972ba3f199ecaf548b252603f6d8580620f5da3859086299a495577",
+      "moveCount": 141,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:1": {
+      "hash": "7fbc5842ca06896b88aedcf6a5448ded7501b642bbcc05da34cfc59a115a6fd8",
+      "moveCount": 292,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:1": {
+      "hash": "fbdb81cfee0f82483c371f9b7abd36578f33cc333557c09654a2e9e08747b560",
+      "moveCount": 259,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:1": {
+      "hash": "cdc8e4f7c8a351acfd0b23078ad3371fabf51293a11181401fc43e66f2d2d970",
+      "moveCount": 333,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:1": {
+      "hash": "610c9a1743f4337a0c6e141a1e5188922058cb39975cc624177e0f55bb22abce",
+      "moveCount": 457,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:2": {
+      "hash": "74e35b683676f422eb29bc28a48dd8519c4a023543d161cc09e1e96be4d77c67",
+      "moveCount": 216,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:2": {
+      "hash": "a9c4f9df889235cf1e2d005cd8b0ff36c44d8cb531a95142ceadc62043a145e0",
+      "moveCount": 266,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:2": {
+      "hash": "5f12ea932585c2decd37a5f84dc27b5b6cfa6c4c8311e42076fb3751397e5972",
+      "moveCount": 243,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:2": {
+      "hash": "2d0760b53adad14cd1a6e1be1895d990d6ea0b4f2e05b4fef4d1eb5d16252cd7",
+      "moveCount": 245,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:2": {
+      "hash": "c6f840f46dab1444a104ece0ddf337e05462c1026af972795746c301570d96b0",
+      "moveCount": 239,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:2": {
+      "hash": "8e6e7eb3387ba56e2aa4ea7d2a979963380407ebc64211b3103b0d1ff74e03c6",
+      "moveCount": 230,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:2": {
+      "hash": "1daaee0072706be6de9c031bfd0339f48a81493a8cb2191fd898117b5592b87e",
+      "moveCount": 352,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:2": {
+      "hash": "4565a9f826477cb6c7d1a4f7a17cc8fab5ba66f76ac50ebc4b87fd3d8edcdbf9",
+      "moveCount": 256,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:2": {
+      "hash": "3359e1ddf3f91f877b9035c1fdb92920b2d38690fbd54964342c45511d821c23",
+      "moveCount": 401,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:3": {
+      "hash": "98db0d29b8e27fe6fcc1836652a8ce4d68f1064f18c650f990b41550cfb25536",
+      "moveCount": 237,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:3": {
+      "hash": "a55e5b5b021aae8950fc5363379a6e9b4f54772b077231e5c91ece38af8e2144",
+      "moveCount": 255,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:3": {
+      "hash": "591f8bfb3394538518cd11c3757178532d3c18407caf0544cfd42e4f18a135cb",
+      "moveCount": 211,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:3": {
+      "hash": "694c280d146601a7d75962f48b28cead246945741b4969d711d326d56e82d700",
+      "moveCount": 142,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:3": {
+      "hash": "c229c1a99379b7f8a3c691002e1d4c9bc9c656519061b2a61d7be2de79eee01d",
+      "moveCount": 247,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:3": {
+      "hash": "c1249fc307eb45a753eba5a833ffd6926223f1c82bfc6c62698dccee6863eb26",
+      "moveCount": 172,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:3": {
+      "hash": "fb04045de94d74f29be588ce83d33645845dca812192ed03718015d0859958cf",
+      "moveCount": 195,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:3": {
+      "hash": "1c60108d7151bc1a254bc5ad417cff62d7dbc1651fbc2aaebf31719425fe9171",
+      "moveCount": 265,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:3": {
+      "hash": "091b906304b914a98d18ac17dbbf16e45c5e0f511e8fddef48f3533295eae617",
+      "moveCount": 401,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "last_stand",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:4": {
+      "hash": "5cbf02a104afc69b12fc31470a1ad6ba8d63c99f7110ea6cb9d96bf3e0b10d6a",
+      "moveCount": 152,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:4": {
+      "hash": "b61c4fbe26292278aba46b04e8647e245f8f3bb6dff8512e2b0b7eb9330d35c4",
+      "moveCount": 243,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:4": {
+      "hash": "a6a7121f8fe48dafebf4a804b19953978b26713a38ef39eabe112a5e5dfbacb0",
+      "moveCount": 330,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:4": {
+      "hash": "157e2e2c0b2a8e809d8fa3c2db2add381c5c6f12739e7ac198b0b11cf0195990",
+      "moveCount": 222,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:4": {
+      "hash": "e6b54215e7c5159d999ff71ac7310fd6535b9ee08567dd54ef29c7b72e17c4f5",
+      "moveCount": 155,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:4": {
+      "hash": "61f97fb2555b81fc60c5b24bdfdcf7bd02c987a5c37bac48f440df336f39df14",
+      "moveCount": 250,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:4": {
+      "hash": "f0fc7ae3251a017054cdd720915505250ac54629e3459992e2c1d2d5253c32dd",
+      "moveCount": 280,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:4": {
+      "hash": "414df2308ae38b76199ed5ebd19c2e39ea694755e12dada56f3f864e71146d4b",
+      "moveCount": 213,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:4": {
+      "hash": "0c0d0aefac73ba369361231efc5b9c60069cf3207fb96bd377792f9519fb8a80",
+      "moveCount": 613,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:5": {
+      "hash": "9d764ec31e620f3e9575c2cea9e69847f7c3053ba946be955f16f67938c0e7f4",
+      "moveCount": 243,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:5": {
+      "hash": "5e223ecd7e37f57b81822d855b6bb350a05401e1ee2060b7b68e9a634de45b8e",
+      "moveCount": 244,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:5": {
+      "hash": "11ad76498bd805a36e6351bbaf1a4847a47aded43e8a665f8d5c23ee14a2d703",
+      "moveCount": 289,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:5": {
+      "hash": "c2acf804a64be138a7a62035f5acd7255c707e4eabbf2426e898b6b17f5c7641",
+      "moveCount": 254,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:5": {
+      "hash": "9310327a61ffce4ee4e98182ab7e23cc3cc93aa60c6f78b37bd05881d07027a9",
+      "moveCount": 148,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:5": {
+      "hash": "b7ab917b55f5232c651ae827f71b7a47f97db54cdf3194491f68cfa352150319",
+      "moveCount": 278,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:5": {
+      "hash": "da00153d872214152a0c60e804188063ce94f980ec8baf95db3e8313bd8bd32d",
+      "moveCount": 203,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:5": {
+      "hash": "6ed359708e7d2500a612ed43cdec4d373df7ed3720f1a6bd7c96c22105bc42a7",
+      "moveCount": 320,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:5": {
+      "hash": "f85122a180d4eb56a3ce82f4c914e8af0751b491675f33efc6ddfa487693cc1b",
+      "moveCount": 285,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:6": {
+      "hash": "e266fd7d55bc892829de5c95098421d0080196a5ba1e1019da161324d559d7c2",
+      "moveCount": 144,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:6": {
+      "hash": "3d6148dd5fa86fce8ed5d799b0906dbc45d4fd591320bfec0ce542c87ebd2219",
+      "moveCount": 247,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:6": {
+      "hash": "e684e38c030ff9702d9b3e373389cf7e085fd201e92de1c1155c0eb0273d0029",
+      "moveCount": 208,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:6": {
+      "hash": "ec5a2ea1dc9b818f446a27625059f3dbe7038aac98f4faf4ab8da24f26e030e1",
+      "moveCount": 144,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:6": {
+      "hash": "0b23cc701c0b5edc385cdd46921241d9861d70e3cbdb2937dc9416e93abcdb23",
+      "moveCount": 196,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:6": {
+      "hash": "0420b4e363f275a897b4df14c974cb7238fec85d8716385d229ea65faada5b2b",
+      "moveCount": 276,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:6": {
+      "hash": "97f4d5d29cfe7af8a66130bd7bbe7520580a210df757114c814134691cf2f2e8",
+      "moveCount": 334,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:6": {
+      "hash": "d74afe4284c9622e5b5e844f25684e4735147c59a5c533d7a626e39c1f0389f2",
+      "moveCount": 286,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:6": {
+      "hash": "45c8bc93cfd8b7fa5fdecafa29e7e0a30765ab39954a234ed9e94fe26109ccd8",
+      "moveCount": 136,
+      "relics": [
+        "mason",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:7": {
+      "hash": "b12e3ea79bc5c0af9a21a676945085c78db06b35d37d2e41522211d9d9c98372",
+      "moveCount": 190,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:7": {
+      "hash": "51941855f562c9d06476cb7da58eed9c5110aa19e3ca81bdbe615d701f7cd21c",
+      "moveCount": 238,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:7": {
+      "hash": "573a88cdcf89b2d71167fd11ca16427b23c79cf1461d688de97b71e41a1fb854",
+      "moveCount": 264,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:7": {
+      "hash": "839f374a2c0dcea4a416118798f3d09bdee9f45eb17acb04e9cc89cdc4e1e083",
+      "moveCount": 207,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:7": {
+      "hash": "6f0cafe3d77ad5b49404d59616f6ba8112f84ce0876241f3dc6ce11a32ade9b6",
+      "moveCount": 274,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:7": {
+      "hash": "32edfeec5bb3f6f1e96df5556bd9b5b19465d4552fc56ef6fce06d0d807f9129",
+      "moveCount": 229,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:7": {
+      "hash": "7023d3e6de66dda42db65f22253b9bae7b6c5541dca1a632162bdb46252144e2",
+      "moveCount": 435,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:7": {
+      "hash": "1edc8fdedd32969f2386c4c59392a33e6c7eec12ab6562dcbf687eee0f8ff9ff",
+      "moveCount": 228,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:7": {
+      "hash": "9efd74ee6605982f9d23bc271ed1bf37de7259deac7c3c0d00323bccfdbd9d87",
+      "moveCount": 404,
+      "relics": [
+        "diagonal_merge",
+        "foresight",
+        "last_stand",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:8": {
+      "hash": "e50b94d839a23feb829661c5766f7d799fcb2cda637ca8a87bf939cea0070dc6",
+      "moveCount": 221,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:8": {
+      "hash": "56604b3f6ede1f8819c688526915a0bf1a1df0b34c21418b76f7e06feb9a1e50",
+      "moveCount": 247,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:8": {
+      "hash": "e67109f00ee0965292e89a7acd079ee151911c3ba8457d6859bff6752190f1dd",
+      "moveCount": 300,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:8": {
+      "hash": "e3b0b6691e2e3c75f705da8441d7c6603411cf93afd3e2a9036ca1c88b928cba",
+      "moveCount": 239,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:8": {
+      "hash": "1a4dfde77d1c3932941c891ac6eb3aebfd33ce6b1a53c3aca8cee408cf50248c",
+      "moveCount": 252,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:8": {
+      "hash": "f27ee159ed7c2ac1847f0caa38681f7d5798777f753c93403287661e816d7797",
+      "moveCount": 218,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:8": {
+      "hash": "629689658baa9cc339ee534ddeb193e9a87834f90571a76f2fe110c4c5e54d7a",
+      "moveCount": 331,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:8": {
+      "hash": "7182564cdf421e044cfaa720eb010f761a4280d97407cf8adfe02ee4c7c06d71",
+      "moveCount": 296,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:8": {
+      "hash": "356ca10b5c03d9afd6cd6855b6e8da413084fa1642c967c4d8378b82c3269f35",
+      "moveCount": 374,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:9": {
+      "hash": "775fd61e53ebfcafe65b2b95a3ea304ab966b67fd47f85b870f3d92eb9e1479e",
+      "moveCount": 300,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:9": {
+      "hash": "1dfe71e26a3a352d56c12b5f6ae5fc37b65738dd35c2034f8af6bfd3ff05525c",
+      "moveCount": 242,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:9": {
+      "hash": "d22a48059c897d8a6ee9f512cf353af16390a051d94c2427dfe5c334306464fb",
+      "moveCount": 231,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:9": {
+      "hash": "fcf516b5e72d3786aa8b18fde8c0f185c5be28b2e0500c3d485fae7b01c8112b",
+      "moveCount": 273,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:9": {
+      "hash": "d7f9c7fc567cc4ce54e6f452bfcb3acb7f74ab6f4cf5fa9fdcb06bae31044a63",
+      "moveCount": 337,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:9": {
+      "hash": "15e5db924f670cfb2e4b4b419597b0a348f1677364bba8e5d2579ea6b088b826",
+      "moveCount": 275,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:9": {
+      "hash": "3c11bf36ae22a06a0be2abd74d8715ad084a0847e6748145149316aa553b3f20",
+      "moveCount": 247,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:9": {
+      "hash": "7bf6f412e21ca67887052a9fd02a6fec93828f47d38369fb614ae6337ce07f99",
+      "moveCount": 318,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:9": {
+      "hash": "61e99a277018511e371db492bbe1f0125e1afad9a665590556eedb6c62016ccf",
+      "moveCount": 355,
+      "relics": [
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason",
+        "shatter"
+      ]
+    },
+    "expectimax:no_relics:10": {
+      "hash": "2b93ee8570ce72bd2525be3e1e4a69ba9a3251b61d9ec2196146b725755d13f0",
+      "moveCount": 315,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:10": {
+      "hash": "4dcf615a53adb412bf457e9bde70c6237386feb57a7d0e7baab944f078b1db1a",
+      "moveCount": 269,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:10": {
+      "hash": "2aace73f545b4cb232919329ef73604ca6fe117a80160d54cd82e959a7844eb0",
+      "moveCount": 315,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:10": {
+      "hash": "9c2ee113a4048ae04fb5a472970bc9a452c585c1aefe9f926ca84645a2642c3d",
+      "moveCount": 203,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:10": {
+      "hash": "7338be335fb5af9199ed01d80825643037641cfe81b7d60f21f8af07cf655fd5",
+      "moveCount": 250,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:10": {
+      "hash": "f02afe8cb775d9ccba49647d113584042a49e0cc552a5cd24713ba555a5d2387",
+      "moveCount": 232,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:10": {
+      "hash": "54003abe5ed9d6a53a9b10204977dc48c2a8500899c649fe68134a6ca2b5c562",
+      "moveCount": 249,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:10": {
+      "hash": "19bf402778503dcc6b0a234d6861ea442307b39c85a205ace320bc6a4a563da1",
+      "moveCount": 336,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:10": {
+      "hash": "be4eeecaaeb248d7042f7c80ab9c6f3568b40c2378d257346e03bd57bb4e41dd",
+      "moveCount": 327,
+      "relics": [
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason",
+        "shatter"
+      ]
+    },
+    "expectimax:no_relics:11": {
+      "hash": "ae469e0cc5c0e1d044e4c224949c53c679644700b1162e053c489243498cb570",
+      "moveCount": 218,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:11": {
+      "hash": "3ef22fa2331f72162092ba4dd1e6a251b1c9a7b914398fcb2feabc7e0dd755a9",
+      "moveCount": 246,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:11": {
+      "hash": "6637435ac1c005471901b7506e848e20cf2bbc27e0289dbba8677b6164c0dd5c",
+      "moveCount": 248,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:11": {
+      "hash": "3309d871da7b96fba9b6a2ecdfc5e55454aa0a83840ab6cd017d024a3b323517",
+      "moveCount": 173,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:11": {
+      "hash": "302fc51234a892422c94602a7daa0f1230562cb50a26c5f4bbe9eeea2385b7a6",
+      "moveCount": 267,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:11": {
+      "hash": "ea21f50f6e053424c3fc2451cbfa2b2a5569a045f7e7c77d9203d154926ae5fb",
+      "moveCount": 219,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:11": {
+      "hash": "44c0b7cf49c2faac038d5ca428444a8afad6f07f23bb3095c96e1cfed61ec587",
+      "moveCount": 266,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:11": {
+      "hash": "a9ecb8bee308e929af1bccebfd844536c52795e9bb6eec472560ea917fde294d",
+      "moveCount": 285,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:11": {
+      "hash": "71352f812f5aa4f4369cafe10472e7396a7d6bd692099e0cbc4dd6135553b279",
+      "moveCount": 520,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:12": {
+      "hash": "690671ac8eb056c6cda7de4a388f4a869f04226650bb03d0154c53da65f167c9",
+      "moveCount": 311,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:12": {
+      "hash": "e0f5c3fffe9d51443eabfdb42b64f2308c4007e0b4fe5df93e248aa3e623234a",
+      "moveCount": 246,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:12": {
+      "hash": "5c2434f4b6d9043ff004179267ac726a7729f8e51b1ad8959bc3ec08bf7b38da",
+      "moveCount": 252,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:12": {
+      "hash": "d943c5cb9053ce4236bc48d2ac6003c4add9d3d1a275e535d03aa99ba9e89f53",
+      "moveCount": 221,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:12": {
+      "hash": "49f45a99fced16d25414be3632a100d41043322745e037e1c81e3197944c3b74",
+      "moveCount": 244,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:12": {
+      "hash": "98aee3de90a8cee2c6198f1fe83cde5391b18c39f1f0230087f9340ea04824b4",
+      "moveCount": 204,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:12": {
+      "hash": "3975ea13d73a42d3baa53bc1ac7723e5693eb5dadf3c75de675eea8a9fbc7c4f",
+      "moveCount": 432,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:12": {
+      "hash": "09323aecaac99627922e4b1324451ef70c27b7ad92fc930685d5b2781cb218f7",
+      "moveCount": 349,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:12": {
+      "hash": "88eaffcb343ad543c5451ad39a6fcbcd2bf5757620316dabc969ce5ab2cb481c",
+      "moveCount": 893,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:13": {
+      "hash": "37a300eaffb27d24f63ffb6e3137a46c373e73d26f4b16b1cd710d719bd8be54",
+      "moveCount": 240,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:13": {
+      "hash": "d8f55b1861043290428fb698031a25cfebd3e790dcd98fb00d704e468d8aca35",
+      "moveCount": 242,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:13": {
+      "hash": "11c06054b0fbc43db4806e47655ab7ec99607787c7f97d4472da56b3d32dca80",
+      "moveCount": 278,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:13": {
+      "hash": "6304706eeda760251639ce89deca4f483461e8dd6fdaf7a6f96592a16511e8b4",
+      "moveCount": 141,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:13": {
+      "hash": "17f88cd4c02fcc0b40e31ae2c332106f8c379c2bf91b2e4d4eaea1ff81007f3a",
+      "moveCount": 225,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:13": {
+      "hash": "62ca775041527c4b91978f6b51160cbc90ef16126a2ba09a66a7467b95ff5994",
+      "moveCount": 289,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:13": {
+      "hash": "5f8e6c90b5ccdfac0c237e656ef9fef9df3a0bf99607cae37153cd1721939250",
+      "moveCount": 240,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:13": {
+      "hash": "7f891ca59261e37a866bbe6091c9de446fea55fd9f4fd5db0a4708c47dbd27bc",
+      "moveCount": 280,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:13": {
+      "hash": "731544fefc4ee0c6ebcf66e4e8e4aab33741e78f915f0cb086fbc84bcb72237f",
+      "moveCount": 763,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:14": {
+      "hash": "6445965067358da6b7cfcd740a5b6b2119072ae86dfb940fa2f347ac3ff1e983",
+      "moveCount": 239,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:14": {
+      "hash": "f37bb5feaf027e96cf47146eca63ce76c89f8556fea22271c2a3d40dcf4b6817",
+      "moveCount": 211,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:14": {
+      "hash": "562d00ee5217238d863ce5de3e5cdba956e6e28293874af07e23a7861c7b990d",
+      "moveCount": 248,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:14": {
+      "hash": "eec350c157d020908f35c57854a0256b35aa040c236105b5dcfe0f62ff11fa54",
+      "moveCount": 288,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:14": {
+      "hash": "1b5cd766783dcebc5bbe8c6b54a63cef7a88d52b7112926aa5aded7d6b0f6567",
+      "moveCount": 246,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:14": {
+      "hash": "e5755a3993a9221dc6120c10b5318daf239e7083ab72b940a771dcce8358ba69",
+      "moveCount": 247,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:14": {
+      "hash": "dd5632afbf7d1c5463e95779f9257e87fc58fba55d2d1df7b5d0d874f8441d18",
+      "moveCount": 356,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:14": {
+      "hash": "2a55ad7ec2142d07ceff58212e3b9e0d74d639bcb793bb6e462a4b079178e061",
+      "moveCount": 272,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:14": {
+      "hash": "52e38396f60a3256ddb7616a4678ef061b38331f2f7492d06cff1f6f86d96ac9",
+      "moveCount": 412,
+      "relics": [
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:15": {
+      "hash": "69b2b824ca9156bd7db620f34f8a6015455acbde4a6ebe23b28b2da87199b613",
+      "moveCount": 209,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:15": {
+      "hash": "5ca326dd0bde61a6b75283e432103ca71673a93a7b052f69a44f8de8b0948dc2",
+      "moveCount": 265,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:15": {
+      "hash": "fec9712769116250e82d9c653e198ed8c56ac35525f7afd85763322def9edea7",
+      "moveCount": 226,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:15": {
+      "hash": "fb941615ca1124930dcea71a1793bdc34566944d50d8e3ba5ca8dec815d9e63a",
+      "moveCount": 207,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:15": {
+      "hash": "73b4aa14f41c74fd192c0b9cc50856f446afc7dc0b3a108297b83cad81291006",
+      "moveCount": 247,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:15": {
+      "hash": "67e0465853b257f93e4808d1e92d26b4ea48b580a06411c8fa42c422cf975bda",
+      "moveCount": 222,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:15": {
+      "hash": "911cc2d1bcc68f81fa0196ef3a42e851073ce9a304cb27f4baf46abb8bfc97e6",
+      "moveCount": 248,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:15": {
+      "hash": "8c81e44706acfa2b798fa1b114a52a82f43b42221a7e6e10609055d452d6f8e7",
+      "moveCount": 256,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:15": {
+      "hash": "ca0333b2b27e6581f9bbab402174170defe023c1ef57668f232aa733c763ba76",
+      "moveCount": 245,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "mason",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:16": {
+      "hash": "e96c67f8c56283c6fcbf911d1fb4d6927b672342aa5dd36e2a91013a90d83b85",
+      "moveCount": 232,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:16": {
+      "hash": "9a86ef4c280ccf543272d9c915c5e8277db24c4f0c13c5b81e791fb8f9c4f4cb",
+      "moveCount": 250,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:16": {
+      "hash": "bb4c14ca57e288a6cc8e23fc5481b276b048f1591c940bf54359b5abb202ace7",
+      "moveCount": 232,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:16": {
+      "hash": "19973b2ddfe45c764c3511db0381713bbd538f704b8c89d78787735c7f13039c",
+      "moveCount": 234,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:16": {
+      "hash": "9e6db46afdffd234a58b578b74d234907d24ddad765fdc5ebdafa16667811508",
+      "moveCount": 318,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:16": {
+      "hash": "e17fd7bae0961b834f63c901e781a685684ec4f861d3b965cc5d155cbd0ac4d5",
+      "moveCount": 294,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:16": {
+      "hash": "61b50a609a7f81a44f5061988189a8df35b3ac007dbff97a905044e1ff56888c",
+      "moveCount": 406,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:16": {
+      "hash": "26397c942725f58d8f4d0ba787104b137e1f097a657db7a3e89b57a75d5b04bc",
+      "moveCount": 308,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:16": {
+      "hash": "08081de2b9a05ab1990953380345dfab37c6c31a9ba3b004a63ea1ea9bebdd3a",
+      "moveCount": 502,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "last_stand",
+        "mason",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:17": {
+      "hash": "868994167a85e1d8893e679919e8bf80826dadfd5fc65f9a4bb099784836f5af",
+      "moveCount": 195,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:17": {
+      "hash": "63259f9c07799526f84aa89657649d3b7c5761a9badd962c11cd3916f3fa655d",
+      "moveCount": 230,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:17": {
+      "hash": "5333600748dc9dab8a2fafe01b932b4cdc323309ea183e8b5ddd9073aae7743d",
+      "moveCount": 239,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:17": {
+      "hash": "fbca0bfcdbfc5188ed92f9a84e6ccdccc20dfc541879103e1a30dc24ee3497f7",
+      "moveCount": 247,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:17": {
+      "hash": "12eba8300032418582f208616fb4d012289f40464bbf7ee9d5e00a90b68820a3",
+      "moveCount": 203,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:17": {
+      "hash": "7c73dcf7220fc93025ddea1d12748e413a7bc78f4c0cab6d9748793e12b9baa6",
+      "moveCount": 223,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:17": {
+      "hash": "ffc6d2ba548059f27bdc550286c5d0a08b59eeab07b3fab70ae1fdcd5ae5b777",
+      "moveCount": 336,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:17": {
+      "hash": "6913bfa20867ecfb296874768a418e4ce9d3b23e5d0e3e670f7bfcc7d612b525",
+      "moveCount": 238,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:17": {
+      "hash": "3a6dcbb74677bcc36cc38621c4c0af906f9199ebf8ca7da0ada81301e835481e",
+      "moveCount": 251,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:18": {
+      "hash": "bc66cf200beee867562d5e68a8e3a164d14e5b03121511a4c21b1b3999a25002",
+      "moveCount": 287,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:18": {
+      "hash": "b91bf805818b679d643681067acdfaeda6d7c513dd55f802a424814f7fcd1420",
+      "moveCount": 287,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:18": {
+      "hash": "6cd2b606e0d490f8e6e42abf900bbb8a9636fa7f2547c572662b0cc463446573",
+      "moveCount": 223,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:18": {
+      "hash": "b4536351c9b42593ba02ffd81e6a3f2b7b10dab8920ad9aadf3fa43ac98cf8a5",
+      "moveCount": 315,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:18": {
+      "hash": "2d97e4938ddcc0e793f1542d523af96f92f6bd24666037732e3e06d6f07b3541",
+      "moveCount": 246,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:18": {
+      "hash": "d0801fba4b1f56c3661138e0fa4101312f57304eb85467f34d2ae90d9db8dc0f",
+      "moveCount": 227,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:18": {
+      "hash": "59cab4fad60bf9bd087614b9e61334a17f0a17326e3477b638b96ffd939adb62",
+      "moveCount": 287,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:18": {
+      "hash": "bf45e3e20e26dde965315638aa1a67118e892759f85143a247172763122ae3e1",
+      "moveCount": 308,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:18": {
+      "hash": "4b48d333897df4f7c506d416f186db14dccca7ef827ca427833cebc300259034",
+      "moveCount": 298,
+      "relics": [
+        "diagonal_merge",
+        "last_stand",
+        "mason",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:19": {
+      "hash": "04dc4e3b2d4d9e4ea46910f33f45f02e648e3ebd33d8dba82e250c4546b8d7a9",
+      "moveCount": 231,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:19": {
+      "hash": "8af503604ef8fe15ddb624700e57d14cd0b66c163483f5b58ecdf8ab75c325a0",
+      "moveCount": 238,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:19": {
+      "hash": "44e1172be56eeeeb97a164c2b8d372d374d74aa499a453a86a60f6265fb4eded",
+      "moveCount": 300,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:19": {
+      "hash": "b9636c06bac520f11b72a6cb6651a40506b8b99610e78566a8de2523161a7bef",
+      "moveCount": 241,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:19": {
+      "hash": "e0f756425d16acc1985f2efbefa6bd124d7939becd5522b33469f61f483cd577",
+      "moveCount": 220,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:19": {
+      "hash": "6427fd404c3308d156bdf121f325bcb64fd3ec8b1e14695eaa29a84a8d63d950",
+      "moveCount": 278,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:19": {
+      "hash": "7234ffa3136d45315156717a56d1aeff531d506e14c39213e174c755433aec6f",
+      "moveCount": 451,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:19": {
+      "hash": "33e060c8ba274c91eaccab228123e898d82a22c2fe42c56ba69b1dce817b4391",
+      "moveCount": 265,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:19": {
+      "hash": "a54e0221906277b44f6b5698ebda5c2a3aab2c430315afd5326a97529edecf1d",
+      "moveCount": 319,
+      "relics": [
+        "diagonal_merge",
+        "foresight",
+        "last_stand",
+        "shatter",
+        "siphon"
+      ]
+    },
+    "expectimax:no_relics:20": {
+      "hash": "da14baed4d832e11d839ec7693648a29087a3aba4c53eb9f3a3de8937e915e42",
+      "moveCount": 297,
+      "relics": []
+    },
+    "expectimax:forced_diagonal_merge:20": {
+      "hash": "a09ad464c826b431ab2b5930e05ab3c99117120f5ecaf0779e95ca574eb48048",
+      "moveCount": 313,
+      "relics": [
+        "diagonal_merge"
+      ]
+    },
+    "expectimax:forced_fault_line:20": {
+      "hash": "85e6ded533e6d3ba4fa4fec9fa72e3b227c8e30ba1b1aa5ff1dcf8ba7154bbe1",
+      "moveCount": 240,
+      "relics": [
+        "fault_line"
+      ]
+    },
+    "expectimax:forced_mason:20": {
+      "hash": "849e4f96ffc3b20d62f94575356b2268be7e4127d858d3911097885756c3069f",
+      "moveCount": 227,
+      "relics": [
+        "mason"
+      ]
+    },
+    "expectimax:forced_foresight:20": {
+      "hash": "2c235c9077bc8caac468fcfcaa9932cfb35561c69189585d320b820c23aa18bf",
+      "moveCount": 181,
+      "relics": [
+        "foresight"
+      ]
+    },
+    "expectimax:forced_siphon:20": {
+      "hash": "e2a619506c0158facba8b9544f61ca370dda4202f95bda3e02b8a83de1314b70",
+      "moveCount": 201,
+      "relics": [
+        "siphon"
+      ]
+    },
+    "expectimax:forced_shatter:20": {
+      "hash": "4e7b792ea2db19aeb17e921a5cbc4e5d68eaa10df4aa42517e39d0e2dcb36ca1",
+      "moveCount": 362,
+      "relics": [
+        "shatter"
+      ]
+    },
+    "expectimax:forced_last_stand:20": {
+      "hash": "a73f9be714353ae07d661c678bd2c87c1d87c129399dd5633c4e764d164379b4",
+      "moveCount": 338,
+      "relics": [
+        "last_stand"
+      ]
+    },
+    "expectimax:draft_60:20": {
+      "hash": "b0183d5a09662ce4a3f1d2d9e1d22b3cea99a7546a51c7f444fa8c7e3b63cc7c",
+      "moveCount": 242,
+      "relics": [
+        "diagonal_merge",
+        "fault_line",
+        "foresight",
+        "shatter"
+      ]
+    }
+  }
+}

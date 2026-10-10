@@ -1,0 +1,9 @@
+node_modules/
+dist/
+sim/out/
+scratch/
+screenshots*/
+*_backup_*/
+*.patch
+CHANGES.diff
+sample_run_log.json

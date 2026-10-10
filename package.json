@@ -1,0 +1,11 @@
+{
+  "name": "2048-rogue",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test sim/tests/*.test.js && node scripts/smoke_test.js",
+    "serve": "node scripts/serve.js",
+    "build": "node scripts/build.js",
+    "sim": "node sim/run.js"
+  }
+}
