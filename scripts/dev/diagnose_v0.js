@@ -1,3 +1,4 @@
+import { findChrome } from '../find_chrome.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,9 +12,7 @@ const distDir = path.join(rootDir, 'dist');
 
 const PORT = 3199;
 const CDP_PORT = 9399;
-const CHROME_PATH = fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
-  ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-  : 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const CHROME_PATH = findChrome();
 
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));

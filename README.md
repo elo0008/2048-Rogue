@@ -35,6 +35,17 @@ npm run build
 
 The `dist/` directory produced by `npm run build` is completely self-contained with `index.html` at its root. All asset references are relative (`./`), allowing it to be served from any subdirectory or root.
 
+### Deploying to Vercel
+1. In the Vercel Dashboard, select **Add New Project** and import the GitHub repository (`2048-Rogue`).
+2. Framework Preset: **Other** (configured via `vercel.json` with `"framework": null`).
+3. Build Command: `npm run build` (automatically uses `vercel.json`).
+4. Output Directory: `dist` (automatically uses `vercel.json`).
+5. **No environment variables needed**.
+6. Click **Deploy**.
+
+> **Note for Public Launch:**
+> - TODO remove noindex before public launch: `game/index.html` currently includes `<meta name="robots" content="noindex, nofollow">` for the testing phase.
+
 ### Deploying to GitHub Pages
 1. Build the distribution:
    ```bash

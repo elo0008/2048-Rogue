@@ -3,11 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>2048 Rogue - Roguelike 2048 Puzzle Prototype</title>
-  <meta name="description" content="A playable roguelike 2048 prototype with permanent stone hazards, draftable relics, and deterministic tactical play.">
+  <title>Rogue 2048</title>
+  <meta name="description" content="A roguelike 2048 puzzle game featuring tactical relic draft choices, stone hazards, and deterministic run progression.">
+  <meta name="theme-color" content="#100f11">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <noscript>
+    <div style="color: #f5eee5; background: #100f11; padding: 24px; text-align: center; font-family: sans-serif;">
+      JavaScript is required to play Rogue 2048.
+    </div>
+  </noscript>
   <div id="app-container" class="app-container">
     <!-- Top Header (3 rows, constant height) -->
     <header class="header game-header" id="header">

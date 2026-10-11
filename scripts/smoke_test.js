@@ -1,3 +1,4 @@
+import { findChrome } from './find_chrome.js';
 import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -10,9 +11,7 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.join(rootDir, 'dist');
 
-const CHROME_PATH = fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
-  ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-  : 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const CHROME_PATH = findChrome();
 
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
@@ -163,13 +162,42 @@ class CdpClient {
   }
 }
 
+export function printUsage() {
+  console.log('Usage: node scripts/smoke_test.js [options]');
+  console.log('');
+  console.log('Options:');
+  console.log('  --url <base>    Run smoke test against an existing deployed base URL (no local server)');
+  console.log('  -h, --help      Display this help message');
+}
+
 async function runSmokeTest() {
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    printUsage();
+    return;
+  }
+
   // Check all JS files first
   runNodeCheck();
 
-  const server = await startStaticServer();
-  const serverPort = server.address().port;
-  console.log(`[Smoke Test] Serving dist/ on random free port ${serverPort}`);
+  let server = null;
+  let targetBaseUrl = '';
+  const urlIdx = process.argv.indexOf('--url');
+  if (urlIdx !== -1 && process.argv[urlIdx + 1]) {
+    targetBaseUrl = process.argv[urlIdx + 1];
+    console.log(`[Smoke Test] Testing against external URL: ${targetBaseUrl} (skipping local server)`);
+  } else {
+    server = await startStaticServer();
+    const serverPort = server.address().port;
+    targetBaseUrl = `http://127.0.0.1:${serverPort}/`;
+    console.log(`[Smoke Test] Serving dist/ on random free port ${serverPort}`);
+  }
+
+  function makeUrl(subpathAndQuery = '') {
+    const normBase = targetBaseUrl.endsWith('/') ? targetBaseUrl : targetBaseUrl + '/';
+    if (!subpathAndQuery) return normBase;
+    if (subpathAndQuery.startsWith('/')) subpathAndQuery = subpathAndQuery.slice(1);
+    return new URL(subpathAndQuery, normBase).href;
+  }
 
   const cdpPort = await getFreePort();
   const chromeProcess = spawn(CHROME_PATH, [
@@ -205,8 +233,8 @@ async function runSmokeTest() {
     // -------------------------------------------------------------
     // Test 1: Standard launch, START hides overlay, 2 tiles appear, one swipe works
     // -------------------------------------------------------------
-    console.log('[Smoke Test] Navigating to http://127.0.0.1:' + serverPort + '/ ...');
-    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${serverPort}/` });
+    console.log(`[Smoke Test] Navigating to ${makeUrl('')} ...`);
+    await cdp.send('Page.navigate', { url: makeUrl('') });
     await sleep(400);
 
     // Assert START overlay is visible
@@ -309,8 +337,8 @@ async function runSmokeTest() {
     // -------------------------------------------------------------
     // Test 2: ?start=rewind then swipe then Rewind restores the board
     // -------------------------------------------------------------
-    console.log('[Smoke Test] Navigating to http://127.0.0.1:' + serverPort + '/?start=rewind ...');
-    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${serverPort}/?start=rewind` });
+    console.log(`[Smoke Test] Navigating to ${makeUrl('?start=rewind')} ...`);
+    await cdp.send('Page.navigate', { url: makeUrl('?start=rewind') });
     await sleep(400);
 
     // Click START
@@ -370,7 +398,7 @@ async function runSmokeTest() {
     // Test 3: Finish two real UI runs, assert stored history has 2 records with non-null runId, test copy payload
     // -------------------------------------------------------------
     console.log('[Smoke Test] Testing two full UI runs and history persistence...');
-    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${serverPort}/` });
+    await cdp.send('Page.navigate', { url: makeUrl('') });
     await sleep(400);
     await cdp.eval(`localStorage.clear()`);
 
@@ -460,7 +488,7 @@ async function runSmokeTest() {
     // G4 Check (a) & (b): Real run with points > 0 (3+ merges) and stones on end-screen mini board
     // -------------------------------------------------------------
     console.log('[Smoke Test] Testing real run with stones=0.1, merges > 0, score vs moves, and mini board stones...');
-    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${serverPort}/?seed=42&stones=0.1` });
+    await cdp.send('Page.navigate', { url: makeUrl('?seed=42&stones=0.1') });
     await sleep(400);
 
     // Click START
@@ -537,7 +565,7 @@ async function runSmokeTest() {
     const soundStateBeforeReload = await cdp.eval(`localStorage.getItem('2048_rogue_sound_enabled')`);
 
     // Reload page
-    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${serverPort}/` });
+    await cdp.send('Page.navigate', { url: makeUrl('') });
     await sleep(400);
 
     const soundStateAfterReload = await cdp.eval(`localStorage.getItem('2048_rogue_sound_enabled')`);
@@ -555,8 +583,8 @@ async function runSmokeTest() {
 
     cdp.close();
   } finally {
-    chromeProcess.kill();
-    server.close();
+    if (chromeProcess) chromeProcess.kill();
+    if (server) server.close();
     console.log(`[Smoke Test] Closed server and terminated headless Chrome.`);
   }
 
@@ -565,7 +593,11 @@ async function runSmokeTest() {
   console.log('================================================================\n');
 }
 
-runSmokeTest().catch(err => {
-  console.error('❌ Smoke test failed:', err);
-  process.exit(1);
-});
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  printUsage();
+} else {
+  runSmokeTest().catch(err => {
+    console.error('❌ Smoke test failed:', err);
+    process.exit(1);
+  });
+}

@@ -29,6 +29,7 @@ import {
   playClick,
   isSoundEnabled,
   toggleSound,
+  getAudioState,
 } from './audio.js';
 
 const DEFAULT_POOL = [
@@ -71,7 +72,116 @@ const RELIC_NAMES = {
 const STORAGE_KEY_HISTORY = '2048_rogue_run_history';
 const STORAGE_KEY_PLAYER = '2048_rogue_player_id';
 const STORAGE_KEY_BEST = '2048_rogue_best_points';
+const STORAGE_KEY_ERRORS = '2048_rogue_errors';
 const BUILD_ID = '__BUILD_ID__';
+
+function getStoredErrors() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ERRORS);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveErrorRecord(errObj) {
+  try {
+    const list = getStoredErrors();
+    list.push(errObj);
+    const trimmed = list.slice(-10);
+    localStorage.setItem(STORAGE_KEY_ERRORS, JSON.stringify(trimmed));
+  } catch (err) {
+    console.warn('LocalStorage error save failed:', err);
+  }
+}
+
+function getBasename(urlOrFile) {
+  if (!urlOrFile) return '';
+  try {
+    const u = new URL(urlOrFile, window.location.href);
+    const parts = u.pathname.split('/');
+    return parts[parts.length - 1] || u.pathname;
+  } catch {
+    const parts = String(urlOrFile).split(/[\/\\]/);
+    return parts[parts.length - 1] || String(urlOrFile);
+  }
+}
+
+function recordCapturedError(message, source, line, col, error) {
+  const currentMoves = typeof controller !== 'undefined' && controller?.state?.moveCount != null
+    ? controller.state.moveCount
+    : 0;
+  const msgStr = typeof message === 'string' ? message : (error?.message || String(message || ''));
+  const record = {
+    message: msgStr.slice(0, 200),
+    file: getBasename(source || error?.fileName || ''),
+    line: line || error?.lineNumber || 0,
+    col: col || error?.columnNumber || 0,
+    ts: Date.now(),
+    moveCountAtError: currentMoves,
+  };
+  saveErrorRecord(record);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    recordCapturedError(event.message, event.filename, event.lineno, event.colno, event.error);
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    const msg = typeof reason === 'object' && reason !== null ? (reason.message || String(reason)) : String(reason);
+    const source = reason?.fileName || (typeof reason?.stack === 'string' ? (reason.stack.split('\n')[1] || '') : '');
+    recordCapturedError(msg, source, reason?.lineNumber || 0, reason?.columnNumber || 0, reason);
+  });
+
+  // Test hook: exposed in ?debug=1 only to throw an uncaught error
+  const searchParams = new URLSearchParams(window.location.search || '');
+  if (searchParams.get('debug') === '1') {
+    window.__throwDebugError = (msg = 'Uncaught test error from debug hook') => {
+      setTimeout(() => {
+        throw new Error(msg);
+      }, 0);
+    };
+  }
+}
+
+function getDiagnosticMetadata() {
+  let referrerOrigin = '';
+  try {
+    if (document.referrer) {
+      referrerOrigin = new URL(document.referrer).origin;
+    }
+  } catch {}
+
+  let audioState = 'none';
+  try {
+    audioState = getAudioState();
+  } catch {}
+
+  return {
+    viewport: {
+      w: window.innerWidth,
+      h: window.innerHeight,
+      dpr: window.devicePixelRatio || 1,
+    },
+    queryString: window.location.search || '',
+    userAgent: navigator.userAgent || '',
+    buildId: BUILD_ID,
+    bestScoreAtRunStart: (typeof controller !== 'undefined' ? controller?.bestScoreAtRunStart : 0) || 0,
+    host: window.location.hostname || '',
+    embedded: window.self !== window.top,
+    referrerOrigin,
+    touchPoints: navigator.maxTouchPoints || 0,
+    reducedMotion: Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches),
+    lang: navigator.language || '',
+    soundEnabled: isSoundEnabled(),
+    audioState,
+    errors: getStoredErrors(),
+  };
+}
 
 /* -------------------------------------------------------------
  * Dynamic Relic One-Liners (built from real config definitions)
@@ -2439,17 +2549,7 @@ function postMoveResolution(res) {
  * Game Over & End Screen
  * ------------------------------------------------------------- */
 function handleGameOver() {
-  const metadata = {
-    viewport: {
-      w: window.innerWidth,
-      h: window.innerHeight,
-      dpr: window.devicePixelRatio || 1,
-    },
-    queryString: window.location.search || '',
-    userAgent: navigator.userAgent || '',
-    buildId: BUILD_ID,
-    bestScoreAtRunStart: controller.bestScoreAtRunStart || 0,
-  };
+  const metadata = getDiagnosticMetadata();
   currentRunLog = controller.getRunLog(metadata);
   saveRunToHistory(currentRunLog);
 
@@ -2945,19 +3045,11 @@ if (btnCopyLog) {
   btnCopyLog.addEventListener('click', async () => {
     initAudio();
     playClick();
-    const currentRun = currentRunLog || controller.getRunLog({
-      viewport: {
-        w: window.innerWidth,
-        h: window.innerHeight,
-        dpr: window.devicePixelRatio || 1,
-      },
-      queryString: window.location.search || '',
-      userAgent: navigator.userAgent || '',
-      buildId: BUILD_ID,
-      bestScoreAtRunStart: controller.bestScoreAtRunStart || 0,
-    });
+    const metadata = getDiagnosticMetadata();
+    const currentRun = currentRunLog || controller.getRunLog(metadata);
     const history = getStoredHistory();
-    const payload = { currentRun, history };
+    const errors = getStoredErrors();
+    const payload = { currentRun, history, errors };
     const jsonStr = JSON.stringify(payload, null, 2);
 
     let copied = false;
@@ -2991,19 +3083,11 @@ if (btnCopyLog) {
 }
 
 window.getCopyPayload = () => {
-  const currentRun = currentRunLog || controller.getRunLog({
-    viewport: {
-      w: window.innerWidth,
-      h: window.innerHeight,
-      dpr: window.devicePixelRatio || 1,
-    },
-    queryString: window.location.search || '',
-    userAgent: navigator.userAgent || '',
-    buildId: BUILD_ID,
-    bestScoreAtRunStart: controller.bestScoreAtRunStart || 0,
-  });
+  const metadata = getDiagnosticMetadata();
+  const currentRun = currentRunLog || controller.getRunLog(metadata);
   const history = getStoredHistory();
-  return { currentRun, history };
+  const errors = getStoredErrors();
+  return { currentRun, history, errors };
 };
 
 // Initialize game on load

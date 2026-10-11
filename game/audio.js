@@ -684,4 +684,9 @@ export function playStuckThud(quieter = false) {
   }
 }
 
+export function getAudioState() {
+  return audioCtx ? audioCtx.state : 'none';
+}
+
+
 

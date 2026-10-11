@@ -1,4 +1,6 @@
+import { findChrome } from './find_chrome.js';
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,9 +11,7 @@ const rootDir = path.resolve(__dirname, '..');
 const iconsDir = path.join(rootDir, 'game', 'icons');
 const outFile = path.join(iconsDir, 'icon_metrics.json');
 
-const CHROME_PATH = fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
-  ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-  : 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const CHROME_PATH = findChrome();
 
 const CDP_PORT = 9255;
 
@@ -80,6 +80,10 @@ class CdpClient {
 }
 
 export async function computeIconMetrics(perceptualBias = 0) {
+  if (!CHROME_PATH) {
+    throw new Error('Chrome/Chromium executable not found. Set CHROME_PATH or install Chrome.');
+  }
+
   const chromeProcess = spawn(CHROME_PATH, [
     `--remote-debugging-port=${CDP_PORT}`,
     '--headless=new',
@@ -110,8 +114,9 @@ export async function computeIconMetrics(perceptualBias = 0) {
     for (const file of svgFiles) {
       const relic = file.replace('.svg', '');
       const svgPath = path.join(iconsDir, file);
-      const svgContent = fs.readFileSync(svgPath, 'utf-8');
-      const base64 = Buffer.from(svgContent).toString('base64');
+      const svgBuffer = fs.readFileSync(svgPath);
+      const svgSha256 = crypto.createHash('sha256').update(svgBuffer).digest('hex');
+      const base64 = svgBuffer.toString('base64');
       const dataUrl = `data:image/svg+xml;base64,${base64}`;
 
       const res = await cdp.eval(`
@@ -151,6 +156,7 @@ export async function computeIconMetrics(perceptualBias = 0) {
 
             resolve({
               relic: '${relic}',
+              sha256: '${svgSha256}',
               minX, maxX, minY, maxY,
               rawW, rawH, cx, cy,
               inkCoverage
@@ -190,6 +196,7 @@ export async function computeIconMetrics(perceptualBias = 0) {
       const finalBboxPct = (rawLongSide * scale / 512) * 100;
 
       finalMetrics[m.relic] = {
+        sha256: m.sha256,
         scale: Math.round(scale * 1000) / 1000,
         xPercent: Math.round(offsetXPercent * 100) / 100,
         yPercent: Math.round(offsetYPercent * 100) / 100,
