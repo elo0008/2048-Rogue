@@ -515,31 +515,74 @@ test('Rewind: Property test on 200 random reachable pre-states (including stones
     if (validDirs.length < 2) continue;
 
     // Ensure rewind is charged and ready
-    g.abilities.rewind.charges = 1;
-    g.rewindSnapshot = null; // simulate pre-swipe state before next swipe
+    g.abilities.rewind.charges = 3;
+    g.rewindStack = [];
 
-    for (const d1 of validDirs) {
-      for (const d2 of validDirs) {
+    // Find sequence of valid swipes for k = 1..3
+    let cur = clonePreState(g);
+    const moves = [];
+    for (let stepIdx = 0; stepIdx < 3; stepIdx++) {
+      const vm = getValidMoves(cur);
+      if (vm.length === 0) break;
+      const d = vm[(seed + stepIdx) % vm.length];
+      moves.push(d);
+      step(cur, d);
+    }
+    if (moves.length < 3 || cur.rewindStack.length < 3) continue;
+
+    // Test sequences of k = 1..moves.length swipes followed by j = 1..k undos
+    for (let k = 1; k <= moves.length; k++) {
+      for (let j = 1; j <= k; j++) {
         const stateA = clonePreState(g);
         const stateB = clonePreState(g);
 
-        // Path A: swipe d1 -> undo -> swipe d2
-        step(stateA, d1);
-        useAbility(stateA, 'rewind', {});
-        step(stateA, d2);
+        // Path A: swipe k moves, then j undos
+        for (let m = 0; m < k; m++) {
+          step(stateA, moves[m]);
+        }
+        for (let u = 0; u < j; u++) {
+          useAbility(stateA, 'rewind', {});
+        }
 
-        // Path B: swipe d2 directly
-        step(stateB, d2);
+        // Path B: swipe k - j moves directly
+        for (let m = 0; m < k - j; m++) {
+          step(stateB, moves[m]);
+        }
 
-        assert.deepStrictEqual(stateA.board, stateB.board, `Board mismatch for seed ${seed} d1=${d1} d2=${d2}`);
+        // World equals state after k - j swipes
+        assert.deepStrictEqual(stateA.board, stateB.board, `Board mismatch seed ${seed} k=${k} j=${j}`);
         assert.deepStrictEqual(stateA.stoneSpawnMoves, stateB.stoneSpawnMoves);
         assert.strictEqual(stateA.moveCount, stateB.moveCount);
         assert.strictEqual(stateA.points, stateB.points);
+        assert.strictEqual(stateA.score, stateB.score);
+        assert.strictEqual(stateA.bonusScore, stateB.bonusScore);
+        assert.strictEqual(stateA.tripleMerges, stateB.tripleMerges);
         assert.strictEqual(stateA.movesSinceLastStone, stateB.movesSinceLastStone);
         assert.strictEqual(stateA.highestTile, stateB.highestTile);
         assert.deepStrictEqual(stateA.spawnQueue, stateB.spawnQueue);
 
-        // Compare next 3 draws of each RNG stream
+        // Swiping again equals a fresh swipe from that state; same-direction replay is byte-identical
+        const nextMoves = getValidMoves(stateA);
+        if (nextMoves.length > 0) {
+          const nextDir = nextMoves[0];
+          const swipeA = clonePreState(stateA);
+          const swipeB = clonePreState(stateB);
+          step(swipeA, nextDir);
+          step(swipeB, nextDir);
+
+          assert.deepStrictEqual(swipeA.board, swipeB.board);
+          assert.deepStrictEqual(swipeA.stoneSpawnMoves, swipeB.stoneSpawnMoves);
+          assert.strictEqual(swipeA.moveCount, swipeB.moveCount);
+          assert.strictEqual(swipeA.points, swipeB.points);
+          assert.strictEqual(swipeA.score, swipeB.score);
+          assert.strictEqual(swipeA.bonusScore, swipeB.bonusScore);
+          assert.strictEqual(swipeA.tripleMerges, swipeB.tripleMerges);
+          assert.strictEqual(swipeA.movesSinceLastStone, swipeB.movesSinceLastStone);
+          assert.strictEqual(swipeA.highestTile, swipeB.highestTile);
+          assert.deepStrictEqual(swipeA.spawnQueue, swipeB.spawnQueue);
+        }
+
+        // Next 3 draws of each RNG stream
         const drawsA = {
           tile: [stateA.rngs.tile(), stateA.rngs.tile(), stateA.rngs.tile()],
           stone: [stateA.rngs.stone(), stateA.rngs.stone(), stateA.rngs.stone()],
@@ -550,7 +593,7 @@ test('Rewind: Property test on 200 random reachable pre-states (including stones
           stone: [stateB.rngs.stone(), stateB.rngs.stone(), stateB.rngs.stone()],
           draft: [stateB.rngs.draft(), stateB.rngs.draft(), stateB.rngs.draft()],
         };
-        assert.deepStrictEqual(drawsA, drawsB, `RNG stream draws mismatch for seed ${seed}`);
+        assert.deepStrictEqual(drawsA, drawsB, `RNG stream draws mismatch for seed ${seed} k=${k} j=${j}`);
       }
     }
     checkedCount++;
@@ -613,94 +656,159 @@ test('Rewind property: d1==d2 produces byte-identical world state', () => {
   }
 });
 
-test('Rewind invalidation: draft during swipe clears snapshot', () => {
+test('Rewind: consecutive undo allowed up to min(charges, stack depth)', () => {
+  // Case 1: stack depth limit (charges >= stack depth)
+  const g1 = createGame(12345, {
+    forcedRelics: ['rewind'],
+    forceAtMove: 0,
+    maxCharges: 3,
+  });
+  g1.abilities.rewind.charges = 3;
+  // Swipe twice -> stack depth = 2, charges = 3
+  step(g1, getValidMoves(g1)[0]);
+  step(g1, getValidMoves(g1)[0]);
+  assert.strictEqual(g1.rewindStack.length, 2);
+  assert.strictEqual(g1.abilities.rewind.charges, 3);
+
+  // Undo 1: stack depth -> 1, charges -> 2
+  useAbility(g1, 'rewind', {});
+  assert.strictEqual(g1.rewindStack.length, 1);
+  assert.strictEqual(g1.abilities.rewind.charges, 2);
+
+  // Undo 2: stack depth -> 0, charges -> 1
+  useAbility(g1, 'rewind', {});
+  assert.strictEqual(g1.rewindStack.length, 0);
+  assert.strictEqual(g1.abilities.rewind.charges, 1);
+
+  // Undo 3: stack empty -> throws "no valid rewind snapshot"
+  assert.throws(() => useAbility(g1, 'rewind', {}), /no valid rewind snapshot/);
+
+  // Case 2: charges limit (stack depth > charges)
+  const g2 = createGame(12345, {
+    forcedRelics: ['rewind'],
+    forceAtMove: 0,
+    maxCharges: 3,
+  });
+  g2.abilities.rewind.charges = 2;
+  // Swipe 3 times -> stack depth = 3, charges = 2
+  step(g2, getValidMoves(g2)[0]);
+  step(g2, getValidMoves(g2)[0]);
+  step(g2, getValidMoves(g2)[0]);
+  assert.strictEqual(g2.rewindStack.length, 3);
+  assert.strictEqual(g2.abilities.rewind.charges, 2);
+
+  // Undo 1: stack depth -> 2, charges -> 1
+  useAbility(g2, 'rewind', {});
+  assert.strictEqual(g2.rewindStack.length, 2);
+  assert.strictEqual(g2.abilities.rewind.charges, 1);
+
+  // Undo 2: stack depth -> 1, charges -> 0
+  useAbility(g2, 'rewind', {});
+  assert.strictEqual(g2.rewindStack.length, 1);
+  assert.strictEqual(g2.abilities.rewind.charges, 0);
+
+  // Undo 3: charges exhausted -> throws "no charges remaining for rewind"
+  assert.throws(() => useAbility(g2, 'rewind', {}), /no charges remaining for rewind/);
+});
+
+test('Rewind invalidation: draft clears the whole stack', () => {
   const gDraft = createGame(12345, {
     forcedRelics: ['rewind'],
     forceAtMove: 0,
     enableDraft: true,
-    draftEveryMoves: 1,
+    draftEveryMoves: 2,
   });
+  // Swipe twice so stack had 2 snapshots, but 2nd swipe triggers draft
   step(gDraft, getValidMoves(gDraft)[0]);
-  assert.strictEqual(gDraft.rewindSnapshot, null, 'Snapshot must be invalidated by draft');
+  assert.strictEqual(gDraft.rewindStack.length, 1);
+  step(gDraft, getValidMoves(gDraft)[0]);
+  assert.strictEqual(gDraft.rewindStack.length, 0, 'Stack must be cleared by draft');
   assert.throws(() => useAbility(gDraft, 'rewind', {}), /no valid rewind snapshot/);
 });
 
-test('Rewind invalidation: Mason decision during swipe clears snapshot', () => {
-  // Test both stepInteractive (pendingDecision) and step (bot path)
+test('Rewind invalidation: Mason clears the whole stack', () => {
+  // Test stepInteractive (pendingDecision)
   const gInteractive = createGame(12345, {
     forcedRelics: ['rewind', 'mason'],
     forceAtMove: 0,
-    hazardSchedule: [{ upToMove: Infinity, interval: 1 }],
+    hazardSchedule: [{ upToMove: Infinity, interval: 2 }],
   });
+  step(gInteractive, getValidMoves(gInteractive)[0]);
+  assert.strictEqual(gInteractive.rewindStack.length, 1);
   const res = stepInteractive(gInteractive, getValidMoves(gInteractive)[0]);
-  assert.strictEqual(gInteractive.rewindSnapshot, null, 'Snapshot must be invalidated when Mason decision triggers in stepInteractive');
-  // While decision is pending, ability cannot be used
+  assert.strictEqual(gInteractive.rewindStack.length, 0, 'Stack must be invalidated when Mason decision triggers in stepInteractive');
   assert.throws(() => useAbility(gInteractive, 'rewind', {}), /pending decision/);
-  // Resolve Mason decision
   res.pendingDecision.resolve(res.pendingDecision.candidates[0]);
-  // After resolving, snapshot remains null, so Rewind cannot be used
-  assert.strictEqual(gInteractive.rewindSnapshot, null);
+  assert.strictEqual(gInteractive.rewindStack.length, 0);
   assert.throws(() => useAbility(gInteractive, 'rewind', {}), /no valid rewind snapshot/);
 
+  // Test step (bot path)
   const gBot = createGame(12345, {
     forcedRelics: ['rewind', 'mason'],
     forceAtMove: 0,
-    hazardSchedule: [{ upToMove: Infinity, interval: 1 }],
+    hazardSchedule: [{ upToMove: Infinity, interval: 2 }],
   });
   step(gBot, getValidMoves(gBot)[0]);
-  assert.strictEqual(gBot.rewindSnapshot, null, 'Snapshot must be invalidated when Mason decision triggers in step');
+  assert.strictEqual(gBot.rewindStack.length, 1);
+  step(gBot, getValidMoves(gBot)[0]);
+  assert.strictEqual(gBot.rewindStack.length, 0, 'Stack must be invalidated when Mason decision triggers in step');
   assert.throws(() => useAbility(gBot, 'rewind', {}), /no valid rewind snapshot/);
 });
 
-test('Rewind invalidation: Last Stand firing in a swipe clears snapshot', () => {
+test('Rewind invalidation: Last Stand clears the whole stack', () => {
   const g = createGame(12345, {
     forcedRelics: ['rewind', 'last_stand'],
     forceAtMove: 0,
     lastStandMax: 16,
   });
-  g.abilities.rewind.charges = 0; // ensure no ability charges so Last Stand fires when stuck
+  g.abilities.rewind.charges = 0;
   g.board = [
     2, 4, 32, 64,
     4, 2, 64, 32,
     32, 64, 2, 4,
     0, 64, 32, 4,
   ];
-  g.spawnQueue = [{ value: 2, r: 0 }];
+  g.spawnQueue = [{ value: 2, r: 0 }, { value: 2, r: 0 }];
   step(g, 'L');
   assert.strictEqual(g.lastStandUsed, true, 'Last Stand must have fired');
-  assert.strictEqual(g.gameOver, false, 'Game must not be over since tiles were cleared');
-  assert.strictEqual(g.rewindSnapshot, null, 'Snapshot must be invalidated when Last Stand fires');
+  assert.strictEqual(g.gameOver, false);
+  assert.strictEqual(g.rewindStack.length, 0, 'Stack must be cleared when Last Stand fires');
   g.abilities.rewind.charges = 1;
   assert.throws(() => useAbility(g, 'rewind', {}), /no valid rewind snapshot/);
 });
 
-test('Rewind invalidation: ability use clears snapshot', () => {
-  const gAb = createGame(12345, {
+test('Rewind invalidation: Diagonal use clears the whole stack', () => {
+  const gDiag = createGame(12345, {
+    forcedRelics: ['rewind', 'diagonal_charge'],
+    forceAtMove: 0,
+  });
+  step(gDiag, getValidMoves(gDiag)[0]);
+  step(gDiag, getValidMoves(gDiag)[0]);
+  assert.ok(gDiag.rewindStack.length >= 2, 'Stack should have multiple snapshots');
+  gDiag.board[0] = 4;
+  gDiag.board[5] = 4;
+  gDiag.abilities.diagonal_charge.charges = 1;
+  useAbility(gDiag, 'diagonal_charge', { from: 0, to: 5 });
+  assert.strictEqual(gDiag.rewindStack.length, 0, 'Stack must be cleared by diagonal use');
+  assert.throws(() => useAbility(gDiag, 'rewind', {}), /no valid rewind snapshot/);
+});
+
+test('Rewind invalidation: Eraser use clears the whole stack', () => {
+  const gEraser = createGame(12345, {
     forcedRelics: ['rewind', 'eraser'],
     forceAtMove: 0,
   });
-  step(gAb, getValidMoves(gAb)[0]);
-  assert.ok(gAb.rewindSnapshot !== null, 'Snapshot should exist after valid swipe');
-  const numCell = gAb.board.findIndex(v => typeof v === 'number' && v > 0);
-  useAbility(gAb, 'eraser', { cell: numCell });
-  assert.strictEqual(gAb.rewindSnapshot, null, 'Snapshot must be invalidated by ability use');
-  assert.throws(() => useAbility(gAb, 'rewind', {}), /no valid rewind snapshot/);
+  step(gEraser, getValidMoves(gEraser)[0]);
+  step(gEraser, getValidMoves(gEraser)[0]);
+  assert.ok(gEraser.rewindStack.length >= 2, 'Stack should have multiple snapshots');
+  const numCell = gEraser.board.findIndex(v => typeof v === 'number' && v > 0);
+  gEraser.abilities.eraser.charges = 1;
+  useAbility(gEraser, 'eraser', { cell: numCell });
+  assert.strictEqual(gEraser.rewindStack.length, 0, 'Stack must be cleared by eraser use');
+  assert.throws(() => useAbility(gEraser, 'rewind', {}), /no valid rewind snapshot/);
 });
 
-test('Rewind invalidation: consecutive-undo disabled', () => {
-  const gUndo = createGame(12345, {
-    forcedRelics: ['rewind'],
-    forceAtMove: 0,
-  });
-  gUndo.abilities.rewind.charges = 2;
-  step(gUndo, getValidMoves(gUndo)[0]);
-  assert.ok(gUndo.rewindSnapshot !== null);
-  useAbility(gUndo, 'rewind', {});
-  assert.strictEqual(gUndo.rewindSnapshot, null, 'Snapshot must be cleared after undo');
-  assert.throws(() => useAbility(gUndo, 'rewind', {}), /no valid rewind snapshot/, 'Consecutive undo must throw');
-});
-
-test('Rewind: charge accounting (swipe earns charge, undo spends it, never negative)', () => {
+test('Rewind: charge accounting updated for chains', () => {
   const gCharges = createGame(12345, {
     forcedRelics: ['rewind'],
     forceAtMove: 0,
@@ -709,54 +817,39 @@ test('Rewind: charge accounting (swipe earns charge, undo spends it, never negat
   });
   assert.strictEqual(gCharges.abilities.rewind.charges, 1);
   assert.strictEqual(gCharges.relicActivations.rewind, 0);
-  // Swipe 5 times -> charges becomes 2
-  for (let i = 0; i < 5; i++) {
+
+  // Swipe 10 times: earns charge at move 5 and move 10 -> total charges = 3
+  for (let i = 0; i < 10; i++) {
     const vm = getValidMoves(gCharges);
     step(gCharges, vm[0]);
   }
+  assert.strictEqual(gCharges.abilities.rewind.charges, 3);
+  assert.strictEqual(gCharges.rewindStack.length, 3); // capped at maxCharges=3
+  assert.strictEqual(gCharges.moveCount, 10);
+
+  // Chain undo 1
+  useAbility(gCharges, 'rewind', {});
   assert.strictEqual(gCharges.abilities.rewind.charges, 2);
+  assert.strictEqual(gCharges.relicActivations.rewind, 1);
+  assert.strictEqual(gCharges.rewindStack.length, 2);
+  assert.strictEqual(gCharges.moveCount, 9);
+
+  // Chain undo 2
   useAbility(gCharges, 'rewind', {});
   assert.strictEqual(gCharges.abilities.rewind.charges, 1);
-  assert.strictEqual(gCharges.relicActivations.rewind, 1);
+  assert.strictEqual(gCharges.relicActivations.rewind, 2);
+  assert.strictEqual(gCharges.rewindStack.length, 1);
+  assert.strictEqual(gCharges.moveCount, 8);
 
-  // Consume remaining charge
-  gCharges.rewindSnapshot = {
-    board: [...gCharges.board],
-    moveCount: gCharges.moveCount,
-    points: gCharges.points,
-    score: gCharges.score,
-    bonusScore: gCharges.bonusScore,
-    movesSinceLastStone: 0,
-    highestTile: 4,
-    nextThresholdIndex: 0,
-    spawnQueue: [],
-    rngs: {
-      tile: gCharges.rngs.tile.getState(),
-      stone: gCharges.rngs.stone.getState(),
-      draft: gCharges.rngs.draft.getState(),
-    },
-  };
+  // Chain undo 3
   useAbility(gCharges, 'rewind', {});
   assert.strictEqual(gCharges.abilities.rewind.charges, 0);
+  assert.strictEqual(gCharges.relicActivations.rewind, 3);
+  assert.strictEqual(gCharges.rewindStack.length, 0);
+  assert.strictEqual(gCharges.moveCount, 7);
 
-  // Attempting to use with 0 charges throws
-  gCharges.rewindSnapshot = {
-    board: [...gCharges.board],
-    moveCount: gCharges.moveCount,
-    points: gCharges.points,
-    score: gCharges.score,
-    bonusScore: gCharges.bonusScore,
-    movesSinceLastStone: 0,
-    highestTile: 4,
-    nextThresholdIndex: 0,
-    spawnQueue: [],
-    rngs: {
-      tile: gCharges.rngs.tile.getState(),
-      stone: gCharges.rngs.stone.getState(),
-      draft: gCharges.rngs.draft.getState(),
-    },
-  };
-  assert.throws(() => useAbility(gCharges, 'rewind', {}), /no charges/);
+  // Attempting undo 4 throws (no charges remaining)
+  assert.throws(() => useAbility(gCharges, 'rewind', {}), /no charges remaining for rewind/);
 });
 
 test('Rewind: stuck rule with only Rewind usable prevents game over and holds Last Stand', () => {

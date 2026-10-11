@@ -118,7 +118,7 @@ function runGGame({
       } else if (
         game.relics.has('rewind') &&
         (game.abilities?.rewind?.charges ?? 0) > 0 &&
-        game.rewindSnapshot !== null
+        game.rewindStack && game.rewindStack.length > 0
       ) {
         // Rewind under stuck
         useAbility(game, 'rewind', {});
@@ -200,7 +200,7 @@ function runGGame({
 
     // Post-swipe Rewind check
     if (rewindPolicy && game.relics.has('rewind')) {
-      const canRewind = (game.abilities?.rewind?.charges ?? 0) > 0 && game.rewindSnapshot !== null;
+      const canRewind = (game.abilities?.rewind?.charges ?? 0) > 0 && Boolean(game.rewindStack && game.rewindStack.length > 0);
       if (canRewind) {
         let shouldUndo = false;
         if (rewindPolicy === 'oracle') {

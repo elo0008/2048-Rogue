@@ -1,0 +1,66 @@
+{
+  "diagonal_merge": {
+    "scale": 0.88,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 100,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 40.1
+  },
+  "eraser": {
+    "scale": 1.048,
+    "xPercent": 0.1,
+    "yPercent": 4.3,
+    "rawBboxPct": 84,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 35.9
+  },
+  "fault_line": {
+    "scale": 0.88,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 100,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 28.2
+  },
+  "last_stand": {
+    "scale": 0.88,
+    "xPercent": 0.2,
+    "yPercent": 0.1,
+    "rawBboxPct": 100,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 42.3
+  },
+  "mason": {
+    "scale": 0.88,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 100,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 70.6
+  },
+  "rewind": {
+    "scale": 1.186,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 74.2,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 9.4
+  },
+  "shatter": {
+    "scale": 1.453,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 60.5,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 30
+  },
+  "siphon": {
+    "scale": 0.88,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 100,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 19.5
+  }
+}

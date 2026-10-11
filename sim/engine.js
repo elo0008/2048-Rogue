@@ -806,7 +806,7 @@ export function getLegalTargets(state, relicId) {
     }
   } else if (relicId === 'rewind') {
     const ab = state.abilities?.rewind;
-    if (ab && ab.charges > 0 && state.rewindSnapshot) {
+    if (ab && ab.charges > 0 && state.rewindStack && state.rewindStack.length > 0) {
       targets.push({});
     }
   }
@@ -841,7 +841,7 @@ export function getAbilityState(state) {
         : (state.config?.rewindEvery ?? 10);
       const swipesUntilNext = info.charges >= maxCharges ? 0 : Math.max(0, every - info.counter);
       const legalTargets = getLegalTargets(state, rid);
-      res[rid] = {
+      const abObj = {
         relic: rid,
         charges: info.charges,
         maxCharges,
@@ -849,6 +849,10 @@ export function getAbilityState(state) {
         swipesUntilNext,
         legalTargets,
       };
+      if (rid === 'rewind') {
+        abObj.undoLevels = Math.min(info.charges, state.rewindStack ? state.rewindStack.length : 0);
+      }
+      res[rid] = abObj;
     }
   }
   res[Symbol.iterator] = function* () {
@@ -934,7 +938,7 @@ export function useAbility(state, relicId, target) {
         }
       }
     }
-    state.rewindSnapshot = null;
+    state.rewindStack = [];
   } else if (relicId === 'eraser') {
     const cell = (typeof target === 'number') ? target : target?.cell;
     if (typeof cell !== 'number' || cell < 0 || cell > 15) {
@@ -948,12 +952,12 @@ export function useAbility(state, relicId, target) {
     ab.charges -= 1;
     state.relicActivations[relicId] = (state.relicActivations[relicId] || 0) + 1;
     state.board[cell] = 0;
-    state.rewindSnapshot = null;
+    state.rewindStack = [];
   } else if (relicId === 'rewind') {
-    if (!state.rewindSnapshot) {
+    if (!state.rewindStack || state.rewindStack.length === 0) {
       throw new Error('Cannot use ability: no valid rewind snapshot');
     }
-    const snap = state.rewindSnapshot;
+    const snap = state.rewindStack.pop();
     state.board = [...snap.board];
     state.stoneSpawnMoves = snap.stoneSpawnMoves ? [...snap.stoneSpawnMoves] : new Array(16).fill(null);
     state.moveCount = snap.moveCount;
@@ -971,7 +975,6 @@ export function useAbility(state, relicId, target) {
 
     ab.charges -= 1;
     state.relicActivations['rewind'] = (state.relicActivations['rewind'] || 0) + 1;
-    state.rewindSnapshot = null;
   }
 
   // Stuck & Last Stand check
@@ -1112,27 +1115,26 @@ export function cloneState(state) {
       clonedAbilities[k] = { ...v };
     }
   }
-  let clonedSnapshot = null;
-  if (state.rewindSnapshot) {
-    clonedSnapshot = {
-      board: [...state.rewindSnapshot.board],
-      stoneSpawnMoves: state.rewindSnapshot.stoneSpawnMoves ? [...state.rewindSnapshot.stoneSpawnMoves] : new Array(16).fill(null),
-      moveCount: state.rewindSnapshot.moveCount,
-      bonusScore: state.rewindSnapshot.bonusScore,
-      score: state.rewindSnapshot.score,
-      points: state.rewindSnapshot.points,
-      tripleMerges: state.rewindSnapshot.tripleMerges,
-      movesSinceLastStone: state.rewindSnapshot.movesSinceLastStone,
-      highestTile: state.rewindSnapshot.highestTile,
-      nextThresholdIndex: state.rewindSnapshot.nextThresholdIndex,
-      spawnQueue: state.rewindSnapshot.spawnQueue.map(s => ({ ...s })),
-      rngs: {
-        tile: { ...state.rewindSnapshot.rngs.tile },
-        stone: { ...state.rewindSnapshot.rngs.stone },
-        draft: { ...state.rewindSnapshot.rngs.draft },
-      },
-    };
-  }
+  const clonedStack = state.rewindStack
+    ? state.rewindStack.map(snap => ({
+        board: [...snap.board],
+        stoneSpawnMoves: snap.stoneSpawnMoves ? [...snap.stoneSpawnMoves] : new Array(16).fill(null),
+        moveCount: snap.moveCount,
+        bonusScore: snap.bonusScore,
+        score: snap.score,
+        points: snap.points,
+        tripleMerges: snap.tripleMerges,
+        movesSinceLastStone: snap.movesSinceLastStone,
+        highestTile: snap.highestTile,
+        nextThresholdIndex: snap.nextThresholdIndex,
+        spawnQueue: snap.spawnQueue.map(s => ({ ...s })),
+        rngs: {
+          tile: { ...snap.rngs.tile },
+          stone: { ...snap.rngs.stone },
+          draft: { ...snap.rngs.draft },
+        },
+      }))
+    : [];
   return {
     board: [...state.board],
     stoneSpawnMoves: state.stoneSpawnMoves ? [...state.stoneSpawnMoves] : new Array(16).fill(null),
@@ -1161,7 +1163,18 @@ export function cloneState(state) {
     abilities: clonedAbilities,
     stuckNeedsAbility: state.stuckNeedsAbility || false,
     pendingDecision: state.pendingDecision ? { ...state.pendingDecision } : null,
-    rewindSnapshot: clonedSnapshot,
+    rewindStack: clonedStack,
+    get rewindSnapshot() {
+      return this.rewindStack && this.rewindStack.length > 0 ? this.rewindStack[this.rewindStack.length - 1] : null;
+    },
+    set rewindSnapshot(val) {
+      if (!this.rewindStack) this.rewindStack = [];
+      if (!val) {
+        this.rewindStack = [];
+      } else {
+        this.rewindStack.push(val);
+      }
+    },
   };
 }
 
@@ -1188,7 +1201,18 @@ export function createGame(seed = 12345, userConfig = {}) {
     gameOver: false,
     capped: false,
     nextThresholdIndex: 0,
-    rewindSnapshot: null,
+    rewindStack: [],
+    get rewindSnapshot() {
+      return this.rewindStack && this.rewindStack.length > 0 ? this.rewindStack[this.rewindStack.length - 1] : null;
+    },
+    set rewindSnapshot(val) {
+      if (!this.rewindStack) this.rewindStack = [];
+      if (!val) {
+        this.rewindStack = [];
+      } else {
+        this.rewindStack.push(val);
+      }
+    },
     // Inject forcedRelics immediately only when forceAtMove === 0
     relics: (config.forceAtMove === 0)
       ? new Set(config.forcedRelics || [])
@@ -1352,7 +1376,9 @@ export function stepInteractive(state, direction, options = {}) {
   }
 
   // Snapshot WORLD before valid swipe for Rewind
-  state.rewindSnapshot = {
+  if (!state.rewindStack) state.rewindStack = [];
+  const maxCharges = state.config?.maxCharges ?? 3;
+  state.rewindStack.push({
     board: [...boardBefore],
     stoneSpawnMoves: state.stoneSpawnMoves ? [...state.stoneSpawnMoves] : new Array(16).fill(null),
     moveCount: state.moveCount,
@@ -1369,7 +1395,10 @@ export function stepInteractive(state, direction, options = {}) {
       stone: state.rngs.stone.getState(),
       draft: state.rngs.draft.getState(),
     },
-  };
+  });
+  while (state.rewindStack.length > maxCharges) {
+    state.rewindStack.shift();
+  }
 
   if (state.relics.has('triple_threat') && slideRes.tripleCount > 0) {
     act['triple_threat'] = (act['triple_threat'] || 0) + 1;
@@ -1505,7 +1534,7 @@ export function stepInteractive(state, direction, options = {}) {
   }
 
   if (pendingDraftInfos.length > 0) {
-    state.rewindSnapshot = null;
+    state.rewindStack = [];
   }
 
   function runSpawnsAndFinish() {
@@ -1572,7 +1601,7 @@ export function stepInteractive(state, direction, options = {}) {
       const emptyCells = getEmptyCells(state.board);
       if (emptyCells.length > 0) {
         if (state.relics.has('mason')) {
-          state.rewindSnapshot = null;
+          state.rewindStack = [];
           if (emptyCells.length === 1) {
             const chosenCell = emptyCells[0];
             state.board[chosenCell] = STONE;
@@ -1672,7 +1701,7 @@ export function stepInteractive(state, direction, options = {}) {
           if (state.relics.has('last_stand') && !state.lastStandUsed) {
             state.lastStandUsed = true;
             lastStandFired = true;
-            state.rewindSnapshot = null;
+            state.rewindStack = [];
             const lastStandMax = state.config.lastStandMax ?? 16;
             for (let c = 0; c < 16; c++) {
               if (typeof state.board[c] === 'number' && state.board[c] > 0 && state.board[c] <= lastStandMax) {
@@ -1832,7 +1861,9 @@ export function step(state, direction, bot = null, options = {}) {
   }
 
   // Snapshot WORLD before valid swipe for Rewind
-  state.rewindSnapshot = {
+  if (!state.rewindStack) state.rewindStack = [];
+  const maxCharges = state.config?.maxCharges ?? 3;
+  state.rewindStack.push({
     board: [...boardBefore],
     stoneSpawnMoves: state.stoneSpawnMoves ? [...state.stoneSpawnMoves] : new Array(16).fill(null),
     moveCount: state.moveCount,
@@ -1849,7 +1880,10 @@ export function step(state, direction, bot = null, options = {}) {
       stone: state.rngs.stone.getState(),
       draft: state.rngs.draft.getState(),
     },
-  };
+  });
+  while (state.rewindStack.length > maxCharges) {
+    state.rewindStack.shift();
+  }
 
   // Track triple_threat: use slideRes.tripleCount (exact count from slideSegment)
   if (state.relics.has('triple_threat') && slideRes.tripleCount > 0) {
@@ -1983,7 +2017,7 @@ export function step(state, direction, bot = null, options = {}) {
     draftTriggered = true;
   }
   if (draftTriggered) {
-    state.rewindSnapshot = null;
+    state.rewindStack = [];
   }
 
   // 5. Spawn tile(s)
@@ -2048,7 +2082,7 @@ export function step(state, direction, bot = null, options = {}) {
   const stoneSpawned = spawnStoneIfDue(state, bot);
   if (stoneSpawned && state.relics.has('mason')) {
     act['mason'] = (act['mason'] || 0) + 1;
-    state.rewindSnapshot = null;
+    state.rewindStack = [];
   }
 
   // Update highestTile on board
@@ -2057,7 +2091,6 @@ export function step(state, direction, bot = null, options = {}) {
   }
 
   // Tick ability cooldowns for abilities owned at START of swipe
-  const maxCharges = state.config.maxCharges ?? 3;
   for (const rid of ownedAbilitiesAtStart) {
     const ab = state.abilities?.[rid];
     if (!ab) continue;
@@ -2093,7 +2126,7 @@ export function step(state, direction, bot = null, options = {}) {
         if (state.relics.has('last_stand') && !state.lastStandUsed) {
           state.lastStandUsed = true;
           lastStandFired = true;
-          state.rewindSnapshot = null;
+          state.rewindStack = [];
           const lastStandMax = state.config.lastStandMax ?? 16;
           for (let c = 0; c < 16; c++) {
             if (typeof state.board[c] === 'number' && state.board[c] > 0 && state.board[c] <= lastStandMax) {

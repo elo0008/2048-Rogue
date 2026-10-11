@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { computeIconMetrics } from './icon_metrics.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,6 +10,13 @@ const rootDir = path.resolve(__dirname, '..');
 const distDir = path.join(rootDir, 'dist');
 
 console.log('Building self-contained static bundle in dist/ ...');
+
+// Normalize icon sizes
+try {
+  await computeIconMetrics(0);
+} catch (err) {
+  console.warn('Icon metrics computation warning:', err);
+}
 
 // Generate buildId from build timestamp + short content hash of game/*.js
 const gameFiles = fs.readdirSync(path.join(rootDir, 'game'))
@@ -59,6 +67,16 @@ fs.writeFileSync(path.join(distDir, 'engine.js'), engineJs, 'utf-8');
 // Copy relics.js
 const relicsJs = fs.readFileSync(path.join(rootDir, 'sim', 'relics.js'), 'utf-8');
 fs.writeFileSync(path.join(distDir, 'relics.js'), relicsJs, 'utf-8');
+
+// Copy slide.js
+const slideJs = fs.readFileSync(path.join(rootDir, 'game', 'slide.js'), 'utf-8');
+fs.writeFileSync(path.join(distDir, 'slide.js'), slideJs, 'utf-8');
+
+// Copy audio.js
+if (fs.existsSync(path.join(rootDir, 'game', 'audio.js'))) {
+  const audioJs = fs.readFileSync(path.join(rootDir, 'game', 'audio.js'), 'utf-8');
+  fs.writeFileSync(path.join(distDir, 'audio.js'), audioJs, 'utf-8');
+}
 
 // Copy icons directory to dist/icons
 const iconsSrcDir = path.join(rootDir, 'game', 'icons');

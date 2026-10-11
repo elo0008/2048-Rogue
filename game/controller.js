@@ -225,6 +225,16 @@ export class GameController {
     return getAbilityState(this.state);
   }
 
+  getRewindUndoLevels() {
+    const charges = this.state.abilities?.rewind?.charges ?? 0;
+    const depth = this.state.rewindStack ? this.state.rewindStack.length : 0;
+    return Math.min(charges, depth);
+  }
+
+  get undoLevels() {
+    return this.getRewindUndoLevels();
+  }
+
   hasLegalAbility() {
     return hasLegalAbility(this.state);
   }

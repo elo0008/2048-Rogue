@@ -182,7 +182,7 @@ async function captureAll() {
       (() => {
         const targets = controller.getLegalTargets('diagonal_charge');
         const firstCell = targets[0].a;
-        const tile = document.querySelector('.tiles-layer .tile[data-index="' + firstCell + '"]');
+        const tile = document.querySelector('#game-board .tile[data-index="' + firstCell + '"], .tiles-layer .tile[data-index="' + firstCell + '"]');
         if (tile) tile.click();
       })()
     `);
@@ -194,7 +194,7 @@ async function captureAll() {
     // Click partner tile (cell 12 on seed 5) to execute merge
     await cdp.eval(`
       (() => {
-        const partnerTile = document.querySelector('.tiles-layer .tile.target-partner');
+        const partnerTile = document.querySelector('#game-board .tile.target-partner, #game-board .tile.valid, .tiles-layer .tile.target-partner');
         if (partnerTile) partnerTile.click();
       })()
     `);
@@ -236,7 +236,7 @@ async function captureAll() {
     // Click Eraser ability button
     await cdp.eval(`
       (() => {
-        const btn = document.querySelector('.ability-btn[data-relic="eraser"]');
+        const btn = document.querySelector('.ability-btn[data-relic="eraser"], .ability[data-ability="eraser"]');
         if (btn) btn.click();
       })()
     `);
@@ -245,7 +245,7 @@ async function captureAll() {
     // Click a number tile to trigger confirm step
     await cdp.eval(`
       (() => {
-        const tile = document.querySelector('.tiles-layer .tile.target-candidate');
+        const tile = document.querySelector('#game-board .tile.target-candidate, #game-board .tile.candidate, #game-board .tile.erasable, .tiles-layer .tile.target-candidate');
         if (tile) tile.click();
       })()
     `);

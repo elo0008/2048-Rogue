@@ -7,3 +7,6 @@ screenshots*/
 *.patch
 CHANGES.diff
 sample_run_log.json
+.temp_chrome*/
+test_output*.txt
+scripts/out/
