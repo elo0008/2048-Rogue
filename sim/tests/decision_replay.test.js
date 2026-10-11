@@ -410,6 +410,18 @@ test('Decision-replay parity test with ability actions: random-seeded swipe/abil
             recordedActions.push({ type: 'ability', relic: cand.relic, target });
             useAbility(stateInteractive, cand.relic, target);
             usedAbility = true;
+
+            // Chained Rewinds: allow consecutive Rewinds while charges and stack depth remain
+            if (cand.relic === 'rewind') {
+              while (
+                stateInteractive.relics.has('rewind') &&
+                getLegalTargets(stateInteractive, 'rewind').length > 0 &&
+                choiceRng() < 0.5
+              ) {
+                recordedActions.push({ type: 'ability', relic: 'rewind', target: {} });
+                useAbility(stateInteractive, 'rewind', {});
+              }
+            }
           }
         }
 

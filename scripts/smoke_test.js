@@ -1,3 +1,4 @@
+import { findChrome } from './find_chrome.js';
 import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -10,9 +11,7 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.join(rootDir, 'dist');
 
-const CHROME_PATH = fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
-  ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-  : 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const CHROME_PATH = findChrome();
 
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
@@ -163,13 +162,42 @@ class CdpClient {
   }
 }
 
+export function printUsage() {
+  console.log('Usage: node scripts/smoke_test.js [options]');
+  console.log('');
+  console.log('Options:');
+  console.log('  --url <base>    Run smoke test against an existing deployed base URL (no local server)');
+  console.log('  -h, --help      Display this help message');
+}
+
 async function runSmokeTest() {
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    printUsage();
+    return;
+  }
+
   // Check all JS files first
   runNodeCheck();
 
-  const server = await startStaticServer();
-  const serverPort = server.address().port;
-  console.log(`[Smoke Test] Serving dist/ on random free port ${serverPort}`);
+  let server = null;
+  let targetBaseUrl = '';
+  const urlIdx = process.argv.indexOf('--url');
+  if (urlIdx !== -1 && process.argv[urlIdx + 1]) {
+    targetBaseUrl = process.argv[urlIdx + 1];
+    console.log(`[Smoke Test] Testing against external URL: ${targetBaseUrl} (skipping local server)`);
+  } else {
+    server = await startStaticServer();
+    const serverPort = server.address().port;
+    targetBaseUrl = `http://127.0.0.1:${serverPort}/`;
+    console.log(`[Smoke Test] Serving dist/ on random free port ${serverPort}`);
+  }
+
+  function makeUrl(subpathAndQuery = '') {
+    const normBase = targetBaseUrl.endsWith('/') ? targetBaseUrl : targetBaseUrl + '/';
+    if (!subpathAndQuery) return normBase;
+    if (subpathAndQuery.startsWith('/')) subpathAndQuery = subpathAndQuery.slice(1);
+    return new URL(subpathAndQuery, normBase).href;
+  }
 
   const cdpPort = await getFreePort();
   const chromeProcess = spawn(CHROME_PATH, [
@@ -205,8 +233,8 @@ async function runSmokeTest() {
     // -------------------------------------------------------------
     // Test 1: Standard launch, START hides overlay, 2 tiles appear, one swipe works
     // -------------------------------------------------------------
-    console.log('[Smoke Test] Navigating to http://127.0.0.1:' + serverPort + '/ ...');
-    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${serverPort}/` });
+    console.log(`[Smoke Test] Navigating to ${makeUrl('')} ...`);
+    await cdp.send('Page.navigate', { url: makeUrl('') });
     await sleep(400);
 
     // Assert START overlay is visible
@@ -248,6 +276,41 @@ async function runSmokeTest() {
     assert.strictEqual(initialTileCount, 2, 'Exactly 2 initial tiles must appear on the board');
     console.log(`[Smoke Test] ✔ 2 tiles appeared on board.`);
 
+    // Assert computed touch-action on board, overscroll-behavior, user-select, and hit-area >= 36px (R4c, R4e, R5)
+    const styleCheck = await cdp.eval(`
+      (() => {
+        const boardStyle = window.getComputedStyle(document.getElementById('game-board'));
+        const bodyStyle = window.getComputedStyle(document.body);
+        const menuBtn = document.getElementById('btn-pause-menu');
+        const menuRect = menuBtn ? menuBtn.getBoundingClientRect() : null;
+        let effectiveWidth = menuRect ? menuRect.width : 0;
+        let effectiveHeight = menuRect ? menuRect.height : 0;
+        if (menuBtn) {
+          const beforeStyle = window.getComputedStyle(menuBtn, '::before');
+          if (beforeStyle && beforeStyle.content !== 'none') {
+            const top = parseFloat(beforeStyle.top) || 0;
+            const bottom = parseFloat(beforeStyle.bottom) || 0;
+            const left = parseFloat(beforeStyle.left) || 0;
+            const right = parseFloat(beforeStyle.right) || 0;
+            effectiveWidth += Math.abs(left) + Math.abs(right);
+            effectiveHeight += Math.abs(top) + Math.abs(bottom);
+          }
+        }
+        return {
+          boardTouchAction: boardStyle.touchAction,
+          bodyOverscroll: bodyStyle.overscrollBehavior,
+          bodyUserSelect: bodyStyle.userSelect || bodyStyle.webkitUserSelect,
+          menuWidth: effectiveWidth,
+          menuHeight: effectiveHeight
+        };
+      })()
+    `);
+    assert.strictEqual(styleCheck.boardTouchAction, 'none', 'game-board must have computed touch-action: none');
+    assert.strictEqual(styleCheck.bodyOverscroll, 'none', 'body must have computed overscroll-behavior: none');
+    assert.strictEqual(styleCheck.bodyUserSelect, 'none', 'body must have computed user-select: none');
+    assert.ok(styleCheck.menuWidth >= 36 && styleCheck.menuHeight >= 36, `Menu button hit area must be >= 36px, got ${styleCheck.menuWidth}x${styleCheck.menuHeight}`);
+    console.log('[Smoke Test] ✔ Computed touch-action: none, overscroll-behavior: none, user-select: none, and menu hit area >= 36px verified.');
+
     // Perform one valid swipe
     const moveCountBefore = await cdp.eval(`window.controller.getState().moveCount`);
     assert.strictEqual(moveCountBefore, 0, 'moveCount should start at 0');
@@ -274,8 +337,8 @@ async function runSmokeTest() {
     // -------------------------------------------------------------
     // Test 2: ?start=rewind then swipe then Rewind restores the board
     // -------------------------------------------------------------
-    console.log('[Smoke Test] Navigating to http://127.0.0.1:' + serverPort + '/?start=rewind ...');
-    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${serverPort}/?start=rewind` });
+    console.log(`[Smoke Test] Navigating to ${makeUrl('?start=rewind')} ...`);
+    await cdp.send('Page.navigate', { url: makeUrl('?start=rewind') });
     await sleep(400);
 
     // Click START
@@ -335,7 +398,7 @@ async function runSmokeTest() {
     // Test 3: Finish two real UI runs, assert stored history has 2 records with non-null runId, test copy payload
     // -------------------------------------------------------------
     console.log('[Smoke Test] Testing two full UI runs and history persistence...');
-    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${serverPort}/` });
+    await cdp.send('Page.navigate', { url: makeUrl('') });
     await sleep(400);
     await cdp.eval(`localStorage.clear()`);
 
@@ -356,7 +419,11 @@ async function runSmokeTest() {
         window.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowLeft', key: 'ArrowLeft' }));
       })()
     `);
-    await sleep(300);
+    for (let i = 0; i < 20; i++) {
+      const isOver = await cdp.eval(`!document.getElementById('end-overlay').classList.contains('hidden')`);
+      if (isOver) break;
+      await sleep(50);
+    }
 
     const run1Over = await cdp.eval(`!document.getElementById('end-overlay').classList.contains('hidden')`);
     assert.strictEqual(run1Over, true, 'Run 1 must reach game over');
@@ -377,7 +444,11 @@ async function runSmokeTest() {
         window.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowLeft', key: 'ArrowLeft' }));
       })()
     `);
-    await sleep(300);
+    for (let i = 0; i < 20; i++) {
+      const isOver = await cdp.eval(`!document.getElementById('end-overlay').classList.contains('hidden')`);
+      if (isOver) break;
+      await sleep(50);
+    }
 
     const run2Over = await cdp.eval(`!document.getElementById('end-overlay').classList.contains('hidden')`);
     assert.strictEqual(run2Over, true, 'Run 2 must reach game over');
@@ -413,6 +484,98 @@ async function runSmokeTest() {
     assert.strictEqual(copyPayloadCheck.historyLength, 2, 'Copy payload history must include both runs');
     console.log('[Smoke Test] ✔ Copy Run Log payload correctly formatted as { currentRun, history }.');
 
+    // -------------------------------------------------------------
+    // G4 Check (a) & (b): Real run with points > 0 (3+ merges) and stones on end-screen mini board
+    // -------------------------------------------------------------
+    console.log('[Smoke Test] Testing real run with stones=0.1, merges > 0, score vs moves, and mini board stones...');
+    await cdp.send('Page.navigate', { url: makeUrl('?seed=42&stones=0.1') });
+    await sleep(400);
+
+    // Click START
+    await cdp.eval(`document.getElementById('btn-play-start').click()`);
+    await sleep(200);
+
+    // Play real moves (at least 10 moves and at least 3 merges)
+    const DIRS = ['ArrowDown', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp'];
+    for (let m = 0; m < 25; m++) {
+      const dir = DIRS[m % DIRS.length];
+      await cdp.eval(`window.dispatchEvent(new KeyboardEvent('keydown', { code: '${dir}', key: '${dir}' }))`);
+      await sleep(50);
+    }
+
+    // Trigger game over for this real run
+    await cdp.eval(`window.handleGameOver()`);
+    await sleep(200);
+
+    const endScreenCheck = await cdp.eval(`
+      (() => {
+        const endScoreEl = document.getElementById('end-score');
+        const displayedScore = parseInt((endScoreEl ? endScoreEl.textContent : '0').replace(/,/g, ''), 10);
+        const payload = window.getCopyPayload();
+        const currentPoints = payload.currentRun?.points ?? -1;
+        const totalMoves = payload.currentRun?.totalMoves ?? -1;
+
+        // Mini board and board stones
+        const boardStones = Array.from(document.querySelectorAll('#game-board .stone, #game-board .tile-stone'));
+        const miniStones = Array.from(document.querySelectorAll('#end-mini-board .stone, #end-mini-board .mini-stone, #end-mini-board .ms.stone'));
+        const allStones = [...boardStones, ...miniStones];
+        const violations = allStones.filter(s => s.textContent.trim().length > 0 || Array.from(s.children).some(c => !c.classList.contains('tile-face') && !c.classList.contains('stone-face')));
+
+        return {
+          displayedScore,
+          currentPoints,
+          totalMoves,
+          boardStoneCount: boardStones.length,
+          miniStoneCount: miniStones.length,
+          violations: violations.map(v => ({ tag: v.tagName, text: v.textContent, html: v.innerHTML }))
+        };
+      })()
+    `);
+
+    // (a) Assert SCORE text equals run's points, points > 0, and is not equal to moves
+    assert.ok(endScreenCheck.currentPoints > 0, `Run must have earned points > 0 (got ${endScreenCheck.currentPoints})`);
+    assert.strictEqual(
+      endScreenCheck.displayedScore,
+      endScreenCheck.currentPoints,
+      `End-screen SCORE headline (${endScreenCheck.displayedScore}) must equal run points (${endScreenCheck.currentPoints})`
+    );
+    assert.notStrictEqual(
+      endScreenCheck.displayedScore,
+      endScreenCheck.totalMoves,
+      `End-screen SCORE headline (${endScreenCheck.displayedScore}) must not equal moves (${endScreenCheck.totalMoves})`
+    );
+    console.log(`[Smoke Test] ✔ End-screen SCORE headline (${endScreenCheck.displayedScore}) equals points (${endScreenCheck.currentPoints}) and != moves (${endScreenCheck.totalMoves}).`);
+
+    // (b) Assert mini board has at least one stone, and no text content in any stones
+    assert.ok(endScreenCheck.miniStoneCount >= 1, `End-screen mini board must contain at least 1 stone (found ${endScreenCheck.miniStoneCount})`);
+    assert.strictEqual(endScreenCheck.violations.length, 0, `Stones must contain only texture, no inner text or glyphs.`);
+    console.log(`[Smoke Test] ✔ End-screen mini board has ${endScreenCheck.miniStoneCount} stone(s) with 0 text violations.`);
+
+    // -------------------------------------------------------------
+    // U7 Smoke Check 3: Sound toggle persists across reload
+    // -------------------------------------------------------------
+    console.log('[Smoke Test] Testing sound toggle persistence across reload...');
+    await cdp.eval(`
+      (() => {
+        // Toggle sound via toggle button
+        const soundBtn = document.getElementById('btn-sound-start') || document.getElementById('btn-pause-sound');
+        if (soundBtn) soundBtn.click();
+      })()
+    `);
+    const soundStateBeforeReload = await cdp.eval(`localStorage.getItem('2048_rogue_sound_enabled')`);
+
+    // Reload page
+    await cdp.send('Page.navigate', { url: makeUrl('') });
+    await sleep(400);
+
+    const soundStateAfterReload = await cdp.eval(`localStorage.getItem('2048_rogue_sound_enabled')`);
+    assert.strictEqual(
+      soundStateAfterReload,
+      soundStateBeforeReload,
+      `Sound setting in localStorage must persist across page reload (before: ${soundStateBeforeReload}, after: ${soundStateAfterReload})`
+    );
+    console.log(`[Smoke Test] ✔ Sound toggle setting (${soundStateAfterReload}) persists across reload.`);
+
     // Assert zero console errors and zero uncaught exceptions
     assert.strictEqual(consoleErrors.length, 0, `Expected 0 console errors, got: ${JSON.stringify(consoleErrors)}`);
     assert.strictEqual(uncaughtExceptions.length, 0, `Expected 0 uncaught exceptions, got: ${JSON.stringify(uncaughtExceptions)}`);
@@ -420,8 +583,8 @@ async function runSmokeTest() {
 
     cdp.close();
   } finally {
-    chromeProcess.kill();
-    server.close();
+    if (chromeProcess) chromeProcess.kill();
+    if (server) server.close();
     console.log(`[Smoke Test] Closed server and terminated headless Chrome.`);
   }
 
@@ -430,7 +593,11 @@ async function runSmokeTest() {
   console.log('================================================================\n');
 }
 
-runSmokeTest().catch(err => {
-  console.error('❌ Smoke test failed:', err);
-  process.exit(1);
-});
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  printUsage();
+} else {
+  runSmokeTest().catch(err => {
+    console.error('❌ Smoke test failed:', err);
+    process.exit(1);
+  });
+}

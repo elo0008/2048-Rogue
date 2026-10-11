@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test": "node --test sim/tests/*.test.js && node scripts/smoke_test.js",
+    "test": "node --test sim/tests/*.test.js && node scripts/smoke_test.js && node scripts/ghost_fuzz.js",
     "serve": "node scripts/serve.js",
     "build": "node scripts/build.js",
+    "icons": "node scripts/icon_metrics.js",
     "sim": "node sim/run.js"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

@@ -225,6 +225,16 @@ export class GameController {
     return getAbilityState(this.state);
   }
 
+  getRewindUndoLevels() {
+    const charges = this.state.abilities?.rewind?.charges ?? 0;
+    const depth = this.state.rewindStack ? this.state.rewindStack.length : 0;
+    return Math.min(charges, depth);
+  }
+
+  get undoLevels() {
+    return this.getRewindUndoLevels();
+  }
+
   hasLegalAbility() {
     return hasLegalAbility(this.state);
   }
@@ -396,6 +406,15 @@ export class GameController {
       queryString: metadata.queryString || '',
       userAgent: metadata.userAgent || '',
       buildId: metadata.buildId || '__BUILD_ID__',
+      host: metadata.host ?? (typeof location !== 'undefined' ? location.hostname : ''),
+      embedded: metadata.embedded ?? (typeof window !== 'undefined' && typeof window.self !== 'undefined' && typeof window.top !== 'undefined' ? window.self !== window.top : false),
+      referrerOrigin: metadata.referrerOrigin ?? '',
+      touchPoints: metadata.touchPoints ?? (typeof navigator !== 'undefined' ? (navigator.maxTouchPoints || 0) : 0),
+      reducedMotion: metadata.reducedMotion ?? false,
+      lang: metadata.lang ?? (typeof navigator !== 'undefined' ? (navigator.language || '') : ''),
+      soundEnabled: metadata.soundEnabled ?? true,
+      audioState: metadata.audioState ?? 'none',
+      errors: Array.isArray(metadata.errors) ? metadata.errors : [],
     };
   }
 }

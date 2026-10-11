@@ -157,5 +157,28 @@ test('Controller Run-Log: abilityUses context fields and hazardSchedule Infinity
   const parsed = JSON.parse(serialized);
   const parsedLastTier = parsed.config.hazardSchedule[parsed.config.hazardSchedule.length - 1];
   assert.equal(parsedLastTier.upToMove, 'Infinity');
+
+  // 5. Field diagnostics in run log
+  const diagLog = ctrl.getRunLog({
+    host: 'example.com',
+    embedded: false,
+    referrerOrigin: 'https://itch.io',
+    touchPoints: 5,
+    reducedMotion: true,
+    lang: 'en-US',
+    soundEnabled: true,
+    audioState: 'running',
+    errors: [{ message: 'test error', file: 'app.js', line: 10, col: 2, ts: 12345, moveCountAtError: 0 }],
+  });
+  assert.equal(diagLog.host, 'example.com');
+  assert.equal(diagLog.embedded, false);
+  assert.equal(diagLog.referrerOrigin, 'https://itch.io');
+  assert.equal(diagLog.touchPoints, 5);
+  assert.equal(diagLog.reducedMotion, true);
+  assert.equal(diagLog.lang, 'en-US');
+  assert.equal(diagLog.soundEnabled, true);
+  assert.equal(diagLog.audioState, 'running');
+  assert.equal(diagLog.errors.length, 1);
+  assert.equal(diagLog.errors[0].message, 'test error');
 });
 

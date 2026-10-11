@@ -1,0 +1,74 @@
+{
+  "diagonal_merge": {
+    "sha256": "67d0da3bad933143318eee2c290e427857cb533d623b69ce26868bebb0950579",
+    "scale": 0.88,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 100,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 40.1
+  },
+  "eraser": {
+    "sha256": "12143e0073ca703abc9d2f6a11cd357fc2edcbc8c277dd68e8dc6bae7281d0b5",
+    "scale": 1.048,
+    "xPercent": 0.1,
+    "yPercent": 4.3,
+    "rawBboxPct": 84,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 35.9
+  },
+  "fault_line": {
+    "sha256": "82d8df0e85fb8817d222e69ad0bacb053bc6e42f8c74c637c6c0b6a2e48e3e3b",
+    "scale": 0.88,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 100,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 28.2
+  },
+  "last_stand": {
+    "sha256": "9da4e950fbcb33fa032ab142eaab794bc504fa298229e6506ce9b38644d73710",
+    "scale": 0.88,
+    "xPercent": 0.2,
+    "yPercent": 0.1,
+    "rawBboxPct": 100,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 42.3
+  },
+  "mason": {
+    "sha256": "a0585f87ee87fdd7ab3c580173582710c63da4e14026503446201054d1a48438",
+    "scale": 0.88,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 100,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 70.6
+  },
+  "rewind": {
+    "sha256": "f9a6643c73d91577c7bb866c84a32d9af4380990d44cbc412327e1ab97976c9f",
+    "scale": 1.186,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 74.2,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 9.4
+  },
+  "shatter": {
+    "sha256": "aed3eaec5cf14201b757d54af71d9ea1c5a52d3ebe10a465c09a1188ba240bd0",
+    "scale": 1.453,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 60.5,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 30
+  },
+  "siphon": {
+    "sha256": "6d9b7263cdeb41468b5de77a40c91721403584b015a2ceb4d5654dca0f476583",
+    "scale": 0.88,
+    "xPercent": 0.1,
+    "yPercent": 0.1,
+    "rawBboxPct": 100,
+    "finalBboxPct": 88,
+    "inkCoveragePct": 19.5
+  }
+}
