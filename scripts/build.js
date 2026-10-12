@@ -133,6 +133,16 @@ if (fs.existsSync(faviconSrc)) {
   fs.copyFileSync(faviconSrc, path.join(distDir, 'favicon.svg'));
 }
 
+// Copy fonts directory to dist/fonts
+const fontsSrcDir = path.join(rootDir, 'game', 'fonts');
+const fontsDistDir = path.join(distDir, 'fonts');
+if (fs.existsSync(fontsSrcDir)) {
+  fs.mkdirSync(fontsDistDir, { recursive: true });
+  for (const f of fs.readdirSync(fontsSrcDir)) {
+    fs.copyFileSync(path.join(fontsSrcDir, f), path.join(fontsDistDir, f));
+  }
+}
+
 // Calculate real total size recursively
 function getDirSizeBytes(dir) {
   let bytes = 0;
