@@ -740,19 +740,17 @@ function animateStoneSpawn(cellIndex) {
   setTimeout(() => {
     playStone();
 
-    const stoneTrans = getTileTranslate(cellIndex, metrics);
-    const centerX = stoneTrans.x + metrics.cellW / 2;
-    const centerY = stoneTrans.y + metrics.cellH / 2;
+    const cellPos = getCellCenter(cellIndex, metrics);
 
     // Ring pulse in dark colour (~280 ms)
     const ring = document.createElement('div');
     ring.className = 'stone-impact-ring';
-    ring.style.left = stoneTrans.x + 'px';
-    ring.style.top = stoneTrans.y + 'px';
-    ring.style.width = metrics.cellW + 'px';
-    ring.style.height = metrics.cellH + 'px';
+    ring.style.left = (cellPos.cx - cellPos.width / 2) + 'px';
+    ring.style.top = (cellPos.cy - cellPos.height / 2) + 'px';
+    ring.style.width = cellPos.width + 'px';
+    ring.style.height = cellPos.height + 'px';
     tilesLayer.appendChild(ring);
-    setTimeout(() => ring.remove(), 290);
+    setTimeout(() => { if (ring.parentNode) ring.remove(); }, 290);
 
     // 6 dust specks (3-5 px) drifting 10-22 px outward and fading
     for (let i = 0; i < 6; i++) {
@@ -761,8 +759,8 @@ function animateStoneSpawn(cellIndex) {
       const size = 3 + Math.random() * 2;
       speck.style.width = size + 'px';
       speck.style.height = size + 'px';
-      speck.style.left = (centerX - size / 2) + 'px';
-      speck.style.top = (centerY - size / 2) + 'px';
+      speck.style.left = (cellPos.cx - size / 2) + 'px';
+      speck.style.top = (cellPos.cy - size / 2) + 'px';
       tilesLayer.appendChild(speck);
 
       const angle = (i / 6) * 2 * Math.PI + (Math.random() * 0.4 - 0.2);
@@ -778,7 +776,7 @@ function animateStoneSpawn(cellIndex) {
         easing: 'ease-out',
         fill: 'forwards'
       });
-      setTimeout(() => speck.remove(), 300);
+      setTimeout(() => { if (speck.parentNode) speck.remove(); }, 300);
     }
 
     // 3 px nudge of board wrapper (~120 ms)
@@ -826,33 +824,42 @@ function triggerShatterAnimation(mergeDestinations, boardBefore, boardAfter) {
   const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   for (const { stoneCell, mergeDest } of destroyedCells) {
+    const stonePos = getCellCenter(stoneCell, metrics);
+    const destPos = getCellCenter(mergeDest !== undefined ? mergeDest : stoneCell, metrics);
+
+    // Flash overlay at destroyed stone's cell centre
+    const flashEl = document.createElement('div');
+    flashEl.className = 'shatter-flash';
+    flashEl.style.left = (stonePos.cx - stonePos.width / 2) + 'px';
+    flashEl.style.top = (stonePos.cy - stonePos.height / 2) + 'px';
+    flashEl.style.width = stonePos.width + 'px';
+    flashEl.style.height = stonePos.height + 'px';
+    tilesLayer.appendChild(flashEl);
+    setTimeout(() => { if (flashEl.parentNode) flashEl.remove(); }, 120);
+
     let stoneEl = tilesLayer.querySelector(`.stone[data-index="${stoneCell}"], .tile.stone[data-index="${stoneCell}"]`);
-    if (!stoneEl) {
-      stoneEl = createTileElement(stoneCell, STONE, false, metrics);
-      tilesLayer.appendChild(stoneEl);
+    if (stoneEl) {
+      stoneEl.classList.add('shattering-stone');
     }
-    stoneEl.classList.add('shattering-stone', 'shatter-flash');
 
-    const destTranslate = getTileTranslate(mergeDest, metrics);
-
-    // Short ring pulse at merged tile
+    // Short ring pulse at merged tile destination centre
     const pulse = document.createElement('div');
     pulse.className = 'shatter-pulse';
-    pulse.style.width = metrics.cellW + 'px';
-    pulse.style.height = metrics.cellH + 'px';
-    pulse.style.transform = destTranslate.transform;
+    pulse.style.left = (destPos.cx - destPos.width / 2) + 'px';
+    pulse.style.top = (destPos.cy - destPos.height / 2) + 'px';
+    pulse.style.width = destPos.width + 'px';
+    pulse.style.height = destPos.height + 'px';
     tilesLayer.appendChild(pulse);
-    setTimeout(() => pulse.remove(), 300);
+    setTimeout(() => { if (pulse.parentNode) pulse.remove(); }, 300);
 
-    const stoneTrans = getTileTranslate(stoneCell, metrics);
-    const centerX = stoneTrans.x + metrics.cellW / 2;
-    const centerY = stoneTrans.y + metrics.cellH / 2;
+    const centerX = stonePos.cx;
+    const centerY = stonePos.cy;
 
     setTimeout(() => {
       if (stoneEl && stoneEl.parentNode) stoneEl.remove();
 
       if (!prefersReduced) {
-        // 7 shards flying 20-40px outward with +-120deg rotation over 320ms, fading
+        // 7 shards flying 20-40px outward with +-120deg rotation over 320ms from stone cell centre
         for (let s = 0; s < 7; s++) {
           const shard = document.createElement('div');
           shard.className = 'shatter-shard';
@@ -875,7 +882,7 @@ function triggerShatterAnimation(mergeDestinations, boardBefore, boardAfter) {
             fill: 'forwards'
           });
 
-          setTimeout(() => shard.remove(), 350);
+          setTimeout(() => { if (shard.parentNode) shard.remove(); }, 350);
         }
       }
     }, 60);
@@ -941,6 +948,13 @@ function getTileTranslate(index, metrics = getGridMetrics()) {
   const x = Math.round((metrics.originX + col * metrics.stepX) * 100) / 100;
   const y = Math.round((metrics.originY + row * metrics.stepY) * 100) / 100;
   return { x, y, transform: `translate3d(${x}px, ${y}px, 0)` };
+}
+
+function getCellCenter(index, metrics = getGridMetrics()) {
+  const trans = getTileTranslate(index, metrics);
+  const cx = Math.round((trans.x + metrics.cellW / 2) * 100) / 100;
+  const cy = Math.round((trans.y + metrics.cellH / 2) * 100) / 100;
+  return { cx, cy, x: trans.x, y: trans.y, width: metrics.cellW, height: metrics.cellH };
 }
 
 function getTileClasses(val) {
@@ -1584,13 +1598,27 @@ function startTargeting(relicId) {
   renderAbilityBar();
 }
 
-function cancelTargeting() {
+function cleanupAbilityFocus(isKeyboard = false) {
+  if (!isKeyboard) {
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+  }
+  if (window.getSelection) {
+    try {
+      window.getSelection().removeAllRanges();
+    } catch {}
+  }
+}
+
+function cancelTargeting(isKeyboard = false) {
   activeTargeting = null;
   if (btnCancelTargeting) btnCancelTargeting.classList.add('hidden');
   if (targetingBar) targetingBar.classList.add('hidden');
   if (statusHintText) statusHintText.textContent = 'Swipe to move';
   clearTargetingHighlights();
   renderAbilityBar();
+  cleanupAbilityFocus(isKeyboard);
 }
 
 function highlightTargetingBoard() {
@@ -2658,6 +2686,12 @@ function startNewGame(seed = null) {
   window.performBlockedNudge = performBlockedNudge;
   window.executeRewind = executeRewind;
   window.executeAbility = executeAbility;
+  window.getCellCenter = getCellCenter;
+  window.getGridMetrics = getGridMetrics;
+  window.getTileTranslate = getTileTranslate;
+  window.executeEraserAbility = executeEraserAbility;
+  window.animateStoneSpawn = animateStoneSpawn;
+  window.cleanupAbilityFocus = cleanupAbilityFocus;
 
   syncBoard(controller.getBoard(), 'initialRender');
   updateHeader();
@@ -2673,7 +2707,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (activeTargeting) {
       e.preventDefault();
-      cancelTargeting();
+      cancelTargeting(true);
       return;
     }
     if (pauseOverlay && !pauseOverlay.classList.contains('hidden')) {
@@ -2870,9 +2904,9 @@ function executeEraserAbility(cellIdx) {
       }
 
       const metrics = getGridMetrics();
-      const pos = getTileTranslate(cellIdx, metrics);
-      const cx = pos.x + metrics.cellW / 2;
-      const cy = pos.y + metrics.cellH / 2;
+      const cellPos = getCellCenter(cellIdx, metrics);
+      const cx = cellPos.cx;
+      const cy = cellPos.cy;
       const faceStyle = face ? window.getComputedStyle(face) : null;
       const tileBg = (faceStyle && faceStyle.backgroundColor && faceStyle.backgroundColor !== 'rgba(0, 0, 0, 0)')
         ? faceStyle.backgroundColor

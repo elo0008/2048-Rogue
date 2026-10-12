@@ -46,6 +46,7 @@ function startStaticServer() {
     '.json': 'application/json; charset=utf-8',
     '.svg': 'image/svg+xml',
     '.png': 'image/png',
+    '.woff2': 'font/woff2',
   };
 
   const server = http.createServer((req, res) => {
@@ -102,12 +103,13 @@ async function getWsUrl(cdpPort) {
 }
 
 class CdpClient {
-  constructor(wsUrl, onConsoleError, onException) {
+  constructor(wsUrl, onConsoleError, onException, onRequest = () => {}) {
     this.ws = new WebSocket(wsUrl);
     this.id = 1;
     this.callbacks = new Map();
     this.onConsoleError = onConsoleError;
     this.onException = onException;
+    this.onRequest = onRequest;
 
     this.ready = new Promise((resolve, reject) => {
       this.ws.onopen = resolve;
@@ -116,7 +118,11 @@ class CdpClient {
 
     this.ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.method === 'Runtime.consoleAPICalled') {
+      if (data.method === 'Network.requestWillBeSent') {
+        if (data.params?.request?.url) {
+          this.onRequest(data.params.request.url);
+        }
+      } else if (data.method === 'Runtime.consoleAPICalled') {
         if (data.params.type === 'error') {
           const text = data.params.args.map(a => a.value || a.description || JSON.stringify(a)).join(' ');
           this.onConsoleError(text);
@@ -213,6 +219,7 @@ async function runSmokeTest() {
 
   try {
     const wsUrl = await getWsUrl(cdpPort);
+    const externalRequests = [];
     const cdp = new CdpClient(
       wsUrl,
       (err) => {
@@ -222,6 +229,11 @@ async function runSmokeTest() {
       (exc) => {
         console.error('[Browser Uncaught Exception]', exc);
         uncaughtExceptions.push(exc);
+      },
+      (url) => {
+        if (!url.startsWith('http://127.0.0.1') && !url.startsWith('http://localhost') && !url.startsWith('data:') && !url.startsWith('blob:')) {
+          externalRequests.push(url);
+        }
       }
     );
     await cdp.ready;
@@ -229,6 +241,7 @@ async function runSmokeTest() {
     await cdp.send('Page.enable');
     await cdp.send('Runtime.enable');
     await cdp.send('Console.enable');
+    await cdp.send('Network.enable');
 
     // -------------------------------------------------------------
     // Test 1: Standard launch, START hides overlay, 2 tiles appear, one swipe works
@@ -576,7 +589,126 @@ async function runSmokeTest() {
     );
     console.log(`[Smoke Test] ✔ Sound toggle setting (${soundStateAfterReload}) persists across reload.`);
 
-    // Assert zero console errors and zero uncaught exceptions
+    // -------------------------------------------------------------
+    // Z2 Smoke Check: Self-hosted Outfit font loaded, weights, zero external font requests
+    // -------------------------------------------------------------
+    console.log('[Smoke Test] Testing self-hosted Outfit variable font loading and weights...');
+    const fontCheck = await cdp.eval(`
+      (async () => {
+        await document.fonts.ready;
+        const weights = [400, 600, 700, 800, 900];
+        const loaded = {};
+        for (const w of weights) {
+          loaded[w] = document.fonts.check(w + ' 16px Outfit');
+        }
+        const hasOutfit = document.fonts.check('16px Outfit');
+        const rootFont = getComputedStyle(document.documentElement).getPropertyValue('--font').trim();
+        return { hasOutfit, loaded, rootFont };
+      })()
+    `);
+    assert.ok(fontCheck.hasOutfit, `Outfit font must be loaded in document.fonts`);
+    for (const [w, ok] of Object.entries(fontCheck.loaded)) {
+      assert.ok(ok, `Outfit weight ${w} must be loaded in document.fonts`);
+    }
+    assert.strictEqual(
+      externalRequests.length,
+      0,
+      `Expected 0 external font/CDN requests, got: ${JSON.stringify(externalRequests)}`
+    );
+    console.log(`[Smoke Test] ✔ Self-hosted Outfit font verified for weights (400, 600, 700, 800, 900) with 0 external requests.`);
+
+    // -------------------------------------------------------------
+    // Z3 Smoke Check: Touch emulation mobile check for Eraser & Diagonal (no persistent yellow border)
+    // -------------------------------------------------------------
+    console.log('[Smoke Test] Testing mobile touch emulation for Eraser and Diagonal (no persistent focus highlight)...');
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 3,
+      mobile: true
+    });
+    await cdp.send('Emulation.setTouchEmulationEnabled', {
+      enabled: true,
+      maxTouchPoints: 5
+    });
+
+    await cdp.send('Page.navigate', { url: makeUrl('?seed=1212&start=eraser,diagonal_charge&debug=1') });
+    await sleep(500);
+
+    // Setup board with tile at cell 0
+    await cdp.eval(`
+      (() => {
+        window.controller.state.over = false;
+        window.controller.state.board = [
+          64, 0, 0, 0,
+          0, 2, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0
+        ];
+        window.controller.state.abilities.eraser = { charges: 3, maxCharges: 3, counter: 0, swipesAtMax: 0, swipesPerCharge: 10 };
+        window.controller.state.abilities.diagonal_charge = { charges: 3, maxCharges: 3, counter: 0, swipesAtMax: 0, swipesPerCharge: 10 };
+        window.syncBoard(window.controller.getBoard(), 'resync');
+      })()
+    `);
+    await sleep(100);
+
+    // Touch tap Eraser button then tap tile cell 0
+    const tapEraserCoords = await cdp.eval(`
+      (() => {
+        const btn = document.querySelector('[data-ability="eraser"]');
+        const cell = document.querySelector('.cell[data-index="0"]');
+        const br = btn.getBoundingClientRect();
+        const cr = cell.getBoundingClientRect();
+        return {
+          btn: { x: Math.round(br.left + br.width / 2), y: Math.round(br.top + br.height / 2) },
+          cell: { x: Math.round(cr.left + cr.width / 2), y: Math.round(cr.top + cr.height / 2) }
+        };
+      })()
+    `);
+
+    // Dispatch touch tap on Eraser button
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: tapEraserCoords.btn.x, y: tapEraserCoords.btn.y }]
+    });
+    await sleep(40);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await sleep(150);
+
+    // Dispatch touch tap on tile 0
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: tapEraserCoords.cell.x, y: tapEraserCoords.cell.y }]
+    });
+    await sleep(40);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await sleep(300);
+
+    // Check board and activeElement after Eraser tap
+    const postEraserCheck = await cdp.eval(`
+      (() => {
+        const active = document.activeElement;
+        const board = document.getElementById('game-board');
+        const boardComp = board ? window.getComputedStyle(board) : null;
+        const sel = window.getSelection();
+        return {
+          activeTag: active ? active.tagName : null,
+          activeId: active ? active.id : null,
+          boardActive: active === board,
+          boardOutlineStyle: boardComp ? boardComp.outlineStyle : null,
+          boardOutlineWidth: boardComp ? boardComp.outlineWidth : null,
+          selectionText: sel ? sel.toString() : ''
+        };
+      })()
+    `);
+
+    assert.ok(!postEraserCheck.boardActive, `#game-board must not be document.activeElement after touch tap (active is ${postEraserCheck.activeTag}#${postEraserCheck.activeId})`);
+    assert.ok(
+      postEraserCheck.boardOutlineStyle === 'none' || postEraserCheck.boardOutlineWidth === '0px',
+      `#game-board must not have focus highlight outline (got style: ${postEraserCheck.boardOutlineStyle}, width: ${postEraserCheck.boardOutlineWidth})`
+    );
+    assert.strictEqual(postEraserCheck.selectionText, '', `Text selection must be empty after ability execution`);
+    console.log(`[Smoke Test] ✔ Post-Eraser mobile touch: board is not activeElement, outline is ${postEraserCheck.boardOutlineStyle}, selection is empty.`);
     assert.strictEqual(consoleErrors.length, 0, `Expected 0 console errors, got: ${JSON.stringify(consoleErrors)}`);
     assert.strictEqual(uncaughtExceptions.length, 0, `Expected 0 uncaught exceptions, got: ${JSON.stringify(uncaughtExceptions)}`);
     console.log('[Smoke Test] ✔ Zero console errors and uncaught exceptions.');

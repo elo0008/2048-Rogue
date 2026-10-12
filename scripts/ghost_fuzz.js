@@ -1,4 +1,5 @@
 import { findChrome } from './find_chrome.js';
+import { getSlideSetup, getDiagonalSetup } from './dev/find_setups.js';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -16,7 +17,7 @@ const PORT = 3012;
 const CDP_PORT = 9232;
 
 const isLongMode = process.argv.includes('--long');
-const ACTIONS_PER_SCENARIO = isLongMode ? 200 : 30;
+const ACTIONS_PER_SCENARIO = isLongMode ? 200 : 32;
 
 const outDir = path.join(rootDir, 'scripts', 'out');
 if (!fs.existsSync(outDir)) {
@@ -932,73 +933,156 @@ async function runFuzz() {
       activations: 0,
       destroyedStones: 0,
       shardsSeen: 0,
-      shardsCleaned: 0
+      shardsCleaned: 0,
+      maxDist: 0,
+      posFailures: 0
     };
-    results.push(await runScenario(cdp, 'K (shatter via slide & diagonal)', 'seed=1111&start=shatter,diagonal_charge&debug=1', async (c, i) => {
+    results.push(await runScenario(cdp, 'K (shatter via slide & diagonal all 16 cells)', 'seed=1111&start=shatter,diagonal_charge&debug=1', async (c, i) => {
+      const cell = i % 16;
       if (i % 2 === 0) {
-        // Slide merge: 32+32 -> 64 at (0,0) touching stone at (1,0)
+        // Slide merge for cell
+        const setup = getSlideSetup(cell);
         const res = await c.eval(`
           new Promise((resolve) => {
-            window.controller.state.board = [
-              32, 32, 0, 0,
-              'S', 0, 0, 0,
-              0, 0, 0, 0,
-              0, 0, 0, 0
-            ];
+            const cell = ${cell};
+            const setup = ${JSON.stringify(setup)};
+            const layer = document.getElementById('tiles-layer');
+            const metrics = window.getGridMetrics();
+            const expPos = window.getCellCenter(cell, metrics);
+            const layerRect = layer.getBoundingClientRect();
+
+            window.controller.state.over = false;
+            window.controller.state.board = [...setup.board];
             window.syncBoard(window.controller.getBoard(), 'resync');
             const actsBefore = (window.controller.getState().relicActivations?.shatter || 0);
-            window.handleMove('L');
-            setTimeout(() => {
-              const shards = document.querySelectorAll('.shatter-shard').length;
-              setTimeout(() => {
+
+            window.handleMove(setup.dir, 'swipe');
+
+            let measuredDist = null;
+            let shardCount = 0;
+            const start = performance.now();
+
+            function check() {
+              const now = performance.now();
+              const shardEls = Array.from(document.querySelectorAll('.shatter-shard'));
+              if (shardEls.length > 0 && measuredDist === null) {
+                let sumX = 0, sumY = 0;
+                for (const el of shardEls) {
+                  const r = el.getBoundingClientRect();
+                  sumX += (r.left - layerRect.left + r.width / 2);
+                  sumY += (r.top - layerRect.top + r.height / 2);
+                }
+                const cx = sumX / shardEls.length;
+                const cy = sumY / shardEls.length;
+                measuredDist = Math.hypot(cx - expPos.cx, cy - expPos.cy);
+                shardCount = shardEls.length;
+              }
+
+              if (now - start < 550) {
+                requestAnimationFrame(check);
+              } else {
                 const clean = document.querySelectorAll('.shatter-shard, .shatter-pulse').length === 0;
                 const actsAfter = (window.controller.getState().relicActivations?.shatter || 0);
                 const destroyed = (actsAfter > actsBefore) ? 1 : 0;
-                resolve({ shards, clean, activated: actsAfter > actsBefore, destroyed });
-              }, 370);
-            }, 70);
+                resolve({
+                  shards: shardCount,
+                  dist: measuredDist,
+                  clean,
+                  activated: actsAfter > actsBefore,
+                  destroyed
+                });
+              }
+            }
+            requestAnimationFrame(check);
           })
         `);
         if (res.activated) kShatterStats.activations++;
         if (res.destroyed) kShatterStats.destroyedStones += res.destroyed;
         kShatterStats.shardsSeen += res.shards;
         if (res.clean) kShatterStats.shardsCleaned += res.shards;
-        return { desc: `Slide shatter merge (shards: ${res.shards}, clean: ${res.clean})` };
+        if (res.dist !== null) {
+          if (res.dist > kShatterStats.maxDist) kShatterStats.maxDist = res.dist;
+          if (res.dist > 12.0) {
+            kShatterStats.posFailures++;
+            console.error(`❌ POSITION MISMATCH in Scenario K slide action #${i + 1} (cell ${cell}): measured dist ${res.dist.toFixed(2)}px > 12px`);
+          }
+        }
+        return { desc: `Slide shatter cell ${cell} (dist: ${res.dist !== null ? res.dist.toFixed(2) : 'none'}px, shards: ${res.shards}, clean: ${res.clean})` };
       } else {
-        // Diagonal merge: 32 at (0,0) with 32 at (1,1) touching stone at (2,1)
+        // Diagonal merge for cell
+        const setup = getDiagonalSetup(cell);
         const res = await c.eval(`
           new Promise((resolve) => {
-            window.controller.state.board = [
-              32, 0, 0, 0,
-              0, 32, 0, 0,
-              0, 'S', 0, 0,
-              0, 0, 0, 0
-            ];
+            const cell = ${cell};
+            const setup = ${JSON.stringify(setup)};
+            const layer = document.getElementById('tiles-layer');
+            const metrics = window.getGridMetrics();
+            const expPos = window.getCellCenter(cell, metrics);
+            const layerRect = layer.getBoundingClientRect();
+
+            window.controller.state.over = false;
+            window.controller.state.board = [...setup.board];
             window.controller.state.abilities.diagonal_charge = { charges: 3, counter: 0, swipesAtMax: 0, maxCharges: 3, swipesPerCharge: 10 };
             window.syncBoard(window.controller.getBoard(), 'resync');
             const actsBefore = (window.controller.getState().relicActivations?.shatter || 0);
-            window.executeAbility('diagonal_charge', { from: 0, to: 5 });
-            setTimeout(() => {
-              const shards = document.querySelectorAll('.shatter-shard').length;
-              setTimeout(() => {
+
+            window.executeAbility('diagonal_charge', { from: setup.from, to: setup.to });
+
+            let measuredDist = null;
+            let shardCount = 0;
+            const start = performance.now();
+
+            function check() {
+              const now = performance.now();
+              const shardEls = Array.from(document.querySelectorAll('.shatter-shard'));
+              if (shardEls.length > 0 && measuredDist === null) {
+                let sumX = 0, sumY = 0;
+                for (const el of shardEls) {
+                  const r = el.getBoundingClientRect();
+                  sumX += (r.left - layerRect.left + r.width / 2);
+                  sumY += (r.top - layerRect.top + r.height / 2);
+                }
+                const cx = sumX / shardEls.length;
+                const cy = sumY / shardEls.length;
+                measuredDist = Math.hypot(cx - expPos.cx, cy - expPos.cy);
+                shardCount = shardEls.length;
+              }
+
+              if (now - start < 550) {
+                requestAnimationFrame(check);
+              } else {
                 const clean = document.querySelectorAll('.shatter-shard, .shatter-pulse').length === 0;
                 const actsAfter = (window.controller.getState().relicActivations?.shatter || 0);
                 const destroyed = (actsAfter > actsBefore) ? 1 : 0;
-                resolve({ shards, clean, activated: actsAfter > actsBefore, destroyed });
-              }, 370);
-            }, 70);
+                resolve({
+                  shards: shardCount,
+                  dist: measuredDist,
+                  clean,
+                  activated: actsAfter > actsBefore,
+                  destroyed
+                });
+              }
+            }
+            requestAnimationFrame(check);
           })
         `);
         if (res.activated) kShatterStats.activations++;
         if (res.destroyed) kShatterStats.destroyedStones += res.destroyed;
         kShatterStats.shardsSeen += res.shards;
         if (res.clean) kShatterStats.shardsCleaned += res.shards;
-        return { desc: `Diagonal shatter merge (shards: ${res.shards}, clean: ${res.clean})`, diagonal: 1 };
+        if (res.dist !== null) {
+          if (res.dist > kShatterStats.maxDist) kShatterStats.maxDist = res.dist;
+          if (res.dist > 12.0) {
+            kShatterStats.posFailures++;
+            console.error(`❌ POSITION MISMATCH in Scenario K diagonal action #${i + 1} (cell ${cell}): measured dist ${res.dist.toFixed(2)}px > 12px`);
+          }
+        }
+        return { desc: `Diagonal shatter cell ${cell} (dist: ${res.dist !== null ? res.dist.toFixed(2) : 'none'}px, shards: ${res.shards}, clean: ${res.clean})`, diagonal: 1 };
       }
     }));
-    console.log(`[Scenario K Shatter Stats]: activations: ${kShatterStats.activations}, destroyedStones: ${kShatterStats.destroyedStones}, shardElementsSeen: ${kShatterStats.shardsSeen}, shardsCleaned: ${kShatterStats.shardsCleaned}`);
-    if (kShatterStats.activations === 0 || kShatterStats.destroyedStones === 0) {
-      console.error(`❌ FAILURE in Scenario K: zero shatters triggered!`);
+    console.log(`[Scenario K Shatter Stats]: activations: ${kShatterStats.activations}, destroyedStones: ${kShatterStats.destroyedStones}, shardElementsSeen: ${kShatterStats.shardsSeen}, shardsCleaned: ${kShatterStats.shardsCleaned}, maxDist: ${kShatterStats.maxDist.toFixed(2)}px, posFailures: ${kShatterStats.posFailures}`);
+    if (kShatterStats.activations === 0 || kShatterStats.destroyedStones === 0 || kShatterStats.posFailures > 0) {
+      console.error(`❌ FAILURE in Scenario K: zero shatters or position failures (${kShatterStats.posFailures})!`);
       results[results.length - 1].pass = false;
     }
 
