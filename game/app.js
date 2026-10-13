@@ -351,7 +351,10 @@ function parseUrlOptions() {
     debug = params.get('debug') === '1' || params.get('debug') === 'true';
   }
 
-  return { seed, config, debug };
+  const isRampV2 = params.get('ramp') === 'v2';
+  const hintsParam = params.get('hints');
+
+  return { seed, config, debug, isRampV2, hintsParam };
 }
 
 /* -------------------------------------------------------------
@@ -460,6 +463,7 @@ let popoverTimeout = null;
 function showRelicPopover(relicId, targetEl) {
   if (!relicPopover || !targetEl) return;
   if (popoverTimeout) clearTimeout(popoverTimeout);
+  relicPopover.removeAttribute('data-for');
 
   popoverTitle.textContent = RELIC_NAMES[relicId] || relicId;
   const cfg = (controller && controller.config) ? controller.config : (activeConfig || {});
@@ -498,11 +502,12 @@ function hideRelicPopover() {
   if (popoverTimeout) clearTimeout(popoverTimeout);
   relicPopover.classList.add('hidden');
   relicPopover.setAttribute('aria-hidden', 'true');
+  relicPopover.removeAttribute('data-for');
 }
 
 window.addEventListener('click', (e) => {
   if (!relicPopover || relicPopover.classList.contains('hidden')) return;
-  if (!e.target.closest('.relic-mini') && !e.target.closest('.relic-passive-item') && !e.target.closest('.ability-btn') && !e.target.closest('#relic-popover')) {
+  if (!e.target.closest('.relic-mini') && !e.target.closest('.relic-passive-item') && !e.target.closest('.ability-btn') && !e.target.closest('#hazard-telegraph') && !e.target.closest('#relic-popover')) {
     hideRelicPopover();
   }
 });
@@ -510,7 +515,11 @@ window.addEventListener('click', (e) => {
 /* -------------------------------------------------------------
  * App State & DOM Elements
  * ------------------------------------------------------------- */
-const { seed: initialSeed, config: activeConfig, debug: isDebugMode } = parseUrlOptions();
+const { seed: initialSeed, config: activeConfig, debug: isDebugMode, isRampV2, hintsParam } = parseUrlOptions();
+if (isRampV2) {
+  document.documentElement.classList.add('ramp-v2');
+  if (document.body) document.body.classList.add('ramp-v2');
+}
 const playerId = getPlayerId();
 
 let controller = null;
@@ -598,6 +607,120 @@ const dbgSlideSkipsEl = document.getElementById('dbg-slide-skips');
 if (isDebugMode) {
   debugPanel.classList.remove('hidden');
 }
+
+/* -------------------------------------------------------------
+ * Hazard Popover
+ * ------------------------------------------------------------- */
+function showHazardPopover() {
+  if (!relicPopover || !hazardTelegraphEl) return;
+  if (popoverTimeout) clearTimeout(popoverTimeout);
+
+  popoverTitle.textContent = 'HAZARD';
+  popoverDesc.textContent = 'A permanent stone appears when this reaches 0.';
+  relicPopover.classList.remove('hidden');
+  relicPopover.setAttribute('aria-hidden', 'false');
+  relicPopover.setAttribute('data-for', 'hazard');
+
+  const rect = hazardTelegraphEl.getBoundingClientRect();
+  const popoverWidth = relicPopover.offsetWidth || 240;
+  let left = rect.left + rect.width / 2 - popoverWidth / 2;
+  const viewportWidth = window.innerWidth;
+  if (left < 8) left = 8;
+  if (left + popoverWidth > viewportWidth - 8) {
+    left = Math.max(8, viewportWidth - 8 - popoverWidth);
+  }
+
+  let top = rect.bottom + 6;
+  if (top + 100 > window.innerHeight) {
+    top = Math.max(8, rect.top - 80);
+  }
+
+  relicPopover.style.left = `${Math.round(left)}px`;
+  relicPopover.style.top = `${Math.round(top)}px`;
+
+  popoverTimeout = setTimeout(() => {
+    hideRelicPopover();
+  }, 5000);
+}
+
+if (hazardTelegraphEl) {
+  hazardTelegraphEl.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (relicPopover && !relicPopover.classList.contains('hidden') && relicPopover.getAttribute('data-for') === 'hazard') {
+      hideRelicPopover();
+    } else {
+      showHazardPopover();
+    }
+  });
+}
+
+/* -------------------------------------------------------------
+ * First-Time Non-Blocking Hints System
+ * ------------------------------------------------------------- */
+const HINTS_STORAGE_KEY = '2048_rogue_hints_seen';
+let sessionHintsSeen = new Set();
+let activeHint = null;
+let activeHintTimer = null;
+
+function getSeenHints() {
+  try {
+    const raw = localStorage.getItem(HINTS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed);
+    }
+  } catch {}
+  return sessionHintsSeen;
+}
+
+function markHintSeen(hintId) {
+  sessionHintsSeen.add(hintId);
+  try {
+    const seen = getSeenHints();
+    seen.add(hintId);
+    localStorage.setItem(HINTS_STORAGE_KEY, JSON.stringify(Array.from(seen)));
+  } catch {}
+}
+
+function showFirstTimeHint(hintId, text) {
+  if (hintsParam === '0') return false;
+  if (hintsParam !== '1') {
+    const seen = getSeenHints();
+    if (seen.has(hintId)) return false;
+  } else {
+    if (sessionHintsSeen.has(hintId)) return false;
+  }
+  if (activeTargeting || (statusHintBar && statusHintBar.classList.contains('stuck-warning')) || (controller && controller.state && controller.state.stuckNeedsAbility)) {
+    return false;
+  }
+  markHintSeen(hintId);
+  activeHint = { hintId, text };
+  if (statusHintText) {
+    statusHintText.textContent = text;
+  }
+  if (activeHintTimer) clearTimeout(activeHintTimer);
+  activeHintTimer = setTimeout(() => {
+    dismissHint(hintId);
+  }, 4000);
+  return true;
+}
+
+function dismissHint(hintId = null) {
+  if (!activeHint) return;
+  if (!hintId || activeHint.hintId === hintId) {
+    activeHint = null;
+    if (activeHintTimer) {
+      clearTimeout(activeHintTimer);
+      activeHintTimer = null;
+    }
+    if (!activeTargeting && statusHintBar && !statusHintBar.classList.contains('stuck-warning')) {
+      if (statusHintText && !masonCandidates) {
+        statusHintText.textContent = 'Swipe to move';
+      }
+    }
+  }
+}
+
 
 /* -------------------------------------------------------------
  * UI Feedback: Toasts & Flashes
@@ -919,6 +1042,9 @@ window.__correctionsByCallSite = {
   interrupt: 0,
   rewind: 0,
   ability: 0,
+  'decision-resolve': 0,
+  'draft-resolve': 0,
+  setup: 0,
   resync: 0,
   initialRender: 0,
   other: 0,
@@ -1312,6 +1438,14 @@ function updateHeader() {
     hazardFillEl.style.width = `${pct}%`;
   }
 
+  // First-time hints (2) and (3)
+  if (movesLeft <= 5 && movesLeft > 0) {
+    showFirstTimeHint('hint2', 'Stones are permanent. They fill the board.');
+  }
+  if (controller.getBoard().includes(STONE)) {
+    showFirstTimeHint('hint3', 'That stone is permanent. Keep space free.');
+  }
+
   // Passive relics = every owned relic except diagonal_charge, eraser, rewind
   if (passiveRelicsContainer) {
     const owned = Array.from(state.relics);
@@ -1436,7 +1570,11 @@ function renderAbilityBar() {
     } else {
       statusHintBar.classList.remove('stuck-warning');
       if (statusHintText && !masonCandidates) {
-        statusHintText.textContent = 'Swipe to move';
+        if (activeHint) {
+          statusHintText.textContent = activeHint.text;
+        } else {
+          statusHintText.textContent = 'Swipe to move';
+        }
       }
     }
   }
@@ -1449,6 +1587,12 @@ function renderAbilityBar() {
     return;
   }
   abilityBar.classList.remove('hidden');
+
+  // First-time hints (4) and (5)
+  showFirstTimeHint('hint4', 'Abilities are free. They do not cost a move.');
+  if (allAbilities.rewind && (allAbilities.rewind.charges || 0) >= 1) {
+    showFirstTimeHint('hint5', 'Rewind undoes your last swipe.');
+  }
 
   for (const ab of abilityStates) {
     const rid = ab.relic;
@@ -1585,6 +1729,7 @@ function startTargeting(relicId) {
 
   if (btnCancelTargeting) btnCancelTargeting.classList.remove('hidden');
   if (targetingBar) targetingBar.classList.remove('hidden');
+  dismissHint();
 
   if (relicId === 'diagonal_charge') {
     if (targetingInstruction) targetingInstruction.textContent = 'Tap the tile to move, then the equal tile diagonal to it';
@@ -1615,7 +1760,7 @@ function cancelTargeting(isKeyboard = false) {
   activeTargeting = null;
   if (btnCancelTargeting) btnCancelTargeting.classList.add('hidden');
   if (targetingBar) targetingBar.classList.add('hidden');
-  if (statusHintText) statusHintText.textContent = 'Swipe to move';
+  if (statusHintText) statusHintText.textContent = activeHint ? activeHint.text : 'Swipe to move';
   clearTargetingHighlights();
   renderAbilityBar();
   cleanupAbilityFocus(isKeyboard);
@@ -1960,6 +2105,16 @@ function showDraftModal(decision) {
   if (draftOwnedCount) draftOwnedCount.textContent = owned.length;
   if (draftEyebrowEl) draftEyebrowEl.textContent = `Move ${controller.getState().moveCount} · RELIC DRAFT`;
 
+  const draftSubtitle = document.getElementById('draft-subtitle');
+  if (draftSubtitle) {
+    if (owned.length === 0) {
+      draftSubtitle.textContent = 'Pick one. It stays for the whole run.';
+      draftSubtitle.classList.remove('hidden');
+    } else {
+      draftSubtitle.textContent = 'One choice changes the rules of your run.';
+    }
+  }
+
   if (owned.length === 0) {
     draftOwnedChips.innerHTML = '<span class="no-relics-msg" style="font-size:11px; color:var(--muted);">None</span>';
   } else {
@@ -1993,7 +2148,7 @@ function showDraftModal(decision) {
     const tag = document.createElement('span');
     tag.className = 'tag';
     const isAbility = rid === 'diagonal_charge' || rid === 'eraser' || rid === 'rewind';
-    tag.textContent = isAbility ? 'ABILITY' : 'PASSIVE';
+    tag.textContent = isAbility ? 'Ability' : 'Always on';
 
     card.appendChild(iconWrap);
     card.appendChild(details);
@@ -2006,7 +2161,7 @@ function showDraftModal(decision) {
       uiMoveLog = []; // clear rewind stack on draft pick
       const res = controller.resolveDecision(rid);
       showToast(`Relic acquired: ${RELIC_NAMES[rid] || rid}`);
-      syncBoard(controller.getBoard(), 'draftResolve');
+      syncBoard(controller.getBoard(), 'draft-resolve');
       postMoveResolution(res);
     };
 
@@ -2052,7 +2207,7 @@ function clearMasonMode() {
     masonCandidates = null;
   }
   if (statusHintBar) statusHintBar.classList.remove('mason-active');
-  if (statusHintText) statusHintText.textContent = 'Swipe to move';
+  if (statusHintText) statusHintText.textContent = activeHint ? activeHint.text : 'Swipe to move';
 }
 
 /* -------------------------------------------------------------
@@ -2095,6 +2250,7 @@ function handleMove(direction, inputType = 'key') {
   }
 
   cancelTargeting();
+  dismissHint();
   controller.recordInput(inputType);
   initAudio();
 
@@ -2692,11 +2848,22 @@ function startNewGame(seed = null) {
   window.executeEraserAbility = executeEraserAbility;
   window.animateStoneSpawn = animateStoneSpawn;
   window.cleanupAbilityFocus = cleanupAbilityFocus;
+  window.showFirstTimeHint = showFirstTimeHint;
+  window.showHazardPopover = showHazardPopover;
+  Object.defineProperty(window, 'activeTargeting', {
+    get: () => activeTargeting,
+    set: (v) => { activeTargeting = v; },
+    configurable: true
+  });
 
   syncBoard(controller.getBoard(), 'initialRender');
   updateHeader();
   renderGhostTiles();
   renderAbilityBar();
+
+  if (controller.state.moveCount === 0) {
+    showFirstTimeHint('hint1', 'Swipe to slide tiles. Equal tiles merge.');
+  }
 }
 
 /* -------------------------------------------------------------
@@ -2705,6 +2872,11 @@ function startNewGame(seed = null) {
 // Keyboard Controls
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (relicPopover && !relicPopover.classList.contains('hidden')) {
+      e.preventDefault();
+      hideRelicPopover();
+      return;
+    }
     if (activeTargeting) {
       e.preventDefault();
       cancelTargeting(true);
@@ -2789,7 +2961,7 @@ boardEl.addEventListener('click', (e) => {
       clearMasonMode();
       uiMoveLog = [];
       const res = controller.resolveDecision(idx);
-      syncBoard(controller.getBoard(), 'masonPlacement');
+      syncBoard(controller.getBoard(), 'decision-resolve');
       animateStoneSpawn(idx);
       postMoveResolution(res);
     }

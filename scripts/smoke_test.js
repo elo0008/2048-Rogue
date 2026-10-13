@@ -713,6 +713,180 @@ async function runSmokeTest() {
     assert.strictEqual(uncaughtExceptions.length, 0, `Expected 0 uncaught exceptions, got: ${JSON.stringify(uncaughtExceptions)}`);
     console.log('[Smoke Test] ✔ Zero console errors and uncaught exceptions.');
 
+    // =============================================================
+    // R3 SMOKE ASSERTIONS: First-time hints & hazard telegraph popover
+    // =============================================================
+    console.log('[Smoke Test] Testing R3 First-time hints & hazard popover...');
+
+    // (1) with localStorage cleared, hint (1) appears before first swipe and is not shown again after reload
+    await cdp.eval(`localStorage.clear()`);
+    await cdp.send('Page.navigate', { url: makeUrl('') });
+    await sleep(350);
+    await cdp.eval(`
+      (() => {
+        const btn = document.getElementById('btn-play-start');
+        if (btn) btn.click();
+      })()
+    `);
+    await sleep(150);
+
+    const hint1Check = await cdp.eval(`
+      (() => {
+        const el = document.getElementById('status-hint-text');
+        return el ? el.textContent.trim() : '';
+      })()
+    `);
+    assert.strictEqual(hint1Check, 'Swipe to slide tiles. Equal tiles merge.', 'Hint (1) must appear before first swipe with cleared localStorage');
+
+    // Reload page -> hint (1) must NOT appear again because it was marked seen in localStorage
+    await cdp.send('Page.navigate', { url: makeUrl('') });
+    await sleep(350);
+    await cdp.eval(`
+      (() => {
+        const btn = document.getElementById('btn-play-start');
+        if (btn) btn.click();
+      })()
+    `);
+    await sleep(150);
+
+    const reloadHintCheck = await cdp.eval(`
+      (() => {
+        const el = document.getElementById('status-hint-text');
+        return el ? el.textContent.trim() : '';
+      })()
+    `);
+    assert.notStrictEqual(reloadHintCheck, 'Swipe to slide tiles. Equal tiles merge.', 'Hint (1) must not show again after reload');
+    console.log('[Smoke Test] ✔ Hint (1) appears initially and does not appear after reload.');
+
+    // (2) ?hints=0 shows none
+    await cdp.eval(`localStorage.clear()`);
+    await cdp.send('Page.navigate', { url: makeUrl('?hints=0') });
+    await sleep(350);
+    await cdp.eval(`
+      (() => {
+        const btn = document.getElementById('btn-play-start');
+        if (btn) btn.click();
+      })()
+    `);
+    await sleep(150);
+
+    const hints0Check = await cdp.eval(`
+      (() => {
+        const el = document.getElementById('status-hint-text');
+        return el ? el.textContent.trim() : '';
+      })()
+    `);
+    assert.notStrictEqual(hints0Check, 'Swipe to slide tiles. Equal tiles merge.', '?hints=0 must disable all first-time hints');
+    console.log('[Smoke Test] ✔ ?hints=0 shows no first-time hints.');
+
+    // (3) hints never change board top Y (print it with and without a hint visible)
+    await cdp.eval(`localStorage.clear()`);
+    await cdp.send('Page.navigate', { url: makeUrl('?hints=1') });
+    await sleep(350);
+    await cdp.eval(`
+      (() => {
+        const btn = document.getElementById('btn-play-start');
+        if (btn) btn.click();
+      })()
+    `);
+    await sleep(150);
+
+    const boardTopMetrics = await cdp.eval(`
+      (() => {
+        const board = document.getElementById('game-board');
+        const hintEl = document.getElementById('status-hint-text');
+        const bar = document.getElementById('status-hint-bar');
+
+        // Force hint 1 text visible
+        if (hintEl) hintEl.textContent = 'Swipe to slide tiles. Equal tiles merge.';
+        const topWithHint = board.getBoundingClientRect().top;
+
+        // Clear hint text
+        if (hintEl) hintEl.textContent = '';
+        const topWithoutHint = board.getBoundingClientRect().top;
+
+        // Restore default text
+        if (hintEl) hintEl.textContent = 'Swipe to move';
+        const topDefault = board.getBoundingClientRect().top;
+
+        return {
+          topWithHint,
+          topWithoutHint,
+          topDefault,
+          barHeight: bar ? bar.offsetHeight : 0
+        };
+      })()
+    `);
+
+    console.log(`[Smoke Test] Board top Y with hint: ${boardTopMetrics.topWithHint} px, without hint: ${boardTopMetrics.topWithoutHint} px, default: ${boardTopMetrics.topDefault} px (status bar height: ${boardTopMetrics.barHeight} px)`);
+    assert.strictEqual(boardTopMetrics.topWithHint, boardTopMetrics.topWithoutHint, 'Hints must never change board top Y');
+    assert.strictEqual(boardTopMetrics.topWithHint, boardTopMetrics.topDefault, 'Hints must never change board top Y vs default');
+    console.log('[Smoke Test] ✔ Hints cause zero layout shift (board top Y is strictly identical).');
+
+    // (4) hints never show during targeting or stuck state
+    const targetingAndStuckCheck = await cdp.eval(`
+      (() => {
+        // Active targeting
+        window.activeTargeting = { relicId: 'eraser', step: 1 };
+        const hintDuringTargeting = window.showFirstTimeHint('test', 'This should not appear');
+        window.activeTargeting = null;
+
+        // Stuck state
+        window.controller.state.stuckNeedsAbility = true;
+        const hintDuringStuck = window.showFirstTimeHint('test2', 'This should not appear');
+        window.controller.state.stuckNeedsAbility = false;
+
+        return {
+          hintDuringTargeting,
+          hintDuringStuck
+        };
+      })()
+    `);
+    assert.strictEqual(targetingAndStuckCheck.hintDuringTargeting, false, 'showFirstTimeHint must return false during targeting');
+    assert.strictEqual(targetingAndStuckCheck.hintDuringStuck, false, 'showFirstTimeHint must return false during stuck state');
+    console.log('[Smoke Test] ✔ Hints never show during targeting or stuck state.');
+
+    // (5) Tapping hazard telegraph strip opens popover inside 320px viewport saying: "A permanent stone appears when this reaches 0."
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 320,
+      height: 568,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await sleep(200);
+
+    const hazardPopoverCheck = await cdp.eval(`
+      (() => {
+        const telegraph = document.getElementById('hazard-telegraph');
+        if (telegraph) telegraph.click();
+
+        const popover = document.getElementById('relic-popover');
+        const isHidden = !popover || popover.classList.contains('hidden');
+        const desc = document.getElementById('popover-desc');
+        const descText = desc ? desc.textContent.trim() : '';
+        const rect = popover ? popover.getBoundingClientRect() : null;
+
+        const fits320 = rect ? (rect.left >= 0 && rect.right <= 320) : false;
+
+        // Test closing via Escape key
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
+        const isHiddenAfterEsc = popover ? popover.classList.contains('hidden') : true;
+
+        return {
+          opened: !isHidden,
+          descText,
+          fits320,
+          closedOnEsc: isHiddenAfterEsc
+        };
+      })()
+    `);
+
+    assert.ok(hazardPopoverCheck.opened, 'Hazard telegraph tap must open popover');
+    assert.strictEqual(hazardPopoverCheck.descText, 'A permanent stone appears when this reaches 0.', 'Popover text must match requirement');
+    assert.ok(hazardPopoverCheck.fits320, 'Popover must fit inside 320px viewport');
+    assert.ok(hazardPopoverCheck.closedOnEsc, 'Popover must close on Escape key');
+    console.log('[Smoke Test] ✔ Hazard telegraph popover opens on tap, fits within 320px, displays expected text, and closes on Escape.');
+
     cdp.close();
   } finally {
     if (chromeProcess) chromeProcess.kill();

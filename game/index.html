@@ -142,9 +142,10 @@
         <button class="sheetbutton btn-sound-toggle" id="btn-sound-start" type="button" aria-label="Toggle sound">SOUND: ON 🔊</button>
         <button class="link" id="btn-start-how" type="button" aria-expanded="false">How to play</button>
         <ul class="how hidden" id="start-how-list">
-          <li>Swipe to slide and merge matching numbers.</li>
-          <li>Stones are permanent and slowly choke the board.</li>
-          <li>Draft one relic every 60 moves.</li>
+          <li>Swipe and merge matching tiles.</li>
+          <li>Stones are permanent hazards.</li>
+          <li>Pick a relic every 60 moves.</li>
+          <li>Abilities are free actions.</li>
         </ul>
         <div id="start-build-id" class="foot start-build-footer">BUILD: __BUILD_ID__</div>
       </div>
@@ -155,7 +156,7 @@
       <div class="modal draft-card-container">
         <div class="eyebrow" id="draft-eyebrow">RELIC DRAFT</div>
         <h2 id="draft-title" class="draft-title">Choose a relic</h2>
-        <p class="sub">One choice changes the rules of your run.</p>
+        <p class="sub draft-subtitle" id="draft-subtitle">Pick one. It stays for the whole run.</p>
         <div id="draft-offers-row" class="draft-cards draft-offers-row"></div>
         <details class="owned draft-owned-section" open>
           <summary>Already owned · <span id="draft-owned-count">0</span></summary>
@@ -175,9 +176,10 @@
         <button class="sheetbutton btn-sound-toggle" id="btn-pause-sound" type="button" aria-label="Toggle sound">Sound: On <span style="float:right">🔊</span></button>
         <button class="sheetbutton" id="btn-pause-how" type="button">How to play</button>
         <ul class="how hidden" id="pause-how-list">
-          <li>Swipe to slide and merge matching numbers.</li>
+          <li>Swipe and merge matching tiles.</li>
           <li>Stones are permanent hazards.</li>
-          <li>Choose a relic every 60 moves.</li>
+          <li>Pick a relic every 60 moves.</li>
+          <li>Abilities are free actions.</li>
         </ul>
       </div>
     </div>

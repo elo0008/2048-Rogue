@@ -553,7 +553,9 @@ async function runScenario(cdp, name, urlParams, runner) {
         window.__correctionsByCallSite.interrupt = 0;
         window.__correctionsByCallSite.rewind = 0;
         window.__correctionsByCallSite.ability = 0;
-        window.__correctionsByCallSite.resync = 0;
+        window.__correctionsByCallSite['decision-resolve'] = 0;
+        window.__correctionsByCallSite['draft-resolve'] = 0;
+        window.__correctionsByCallSite.setup = 0;
         window.__correctionsByCallSite.other = 0;
       }
     })()
@@ -643,15 +645,27 @@ async function runScenario(cdp, name, urlParams, runner) {
   // Verify headline total matches sum of runtime call sites
   const otherCalls = { ...callSites };
   delete otherCalls.initialRender;
-  const sumCallSites = Object.values(otherCalls).reduce((a, b) => a + b, 0);
+  const sumCategories = (callSites.slideFinish || 0) +
+                        (callSites.rewind || 0) +
+                        (callSites.interrupt || 0) +
+                        (callSites.ability || 0) +
+                        (callSites['decision-resolve'] || 0) +
+                        (callSites['draft-resolve'] || 0) +
+                        (callSites.setup || 0) +
+                        (callSites.other || 0);
 
-  console.log(`✔ Scenario ${name} PASSED all ${ACTIONS_PER_SCENARIO} actions. (effective actions: ${effectiveActions}, gameOvers: ${gameOvers}, playAgains: ${playAgains}, rewinds: ${rewinds}, diagonal: ${diagonalUses}, eraser: ${eraserUses}, idle timeouts: ${idleTimeouts}, syncBoard corrections: ${debugCorrections} [slideFinish: ${callSites.slideFinish || 0}, rewind: ${callSites.rewind || 0}, interrupt: ${callSites.interrupt || 0}, ability: ${callSites.ability || 0}, resync: ${callSites.resync || 0}, other: ${callSites.other || 0}], initialRender: ${initialRender}, 16ms slide samples: ${slideSamples})`);
+  console.log(`✔ Scenario ${name} PASSED all ${ACTIONS_PER_SCENARIO} actions. (effective actions: ${effectiveActions}, gameOvers: ${gameOvers}, playAgains: ${playAgains}, rewinds: ${rewinds}, diagonal: ${diagonalUses}, eraser: ${eraserUses}, idle timeouts: ${idleTimeouts}, syncBoard corrections: ${debugCorrections} [slideFinish: ${callSites.slideFinish || 0}, rewind: ${callSites.rewind || 0}, interrupt: ${callSites.interrupt || 0}, ability: ${callSites.ability || 0}, decision-resolve: ${callSites['decision-resolve'] || 0}, draft-resolve: ${callSites['draft-resolve'] || 0}, setup: ${callSites.setup || 0}, other: ${callSites.other || 0}], initialRender: ${initialRender}, 16ms slide samples: ${slideSamples})`);
   if (callSites.other > 0) {
     console.log(`   [Call sites breakdown]: ${JSON.stringify(otherCalls)}`);
   }
   const timeoutDetails = await cdp.eval(`window.__idleTimeoutDetails || []`);
   if (timeoutDetails.length > 0) {
     console.log(`   [Timeout Animations Sample]:`, JSON.stringify(timeoutDetails[0]));
+  }
+
+  if (debugCorrections !== sumCategories) {
+    console.error(`❌ FAILURE in Scenario ${name}: headline total corrections (${debugCorrections}) !== sum of categories (${sumCategories})!`);
+    return { pass: false, scenario: name, error: `headline (${debugCorrections}) != sumCategories (${sumCategories})` };
   }
 
   const unlabelledOther = callSites.other || 0;
@@ -913,7 +927,7 @@ async function runFuzz() {
             4, 2, 4, 'S'
           ];
           window.controller.state.stuckNeedsAbility = true;
-          window.syncBoard(window.controller.getBoard(), 'resync');
+          window.syncBoard(window.controller.getBoard(), 'setup');
         })()
       `);
       const dir = DIRS[i % 4];
@@ -953,13 +967,14 @@ async function runFuzz() {
 
             window.controller.state.over = false;
             window.controller.state.board = [...setup.board];
-            window.syncBoard(window.controller.getBoard(), 'resync');
+            window.syncBoard(window.controller.getBoard(), 'setup');
             const actsBefore = (window.controller.getState().relicActivations?.shatter || 0);
 
             window.handleMove(setup.dir, 'swipe');
 
             let measuredDist = null;
             let shardCount = 0;
+            let shatterStart = null;
             const start = performance.now();
 
             function check() {
@@ -976,18 +991,28 @@ async function runFuzz() {
                 const cy = sumY / shardEls.length;
                 measuredDist = Math.hypot(cx - expPos.cx, cy - expPos.cy);
                 shardCount = shardEls.length;
+                shatterStart = now;
               }
 
-              if (now - start < 550) {
+              const elapsedTotal = now - start;
+              const elapsedAfterShatter = shatterStart ? (now - shatterStart) : 0;
+              const remainingBad = document.querySelectorAll('.shatter-shard, .shatter-pulse, .shatter-flash, .stone-impact-ring, .stand-dust-ring').length;
+
+              const shouldWait = shatterStart
+                ? (remainingBad > 0 && elapsedAfterShatter < 800)
+                : (elapsedTotal < 800);
+
+              if (shouldWait) {
                 requestAnimationFrame(check);
               } else {
-                const clean = document.querySelectorAll('.shatter-shard, .shatter-pulse').length === 0;
+                const clean = remainingBad === 0 && measuredDist !== null;
                 const actsAfter = (window.controller.getState().relicActivations?.shatter || 0);
                 const destroyed = (actsAfter > actsBefore) ? 1 : 0;
                 resolve({
                   shards: shardCount,
                   dist: measuredDist,
                   clean,
+                  remainingBad,
                   activated: actsAfter > actsBefore,
                   destroyed
                 });
@@ -1000,6 +1025,9 @@ async function runFuzz() {
         if (res.destroyed) kShatterStats.destroyedStones += res.destroyed;
         kShatterStats.shardsSeen += res.shards;
         if (res.clean) kShatterStats.shardsCleaned += res.shards;
+        if (!res.clean || res.remainingBad > 0) {
+          console.error(`❌ LEFTOVER ELEMENTS in Scenario K slide action #${i + 1}: remainingBad = ${res.remainingBad}`);
+        }
         if (res.dist !== null) {
           if (res.dist > kShatterStats.maxDist) kShatterStats.maxDist = res.dist;
           if (res.dist > 12.0) {
@@ -1023,13 +1051,14 @@ async function runFuzz() {
             window.controller.state.over = false;
             window.controller.state.board = [...setup.board];
             window.controller.state.abilities.diagonal_charge = { charges: 3, counter: 0, swipesAtMax: 0, maxCharges: 3, swipesPerCharge: 10 };
-            window.syncBoard(window.controller.getBoard(), 'resync');
+            window.syncBoard(window.controller.getBoard(), 'setup');
             const actsBefore = (window.controller.getState().relicActivations?.shatter || 0);
 
             window.executeAbility('diagonal_charge', { from: setup.from, to: setup.to });
 
             let measuredDist = null;
             let shardCount = 0;
+            let shatterStart = null;
             const start = performance.now();
 
             function check() {
@@ -1046,18 +1075,28 @@ async function runFuzz() {
                 const cy = sumY / shardEls.length;
                 measuredDist = Math.hypot(cx - expPos.cx, cy - expPos.cy);
                 shardCount = shardEls.length;
+                shatterStart = now;
               }
 
-              if (now - start < 550) {
+              const elapsedTotal = now - start;
+              const elapsedAfterShatter = shatterStart ? (now - shatterStart) : 0;
+              const remainingBad = document.querySelectorAll('.shatter-shard, .shatter-pulse, .shatter-flash, .stone-impact-ring, .stand-dust-ring').length;
+
+              const shouldWait = shatterStart
+                ? (remainingBad > 0 && elapsedAfterShatter < 800)
+                : (elapsedTotal < 800);
+
+              if (shouldWait) {
                 requestAnimationFrame(check);
               } else {
-                const clean = document.querySelectorAll('.shatter-shard, .shatter-pulse').length === 0;
+                const clean = remainingBad === 0 && measuredDist !== null;
                 const actsAfter = (window.controller.getState().relicActivations?.shatter || 0);
                 const destroyed = (actsAfter > actsBefore) ? 1 : 0;
                 resolve({
                   shards: shardCount,
                   dist: measuredDist,
                   clean,
+                  remainingBad,
                   activated: actsAfter > actsBefore,
                   destroyed
                 });
@@ -1070,6 +1109,9 @@ async function runFuzz() {
         if (res.destroyed) kShatterStats.destroyedStones += res.destroyed;
         kShatterStats.shardsSeen += res.shards;
         if (res.clean) kShatterStats.shardsCleaned += res.shards;
+        if (!res.clean || res.remainingBad > 0) {
+          console.error(`❌ LEFTOVER ELEMENTS in Scenario K diagonal action #${i + 1}: remainingBad = ${res.remainingBad}`);
+        }
         if (res.dist !== null) {
           if (res.dist > kShatterStats.maxDist) kShatterStats.maxDist = res.dist;
           if (res.dist > 12.0) {
@@ -1081,8 +1123,8 @@ async function runFuzz() {
       }
     }));
     console.log(`[Scenario K Shatter Stats]: activations: ${kShatterStats.activations}, destroyedStones: ${kShatterStats.destroyedStones}, shardElementsSeen: ${kShatterStats.shardsSeen}, shardsCleaned: ${kShatterStats.shardsCleaned}, maxDist: ${kShatterStats.maxDist.toFixed(2)}px, posFailures: ${kShatterStats.posFailures}`);
-    if (kShatterStats.activations === 0 || kShatterStats.destroyedStones === 0 || kShatterStats.posFailures > 0) {
-      console.error(`❌ FAILURE in Scenario K: zero shatters or position failures (${kShatterStats.posFailures})!`);
+    if (kShatterStats.activations === 0 || kShatterStats.destroyedStones === 0 || kShatterStats.posFailures > 0 || kShatterStats.shardsSeen !== kShatterStats.shardsCleaned) {
+      console.error(`❌ FAILURE in Scenario K: zero shatters, posFailures (${kShatterStats.posFailures}), or shardsSeen (${kShatterStats.shardsSeen}) !== shardsCleaned (${kShatterStats.shardsCleaned})!`);
       results[results.length - 1].pass = false;
     }
 
@@ -1095,7 +1137,7 @@ async function runFuzz() {
         const data = await cdp.eval(`
           (() => {
             window.controller.state.board = [2, 4, 8, 16, 128, 256, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-            window.syncBoard(window.controller.getBoard(), 'resync');
+            window.syncBoard(window.controller.getBoard(), 'setup');
             const btn = document.querySelector('button.ability-btn[data-relic="eraser"]');
             if (btn) btn.click();
 
@@ -1120,7 +1162,7 @@ async function runFuzz() {
         const data = await cdp.eval(`
           (() => {
             window.controller.state.board = [2, 0, 0, 0, 0, 2, 128, 256, 0, 0, 0, 0, 0, 0, 0, 0];
-            window.syncBoard(window.controller.getBoard(), 'resync');
+            window.syncBoard(window.controller.getBoard(), 'setup');
             window.renderAbilityBar();
             window.startTargeting('diagonal_charge');
 
@@ -1146,7 +1188,7 @@ async function runFuzz() {
         const data = await cdp.eval(`
           (() => {
             window.controller.state.board = [2, 0, 0, 0, 0, 2, 128, 256, 0, 0, 0, 0, 0, 0, 0, 0];
-            window.syncBoard(window.controller.getBoard(), 'resync');
+            window.syncBoard(window.controller.getBoard(), 'setup');
             window.renderAbilityBar();
             window.startTargeting('diagonal_charge');
 
@@ -1185,20 +1227,33 @@ async function runFuzz() {
 
     const failedScenarios = results.filter(r => !r.pass);
     console.log('\n================================= FUZZ SUMMARY =================================');
-    console.log('Scenario | Status | Actions | Effective | Over/Again | Rew/Diag/Ers | Guard TO | Corrections | InitialRender | Slide Samples');
-    console.log('-----------------------------------------------------------------------------------------------------------------------');
+    console.log('Scenario | Status | Actions | Effective | Over/Again | Rew/Diag/Ers | Guard TO | Corrections (tot:[sf/rw/ab/dec/drf/set]) | InitialRender | Slide Samples');
+    console.log('-----------------------------------------------------------------------------------------------------------------------------------------');
     let totalSlideFinish = 0;
     let totalRewind = 0;
+    let totalAbility = 0;
+    let totalDecision = 0;
+    let totalDraft = 0;
+    let totalSetup = 0;
     let totalOther = 0;
     let totalSamples = 0;
     for (const r of results) {
       const sf = r.callSites?.slideFinish || 0;
       const rw = r.callSites?.rewind || 0;
-      const oth = (r.callSites?.interrupt || 0) + (r.callSites?.ability || 0) + (r.callSites?.other || 0);
+      const ab = r.callSites?.ability || 0;
+      const dec = r.callSites?.['decision-resolve'] || 0;
+      const drf = r.callSites?.['draft-resolve'] || 0;
+      const set = r.callSites?.setup || 0;
+      const oth = (r.callSites?.interrupt || 0) + (r.callSites?.other || 0);
       totalSlideFinish += sf;
       totalRewind += rw;
+      totalAbility += ab;
+      totalDecision += dec;
+      totalDraft += drf;
+      totalSetup += set;
       totalOther += oth;
       totalSamples += r.slideSamples || 0;
+      const corrStr = `${r.corrections} [${sf}/${rw}/${ab}/${dec}/${drf}/${set}]`;
       console.log(
         `${r.scenario.padEnd(42)} | ` +
         `${(r.pass ? 'PASS' : 'FAIL').padEnd(6)} | ` +
@@ -1207,14 +1262,14 @@ async function runFuzz() {
         `${`${r.gameOvers}/${r.playAgains}`.padEnd(10)} | ` +
         `${`${r.rewinds}/${r.diagonalUses}/${r.eraserUses}`.padEnd(12)} | ` +
         `${String(r.idleTimeouts).padEnd(8)} | ` +
-        `${`${sf}/${rw}/${oth}`.padEnd(11)} | ` +
+        `${corrStr.padEnd(39)} | ` +
         `${String(r.initialRender).padEnd(13)} | ` +
         `${r.slideSamples}`
       );
     }
-    console.log('-----------------------------------------------------------------------------------------------------------------------');
-    console.log(`TOTALS: slideFinish: ${totalSlideFinish}, rewind: ${totalRewind}, interrupt/ability/other: ${totalOther}, slideSamples: ${totalSamples}`);
-    console.log('================================================================================\n');
+    console.log('-----------------------------------------------------------------------------------------------------------------------------------------');
+    console.log(`TOTALS: slideFinish: ${totalSlideFinish}, rewind: ${totalRewind}, ability: ${totalAbility}, decision-resolve: ${totalDecision}, draft-resolve: ${totalDraft}, setup: ${totalSetup}, other: ${totalOther}, slideSamples: ${totalSamples}`);
+    console.log('=========================================================================================================\n');
 
     if (failedScenarios.length > 0) {
       console.error(`❌ Fuzz test failed on ${failedScenarios.length} scenarios.`);

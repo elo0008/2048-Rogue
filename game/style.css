@@ -415,7 +415,7 @@ button:focus-visible {
 
 .stat label, .stat-label {
   display: block;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: .12em;
   color: var(--muted);
   font-weight: 800;
@@ -736,7 +736,7 @@ button:focus-visible {
   inset: 0;
   border-radius: 8px;
   border: 3px solid var(--accent);
-  box-shadow: 0 0 16px #f2c77e99;
+  box-shadow: 0 0 0 1px #141315, 0 0 16px #f2c77e99;
   pointer-events: none;
   z-index: 14;
 }
@@ -747,7 +747,7 @@ button:focus-visible {
   content: "PAIR";
   position: absolute;
   bottom: 3px;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: .08em;
   color: var(--accent);
   font-weight: 900;
@@ -773,7 +773,7 @@ button:focus-visible {
   inset: 0;
   border-radius: 8px;
   border: 3px solid var(--accent);
-  box-shadow: 0 0 16px #f2c77e99;
+  box-shadow: 0 0 0 1px #141315, 0 0 16px #f2c77e99;
   pointer-events: none;
   z-index: 14;
 }
@@ -782,7 +782,7 @@ button:focus-visible {
   content: "MERGE";
   position: absolute;
   bottom: 3px;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: .08em;
   color: var(--accent);
   background: rgba(20, 19, 21, 0.94);
@@ -812,7 +812,7 @@ button:focus-visible {
   inset: 0;
   border-radius: 8px;
   border: 3px solid #f27d70;
-  box-shadow: 0 0 14px #f27d7088;
+  box-shadow: 0 0 0 1px #141315, 0 0 14px #f27d7088;
   pointer-events: none;
   z-index: 15;
 }
@@ -912,7 +912,7 @@ button:focus-visible {
   bottom: 0;
   transform: translateY(100%);
   color: var(--accent);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 900;
 }
 
@@ -936,7 +936,7 @@ button:focus-visible {
   justify-content: center;
   gap: 8px;
   text-align: center;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 28px;
   color: var(--muted);
   flex-shrink: 0;
@@ -958,7 +958,7 @@ button:focus-visible {
   max-height: 22px;
   line-height: 20px;
   padding: 0 8px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   border-radius: 5px;
   border: 1px solid var(--line);
@@ -1064,8 +1064,9 @@ button:focus-visible {
 }
 
 .ability .name {
-  font-size: 9px;
+  font-size: clamp(11px, 3.2vw, 12px);
   font-weight: 900;
+  letter-spacing: -0.02em;
   white-space: nowrap;
   color: var(--text);
 }
@@ -1088,7 +1089,7 @@ button:focus-visible {
 }
 
 .refill, .ability-btn-cooldown {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -1108,7 +1109,7 @@ button:focus-visible {
 
 .bottomhint {
   text-align: center;
-  font-size: 8px;
+  font-size: 11px;
   color: #84736b;
   letter-spacing: .09em;
   padding-top: 6px;
@@ -1159,7 +1160,7 @@ button:focus-visible {
   border: 1px solid white;
   border-radius: 10px;
   padding: 9px 11px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
   box-shadow: 0 10px 30px #0008;
   box-sizing: border-box;
@@ -1174,7 +1175,7 @@ button:focus-visible {
 }
 
 .popover-desc {
-  font-size: 10px;
+  font-size: 11px;
   color: #2b211b;
 }
 
@@ -1232,7 +1233,7 @@ button:focus-visible {
 
 .eyebrow {
   text-align: center;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: .2em;
   text-transform: uppercase;
   color: var(--accent);
@@ -1288,7 +1289,7 @@ button:focus-visible {
 .best {
   text-align: center;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: .13em;
   margin: 13px 0;
 }
@@ -1325,7 +1326,7 @@ button:focus-visible {
 .foot, .start-build-footer {
   text-align: center;
   color: #8d7b74;
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: .12em;
   margin-top: 15px;
 }
@@ -1387,13 +1388,13 @@ button:focus-visible {
 }
 
 .ddesc, .draft-offer-desc {
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.4;
   color: var(--muted);
 }
 
 .tag {
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 900;
   letter-spacing: .1em;
   color: var(--accent);
@@ -1409,7 +1410,7 @@ button:focus-visible {
 }
 
 .owned summary {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   cursor: pointer;
 }
@@ -1479,7 +1480,7 @@ button:focus-visible {
   color: var(--accentInk);
   border-radius: 99px;
   padding: 5px 9px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 950;
   letter-spacing: .1em;
   margin-bottom: 8px;
@@ -1507,7 +1508,7 @@ button:focus-visible {
 .finalstat small, .summary-label {
   display: block;
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: .1em;
 }
 
@@ -1620,7 +1621,7 @@ button:focus-visible {
 
 .stand-center-wrapper .stand-copy .stand-subtitle {
   margin: 0;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: .18em;
   color: var(--soft);
 }
@@ -1647,7 +1648,7 @@ button:focus-visible {
 }
 
 .stand p {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: .18em;
   color: var(--soft);
 }
@@ -1945,3 +1946,65 @@ button:focus-visible {
   border-radius: 4px;
   color: var(--accent);
 }
+
+/* ==========================================================================
+   Alternative Tile Ramp "v2" (Switched via URL parameter ?ramp=v2)
+   Luminance strictly increasing from 2 to 4096; adjacent contrast ratio >= 1.15;
+   Tile 2 vs empty cell >= 1.5; Stone vs tile 2 >= 1.5; Text contrast >= 4.5;
+   Non-colour cue from 128 upward (strengthening inner ring and glow).
+   ========================================================================== */
+:root.ramp-v2, body.ramp-v2 {
+  --t2: #423d3f;
+  --t4: #4e4849;
+  --t8: #5b5454;
+  --t16: #69605e;
+  --t32: #948375;
+  --t64: #a69076;
+  --t128: #be9f63;
+  --t256: #d3b04c;
+  --t512: #e4bf40;
+  --t1024: #f2cd4b;
+  --t2048: #fae16d;
+  --t4096: #fff49e;
+}
+
+.ramp-v2 .v2 .tile-face, .ramp-v2 .tile-2 .tile-face,
+.ramp-v2 .v4 .tile-face, .ramp-v2 .tile-4 .tile-face,
+.ramp-v2 .v8 .tile-face, .ramp-v2 .tile-8 .tile-face,
+.ramp-v2 .v16 .tile-face, .ramp-v2 .tile-16 .tile-face {
+  color: #ffffff !important;
+}
+
+.ramp-v2 .v32 .tile-face, .ramp-v2 .tile-32 .tile-face,
+.ramp-v2 .v64 .tile-face, .ramp-v2 .tile-64 .tile-face,
+.ramp-v2 .v128 .tile-face, .ramp-v2 .tile-128 .tile-face,
+.ramp-v2 .v256 .tile-face, .ramp-v2 .tile-256 .tile-face,
+.ramp-v2 .v512 .tile-face, .ramp-v2 .tile-512 .tile-face,
+.ramp-v2 .v1024 .tile-face, .ramp-v2 .tile-1024 .tile-face,
+.ramp-v2 .v2048 .tile-face, .ramp-v2 .tile-2048 .tile-face,
+.ramp-v2 .v4096 .tile-face, .ramp-v2 .tile-4096 .tile-face,
+.ramp-v2 .tile-8192 .tile-face {
+  color: #1e1715 !important;
+}
+
+/* Non-colour cue from 128 upward (strengthening inner ring and glow) */
+.ramp-v2 .v128 .tile-face, .ramp-v2 .tile-128 .tile-face {
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.4);
+}
+.ramp-v2 .v256 .tile-face, .ramp-v2 .tile-256 .tile-face {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55), inset 0 0 4px rgba(255, 255, 255, 0.15);
+}
+.ramp-v2 .v512 .tile-face, .ramp-v2 .tile-512 .tile-face {
+  box-shadow: inset 0 0 0 2.5px rgba(255, 255, 255, 0.7), inset 0 0 7px rgba(255, 255, 255, 0.25);
+}
+.ramp-v2 .v1024 .tile-face, .ramp-v2 .tile-1024 .tile-face {
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.85), inset 0 0 10px rgba(255, 255, 255, 0.35);
+}
+.ramp-v2 .v2048 .tile-face, .ramp-v2 .tile-2048 .tile-face {
+  box-shadow: inset 0 0 0 3.5px #ffffff, inset 0 0 14px rgba(255, 255, 255, 0.5);
+}
+.ramp-v2 .v4096 .tile-face, .ramp-v2 .tile-4096 .tile-face,
+.ramp-v2 .tile-8192 .tile-face {
+  box-shadow: inset 0 0 0 4px #ffffff, inset 0 0 18px rgba(255, 255, 255, 0.65);
+}
+

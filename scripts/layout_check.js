@@ -148,16 +148,23 @@ async function runLayoutCheck() {
     await cdp.send('Page.enable');
     await cdp.send('Runtime.enable');
 
-    // Matrix: widths 320/360/390/430 x countdown 75/9/1 x passives 0/4/5 x abilities 0/3
-    const widths = [320, 360, 390, 430];
+    // Matrix: viewports 320x568, 360x640, 390x742, 430x844 x countdown 75/9/1 x passives 0/4/5 x abilities 0/3
+    const viewports = [
+      { width: 320, height: 568 },
+      { width: 360, height: 640 },
+      { width: 390, height: 742 },
+      { width: 430, height: 844 }
+    ];
     const countdowns = [75, 9, 1];
     const passivesList = [0, 4, 5];
     const abilitiesList = [0, 3];
 
-    for (const w of widths) {
+    for (const vp of viewports) {
+      const w = vp.width;
+      const h = vp.height;
       await cdp.send('Emulation.setDeviceMetricsOverride', {
         width: w,
-        height: 800,
+        height: h,
         deviceScaleFactor: 1,
         mobile: true,
       });
@@ -326,7 +333,9 @@ async function runLayoutCheck() {
             `);
 
             const row = {
+              vp: `${w}x${h}`,
               width: w,
+              height: h,
               passives: pCount,
               abilities: aCount,
               countdown: cd,
@@ -342,22 +351,28 @@ async function runLayoutCheck() {
             };
             results.push(row);
 
-            if (!row.scrollOk) { console.error('FAIL scrollOk at', w, pCount, aCount, cd); allPassed = false; }
-            if (!row.overlapOk) { console.error('FAIL overlapOk at', w, pCount, aCount, cd); allPassed = false; }
-            if (!row.headerOk) { console.error('FAIL headerOk at', w, pCount, aCount, cd, 'slack:', metrics.slack, 'noClip:', metrics.headerNoClip); allPassed = false; }
+            if (!row.scrollOk) { console.error('FAIL scrollOk at', `${w}x${h}`, pCount, aCount, cd); allPassed = false; }
+            if (!row.overlapOk) { console.error('FAIL overlapOk at', `${w}x${h}`, pCount, aCount, cd); allPassed = false; }
+            if (!row.headerOk) { console.error('FAIL headerOk at', `${w}x${h}`, pCount, aCount, cd, 'slack:', metrics.slack, 'noClip:', metrics.headerNoClip); allPassed = false; }
           }
         }
       }
     }
 
-    // Check board top identical across all rows for each width
-    for (const w of widths) {
-      const rowsW = results.filter(r => r.width === w);
-      const b0 = rowsW[0].boardTop;
-      for (const r of rowsW) {
+    // Check board top identical and header constant height across all rows for each viewport
+    for (const vp of viewports) {
+      const rowsVp = results.filter(r => r.width === vp.width && r.height === vp.height);
+      const b0 = rowsVp[0].boardTop;
+      const h0 = rowsVp[0].headerClientHeight;
+      for (const r of rowsVp) {
         r.boardTopIdentical = Math.abs(r.boardTop - b0) < 0.5;
+        r.headerConstantHeight = Math.abs(r.headerClientHeight - h0) < 0.5;
         if (!r.boardTopIdentical) {
-          console.error('FAIL boardTopIdentical at width', w, 'boardTop:', r.boardTop, 'baseline:', b0);
+          console.error('FAIL boardTopIdentical at viewport', `${vp.width}x${vp.height}`, 'boardTop:', r.boardTop, 'baseline:', b0);
+          allPassed = false;
+        }
+        if (!r.headerConstantHeight) {
+          console.error('FAIL headerConstantHeight at viewport', `${vp.width}x${vp.height}`, 'height:', r.headerClientHeight, 'baseline:', h0);
           allPassed = false;
         }
       }
@@ -602,14 +617,18 @@ async function runLayoutCheck() {
     server.close();
   }
 
-  // Print as formatted table
-  console.log('\n================================================= LAYOUT CHECK RESULTS =================================================');
-  console.log(
-    'Width | Passives | Abilities | CD | Board Top Y | Header scrollH | Header clientH | Slack (px) | Overlaps | Scroll OK | Invariant'
-  );
-  console.log('------------------------------------------------------------------------------------------------------------------------');
+  // Format layout check table
+  let layoutOutput = '';
+  function out(line) {
+    console.log(line);
+    layoutOutput += line + '\n';
+  }
+
+  out('\n================================================= LAYOUT CHECK RESULTS =================================================');
+  out('Viewport | Passives | Abilities | CD | Board Top Y | Header scrollH | Header clientH | Slack (px) | Overlaps | Scroll OK | Invariant');
+  out('---------------------------------------------------------------------------------------------------------------------------------------');
   for (const r of results) {
-    const w = `${r.width}`.padEnd(5);
+    const vp = `${r.vp}`.padEnd(8);
     const p = `${r.passives}`.padEnd(8);
     const a = `${r.abilities}`.padEnd(9);
     const cd = `${r.countdown}`.padEnd(2);
@@ -619,16 +638,14 @@ async function runLayoutCheck() {
     const sl = `${r.slack}px`.padEnd(10);
     const ov = (r.overlapOk ? 'PASS' : 'FAIL').padEnd(8);
     const sc = (r.scrollOk ? 'PASS' : 'FAIL').padEnd(9);
-    const bi = r.boardTopIdentical ? 'PASS' : 'FAIL';
-    console.log(
-      `${w} | ${p} | ${a} | ${cd} | ${by} | ${sh} | ${ch} | ${sl} | ${ov} | ${sc} | ${bi}`
-    );
+    const bi = (r.boardTopIdentical && r.headerConstantHeight) ? 'PASS' : 'FAIL';
+    out(`${vp} | ${p} | ${a} | ${cd} | ${by} | ${sh} | ${ch} | ${sl} | ${ov} | ${sc} | ${bi}`);
   }
-  console.log('========================================================================================================================\n');
+  out('=======================================================================================================================================\n');
 
-  console.log('============================================== STUCK-STATE & TARGETING LAYOUT RESULTS ==============================================');
-  console.log('Viewport | State Mode       | Non-Stuck Top | State Top | Board Top Equal | Ab Bar Bottom | Fits Height | Cancel In Slot | No Scroll');
-  console.log('-------------------------------------------------------------------------------------------------------------------------------------');
+  out('============================================== STUCK-STATE & TARGETING LAYOUT RESULTS ==============================================');
+  out('Viewport | State Mode       | Non-Stuck Top | State Top | Board Top Equal | Ab Bar Bottom | Fits Height | Cancel In Slot | No Scroll');
+  out('-------------------------------------------------------------------------------------------------------------------------------------');
   for (const s of stuckResults) {
     const vp = `${s.vp}`.padEnd(8);
     const mod = `${s.mode}`.padEnd(16);
@@ -639,9 +656,44 @@ async function runLayoutCheck() {
     const abf = (s.abilityBarFits ? 'PASS' : 'FAIL').padEnd(11);
     const cis = (s.cancelInsideSlot ? 'PASS' : 'FAIL').padEnd(14);
     const nos = s.noScroll ? 'PASS' : 'FAIL';
-    console.log(`${vp} | ${mod} | ${nst} | ${st} | ${bte} | ${abb} | ${abf} | ${cis} | ${nos}`);
+    out(`${vp} | ${mod} | ${nst} | ${st} | ${bte} | ${abb} | ${abf} | ${cis} | ${nos}`);
   }
-  console.log('=====================================================================================================================================\n');
+  out('=====================================================================================================================================\n');
+
+  const outDir = path.join(rootDir, 'scripts', 'out');
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
+  }
+  fs.writeFileSync(path.join(outDir, 'layout_check.txt'), layoutOutput, 'utf8');
+
+  // Generate specific header-fit table for R1: 320x568, 360x640, 390x742, 430x844 for 0/4 passives and 0/3 abilities
+  const headerFitRows = results.filter(r =>
+    (r.passives === 0 || r.passives === 4) &&
+    (r.abilities === 0 || r.abilities === 3)
+  );
+
+  let headerFitOutput = '';
+  headerFitOutput += '================================================== HEADER FIT TABLE ==================================================\n';
+  headerFitOutput += 'Viewport | Passives | Abilities | CD | Header clientH | Header scrollH | Slack (px) | Overlaps | Clipped | Constant H | Invariant\n';
+  headerFitOutput += '----------------------------------------------------------------------------------------------------------------------\n';
+  for (const r of headerFitRows) {
+    const vp = `${r.vp}`.padEnd(8);
+    const p = `${r.passives}`.padEnd(8);
+    const a = `${r.abilities}`.padEnd(9);
+    const cd = `${r.countdown}`.padEnd(2);
+    const ch = `${r.headerClientHeight}px`.padEnd(14);
+    const sh = `${r.headerScrollHeight}px`.padEnd(14);
+    const sl = `${r.slack}px`.padEnd(10);
+    const ov = (r.overlapOk ? 'None' : 'OVERLAP').padEnd(8);
+    const cl = (r.headerScrollHeight <= r.headerClientHeight ? 'No' : 'CLIPPED').padEnd(7);
+    const constH = (r.headerConstantHeight ? 'PASS' : 'FAIL').padEnd(10);
+    const inv = (r.overlapOk && r.slack >= 4 && r.headerScrollHeight <= r.headerClientHeight && r.headerConstantHeight) ? 'PASS' : 'FAIL';
+    headerFitOutput += `${vp} | ${p} | ${a} | ${cd} | ${ch} | ${sh} | ${sl} | ${ov} | ${cl} | ${constH} | ${inv}\n`;
+  }
+  headerFitOutput += '======================================================================================================================\n';
+
+  fs.writeFileSync(path.join(outDir, 'header_fit.txt'), headerFitOutput, 'utf8');
+  console.log(headerFitOutput);
 
   if (!allPassed) {
     console.error('❌ Layout check assertions failed!');
