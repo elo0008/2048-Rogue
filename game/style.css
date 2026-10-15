@@ -963,11 +963,17 @@ button:focus-visible {
 .cell.mason:after, .cell.mason-candidate:after {
   content: "PLACE";
   position: absolute;
-  bottom: 0;
-  transform: translateY(100%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   color: var(--accent);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 900;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .board.draftdim .cell:not(.mason):not(.mason-candidate) {
