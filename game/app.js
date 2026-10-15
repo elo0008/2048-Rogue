@@ -70,10 +70,79 @@ const RELIC_NAMES = {
 };
 
 const STORAGE_KEY_HISTORY = '2048_rogue_run_history';
+const STORAGE_KEY_TOP_RUNS = '2048_rogue_top_runs';
 const STORAGE_KEY_PLAYER = '2048_rogue_player_id';
 const STORAGE_KEY_BEST = '2048_rogue_best_points';
 const STORAGE_KEY_ERRORS = '2048_rogue_errors';
 const BUILD_ID = '__BUILD_ID__';
+
+let sessionTopRuns = null;
+
+function getTopRuns() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_TOP_RUNS);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        parsed.sort((a, b) => (b.points || 0) - (a.points || 0));
+        return parsed.slice(0, 10);
+      }
+    }
+  } catch (err) {
+    if (sessionTopRuns !== null) return sessionTopRuns;
+  }
+
+  // Seed once from 2048_rogue_run_history if key missing
+  const seeded = [];
+  try {
+    const history = getStoredHistory();
+    for (const h of history) {
+      const runId = h.runId || (h.timestamp ? `run_${h.timestamp}` : null);
+      if (!runId || seeded.some(r => r.runId === runId)) continue;
+      seeded.push({
+        runId,
+        points: h.points || 0,
+        moves: h.totalMoves ?? h.moves ?? 0,
+        maxTile: h.maxTile || 2,
+        relics: Array.isArray(h.relicsOwned) ? [...h.relicsOwned] : (Array.isArray(h.relics) ? [...h.relics] : []),
+        endedAt: h.timestamp || h.endedAt || new Date().toISOString(),
+      });
+    }
+    seeded.sort((a, b) => (b.points || 0) - (a.points || 0));
+    const top10 = seeded.slice(0, 10);
+    try {
+      localStorage.setItem(STORAGE_KEY_TOP_RUNS, JSON.stringify(top10));
+    } catch {}
+    sessionTopRuns = top10;
+    return top10;
+  } catch {
+    sessionTopRuns = [];
+    return [];
+  }
+}
+
+function saveTopRun(entry) {
+  if (!entry || !entry.runId) return;
+  try {
+    let list = getTopRuns();
+    if (list.some(r => r.runId === entry.runId)) return;
+    list = [...list, entry];
+    // Stable sort by points desc (ties: earlier run stays ahead)
+    list.sort((a, b) => (b.points || 0) - (a.points || 0));
+    const top10 = list.slice(0, 10);
+    try {
+      localStorage.setItem(STORAGE_KEY_TOP_RUNS, JSON.stringify(top10));
+    } catch {}
+    sessionTopRuns = top10;
+  } catch {
+    if (!sessionTopRuns) sessionTopRuns = [];
+    if (!sessionTopRuns.some(r => r.runId === entry.runId)) {
+      sessionTopRuns.push(entry);
+      sessionTopRuns.sort((a, b) => (b.points || 0) - (a.points || 0));
+      sessionTopRuns = sessionTopRuns.slice(0, 10);
+    }
+  }
+}
 
 function getStoredErrors() {
   try {
@@ -255,6 +324,11 @@ function parseUrlOptions() {
   }
   window.nudgeOnInvalid = config.nudgeOnInvalid;
 
+  if (params.has('flashOnInvalid')) {
+    config.flashOnInvalid = params.get('flashOnInvalid') !== 'false';
+  }
+  window.flashOnInvalid = config.flashOnInvalid ?? true;
+
   if (params.has('seed')) {
     const s = parseInt(params.get('seed'), 10);
     if (!isNaN(s)) seed = s;
@@ -318,7 +392,7 @@ function parseUrlOptions() {
     const l = parseInt(params.get('decay'), 10);
     if (!isNaN(l) && l > 0) config.stoneLifetime = l;
   }
-  if (params.has('nodraft')) {
+  if (params.has('nodraft') || params.get('enableDraft') === 'false') {
     config.enableDraft = false;
   }
   if (params.has('relic')) {
@@ -346,6 +420,10 @@ function parseUrlOptions() {
   if (params.has('rewind')) {
     const rw = parseInt(params.get('rewind'), 10);
     if (!isNaN(rw) && rw > 0) config.rewindEvery = rw;
+  }
+  if (params.has('siphon')) {
+    const s = parseInt(params.get('siphon'), 10);
+    if (!isNaN(s) && s > 0) config.siphonMin = s;
   }
   if (params.has('debug')) {
     debug = params.get('debug') === '1' || params.get('debug') === 'true';
@@ -808,6 +886,28 @@ function triggerStuckWave() {
     wave.className = 'stuck-impact-wave';
     boardEl.appendChild(wave);
     setTimeout(() => wave.remove(), 500);
+  }
+}
+
+let blockedFlashTimer = null;
+function triggerBlockedFlash() {
+  if (!boardEl) return;
+  const oldWaves = boardEl.querySelectorAll('.blocked-impact-wave');
+  for (const w of oldWaves) w.remove();
+  if (blockedFlashTimer) {
+    clearTimeout(blockedFlashTimer);
+    blockedFlashTimer = null;
+  }
+  boardEl.classList.remove('blocked-flash');
+
+  const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!prefersReduced) {
+    const wave = document.createElement('div');
+    wave.className = 'blocked-impact-wave';
+    boardEl.appendChild(wave);
+    blockedFlashTimer = setTimeout(() => {
+      wave.remove();
+    }, 260);
   }
 }
 
@@ -1390,6 +1490,40 @@ function renderForesightPreview() {
   }
 }
 
+function getMovesToNextDraft() {
+  if (!controller || !controller.state) return null;
+  const state = controller.state;
+  if (state.config.enableDraft === false) return null;
+
+  // Check if draft pool is exhausted
+  const pool = state.config.draftPool || RELIC_IDS;
+  const owned = state.relics || new Set();
+  let availableCount = 0;
+  for (const r of pool) {
+    if (!owned.has(r)) availableCount++;
+  }
+  if (availableCount === 0) return null;
+
+  const move = state.moveCount || 0;
+  const firstAt = state.config.draftFirstAt;
+  const every = state.config.draftEveryMoves;
+
+  if (firstAt != null && firstAt > 0) {
+    if (move < firstAt) {
+      return firstAt - move;
+    } else if (every && every > 0) {
+      const offset = (move - firstAt) % every;
+      return offset === 0 ? every : (every - offset);
+    }
+    return null;
+  } else if (every && every > 0) {
+    const offset = move % every;
+    return offset === 0 ? every : (every - offset);
+  }
+
+  return null;
+}
+
 /* -------------------------------------------------------------
  * Header & UI State Updates
  * ------------------------------------------------------------- */
@@ -1404,17 +1538,35 @@ function updateHeader() {
   const stoneInfo = controller.getNextStoneInfo();
   const movesLeft = stoneInfo.movesUntilNextStone;
 
+  const telegraphRelicEl = document.getElementById('telegraph-relic');
+  const relicCountdownEl = document.getElementById('relic-countdown');
+  const relicStatusEl = document.getElementById('relic-status');
+  const relicMovesLeft = getMovesToNextDraft();
+
   if (stoneCountdownEl) stoneCountdownEl.textContent = movesLeft;
   if (hazardUnitEl) {
     hazardUnitEl.textContent = movesLeft === 1 ? 'move' : 'moves';
   }
 
-  // 1-move text and standard telegraph text
-  if (hazardStatusEl) {
-    if (movesLeft === 1) {
-      hazardStatusEl.innerHTML = 'Stone arrives after this move!';
-    } else {
-      hazardStatusEl.innerHTML = `Next stone in <strong id="stone-countdown">${movesLeft}</strong> <span id="hazard-unit">${movesLeft === 1 ? 'move' : 'moves'}</span>`;
+  // Telegraph text for stone and relic
+  if (relicMovesLeft !== null && telegraphRelicEl) {
+    telegraphRelicEl.classList.remove('hidden');
+    if (relicStatusEl) {
+      relicStatusEl.innerHTML = `Relic in <strong id="relic-countdown">${relicMovesLeft}</strong>`;
+    } else if (relicCountdownEl) {
+      relicCountdownEl.textContent = relicMovesLeft;
+    }
+    if (hazardStatusEl) {
+      hazardStatusEl.innerHTML = `Stone in <strong id="stone-countdown">${movesLeft}</strong>`;
+    }
+  } else {
+    if (telegraphRelicEl) telegraphRelicEl.classList.add('hidden');
+    if (hazardStatusEl) {
+      if (movesLeft === 1) {
+        hazardStatusEl.innerHTML = 'Stone arrives after this move!';
+      } else {
+        hazardStatusEl.innerHTML = `Next stone in <strong id="stone-countdown">${movesLeft}</strong> <span id="hazard-unit">${movesLeft === 1 ? 'move' : 'moves'}</span>`;
+      }
     }
   }
 
@@ -1466,7 +1618,13 @@ function updateHeader() {
         continue;
       }
 
-      const item = document.createElement('button');
+      let item = existingMap.get(rid);
+      if (item) {
+        passiveRelicsContainer.appendChild(item);
+        continue;
+      }
+
+      item = document.createElement('button');
       item.type = 'button';
       item.className = 'relic-mini relic-passive-item';
       item.setAttribute('data-relic', rid);
@@ -1807,7 +1965,7 @@ function highlightTargetingBoard() {
       });
     }
   } else if (relicId === 'eraser') {
-    // T3: Eraser mode just outlines erasable number tiles (no PAIR badge)
+    // T3: Eraser mode just outlines erasable number tiles
     const legalCells = new Set(legalTargets.map(t => t.cell));
     allTiles.forEach(tile => {
       const idx = parseInt(tile.getAttribute('data-index'), 10);
@@ -2148,7 +2306,7 @@ function showDraftModal(decision) {
     const tag = document.createElement('span');
     tag.className = 'tag';
     const isAbility = rid === 'diagonal_charge' || rid === 'eraser' || rid === 'rewind';
-    tag.textContent = isAbility ? 'Ability' : 'Always on';
+    tag.textContent = isAbility ? 'Ability' : 'Passive';
 
     card.appendChild(iconWrap);
     card.appendChild(details);
@@ -2259,7 +2417,12 @@ function handleMove(direction, inputType = 'key') {
   const actsBefore = { ...(stateBefore.relicActivations || {}) };
 
   const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const prediction = computeSlide(boardBefore, direction);
+  const relics = stateBefore.relics || new Set();
+  const prediction = computeSlide(boardBefore, direction, {
+    hasFaultLine: relics.has('fault_line'),
+    hasSiphon: relics.has('siphon'),
+    siphonMin: controller.config?.siphonMin ?? 16,
+  });
 
   const moveRes = controller.submitMove(direction);
   if (!moveRes.success) {
@@ -2270,9 +2433,14 @@ function handleMove(direction, inputType = 'key') {
       if (!prefersReducedMotion) {
         performBlockedNudge(direction);
       }
-    } else if (config.nudgeOnInvalid ?? window.nudgeOnInvalid ?? true) {
-      if (!prefersReducedMotion) {
+    } else {
+      const doNudge = controller?.config?.nudgeOnInvalid ?? window.nudgeOnInvalid ?? true;
+      if (doNudge && !prefersReducedMotion) {
         performBlockedNudge(direction);
+      }
+      const doFlash = controller?.config?.flashOnInvalid ?? window.flashOnInvalid ?? true;
+      if (doFlash) {
+        triggerBlockedFlash();
       }
     }
     return;
@@ -2305,28 +2473,9 @@ function handleMove(direction, inputType = 'key') {
   }
 
   // Detect Fault Line shifted stones
-  const shiftedStones = [];
-  const shiftedFromSet = new Set();
-  const shiftedToSet = new Set();
-  if (controller.getState().relics && controller.getState().relics.has('fault_line')) {
-    for (let i = 0; i < 16; i++) {
-      if (boardBefore[i] === STONE && boardAfter[i] !== STONE) {
-        const r = Math.floor(i / 4);
-        const c = i % 4;
-        let targetIdx = -1;
-        if (direction === 'L' && c > 0) targetIdx = r * 4 + (c - 1);
-        else if (direction === 'R' && c < 3) targetIdx = r * 4 + (c + 1);
-        else if (direction === 'U' && r > 0) targetIdx = (r - 1) * 4 + c;
-        else if (direction === 'D' && r < 3) targetIdx = (r + 1) * 4 + c;
-
-        if (targetIdx !== -1 && boardAfter[targetIdx] === STONE && boardBefore[targetIdx] !== STONE) {
-          shiftedStones.push({ from: i, to: targetIdx });
-          shiftedFromSet.add(i);
-          shiftedToSet.add(targetIdx);
-        }
-      }
-    }
-  }
+  const shiftedStones = prediction.shiftedStones || [];
+  const shiftedFromSet = new Set(shiftedStones.map(s => s.from));
+  const shiftedToSet = new Set(shiftedStones.map(s => s.to));
 
   // Detect Shattered stones
   const actsAfter = controller.getState().relicActivations || {};
@@ -2353,19 +2502,61 @@ function handleMove(direction, inputType = 'key') {
     playLastStand();
   }
 
-  // Check disagreement between prediction and actual board (ignoring shifted stones and shattered stones)
+  // Check disagreement between prediction and actual board (ignoring shifted stones, shattered stones, and last stand cleared tiles)
   let mismatch = false;
+  const lastStandFired = Boolean(moveRes.stepResult?.lastStandFired);
+  const lastStandMax = controller.config?.lastStandMax ?? 16;
   for (let i = 0; i < 16; i++) {
     if (shiftedFromSet.has(i) || shiftedToSet.has(i) || shatteredStoneSet.has(i)) continue;
+    if (lastStandFired && typeof prediction.predictedBoard[i] === 'number' && prediction.predictedBoard[i] <= lastStandMax && boardAfter[i] === 0) {
+      continue;
+    }
     if (prediction.predictedBoard[i] !== 0) {
       if (boardAfter[i] !== prediction.predictedBoard[i]) {
+        mismatch = true;
+        break;
+      }
+    } else if (prediction.skippedSpawn) {
+      if (boardAfter[i] !== 0) {
         mismatch = true;
         break;
       }
     }
   }
 
+  const siphonFired = (controller.getState().relicActivations?.siphon || 0) > (actsBefore.siphon || 0);
+  if (siphonFired && passiveRelicsContainer) {
+    const sIcon = passiveRelicsContainer.querySelector('[data-relic="siphon"]');
+    if (sIcon) {
+      sIcon.classList.remove('siphon-glow');
+      void sIcon.offsetWidth;
+      sIcon.classList.add('siphon-glow');
+      setTimeout(() => sIcon?.classList.remove('siphon-glow'), 750);
+    }
+  }
+
   if (mismatch || prefersReducedMotion || !prediction.changed || prediction.moves.length === 0) {
+    let reason = 'unknown';
+    if (mismatch) reason = 'mismatch';
+    else if (prefersReducedMotion) reason = 'prefers-reduced-motion';
+    else if (!prediction.changed) reason = 'prediction-not-changed';
+    else if (prediction.moves.length === 0) reason = 'no-moves';
+
+    const isDebug = Boolean(window.__debug || new URLSearchParams(window.location.search || '').get('debug') === '1');
+    if (isDebug) {
+      window.__slideFallbackCount = (window.__slideFallbackCount || 0) + 1;
+      window.__slideFallbackReason = reason;
+      if (siphonFired) {
+        window.__siphonDiag = {
+          predictedBoard: [...prediction.predictedBoard],
+          actualBoard: [...boardAfter],
+          boardBefore: [...boardBefore],
+          reason,
+          siphonFired: true,
+        };
+      }
+    }
+
     if (mismatch) {
       slideMismatchCount++;
       if (dbgSlideSkipsEl) dbgSlideSkipsEl.textContent = slideMismatchCount;
@@ -2623,6 +2814,16 @@ function handleMove(direction, inputType = 'key') {
       }
     }
 
+    // Clean up vanished low tiles if Last Stand fired
+    if (lastStandFired) {
+      for (let i = 0; i < 16; i++) {
+        if (boardAfter[i] === 0) {
+          const el = tilesLayer.querySelector(`.tile[data-index="${i}"]:not(.stone)`);
+          if (el) el.remove();
+        }
+      }
+    }
+
     // Spawn new tiles/stones into #tiles-layer
     let spawnedStone = false;
     let spawnedTile = false;
@@ -2736,6 +2937,14 @@ function handleGameOver() {
   const metadata = getDiagnosticMetadata();
   currentRunLog = controller.getRunLog(metadata);
   saveRunToHistory(currentRunLog);
+  saveTopRun({
+    runId: currentRunLog.runId || (currentRunLog.timestamp ? `run_${currentRunLog.timestamp}` : `run_${Date.now()}`),
+    points: currentRunLog.points || 0,
+    moves: currentRunLog.totalMoves ?? currentRunLog.moves ?? 0,
+    maxTile: currentRunLog.maxTile || 2,
+    relics: Array.isArray(currentRunLog.relicsOwned) ? [...currentRunLog.relicsOwned] : [],
+    endedAt: currentRunLog.timestamp || new Date().toISOString(),
+  });
 
   // Score headline & local storage best score check
   const storedBest = getStoredBestScore();
@@ -2847,6 +3056,9 @@ function startNewGame(seed = null) {
   window.getTileTranslate = getTileTranslate;
   window.executeEraserAbility = executeEraserAbility;
   window.animateStoneSpawn = animateStoneSpawn;
+  window.handleMove = handleMove;
+  window.computeSlide = computeSlide;
+  window.triggerBlockedFlash = triggerBlockedFlash;
   window.cleanupAbilityFocus = cleanupAbilityFocus;
   window.showFirstTimeHint = showFirstTimeHint;
   window.showHazardPopover = showHazardPopover;
@@ -3192,14 +3404,17 @@ if (btnPlayStart) {
   });
 }
 
+const speakerOnSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: middle; display: inline-block; margin-left: 6px;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>';
+const speakerMutedSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: middle; display: inline-block; margin-left: 6px;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>';
+
 // Sound toggle controls
 function updateSoundButtons(enabled = isSoundEnabled()) {
   if (btnSoundStart) {
-    btnSoundStart.textContent = enabled ? 'SOUND: ON 🔊' : 'SOUND: OFF 🔇';
+    btnSoundStart.innerHTML = `SOUND: ${enabled ? 'ON' : 'OFF'} ${enabled ? speakerOnSvg : speakerMutedSvg}`;
     btnSoundStart.setAttribute('aria-label', enabled ? 'Sound enabled' : 'Sound muted');
   }
   if (btnPauseSound) {
-    btnPauseSound.innerHTML = enabled ? 'Sound: On <span style="float:right">🔊</span>' : 'Sound: Off <span style="float:right">🔇</span>';
+    btnPauseSound.innerHTML = `Sound: ${enabled ? 'On' : 'Off'} <span style="float:right">${enabled ? speakerOnSvg : speakerMutedSvg}</span>`;
     btnPauseSound.setAttribute('aria-label', enabled ? 'Sound enabled' : 'Sound muted');
   }
 }
@@ -3287,6 +3502,190 @@ if (btnCopyLog) {
     }
   });
 }
+
+/* -------------------------------------------------------------
+ * Best Runs Overlay
+ * ------------------------------------------------------------- */
+let previousOverlayBeforeBestRuns = null;
+
+function renderBestRunsList() {
+  const listEl = document.getElementById('best-runs-list');
+  const countEl = document.getElementById('best-runs-count');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  const runs = getTopRuns();
+  const count = runs ? runs.length : 0;
+  if (countEl) {
+    countEl.textContent = count === 1 ? '1 entry recorded' : `${count} entries recorded`;
+  }
+  if (!runs || runs.length === 0) {
+    listEl.innerHTML = '<div class="best-runs-empty">No runs yet.</div>';
+    return;
+  }
+
+  runs.forEach((entry, idx) => {
+    const rank = idx + 1;
+    const card = document.createElement('div');
+    card.className = `record-card ${rank === 1 ? 'rank-top1' : ''}`;
+
+    // Left block: Rank + Details
+    const left = document.createElement('div');
+    left.className = 'record-left';
+
+    const rankEl = document.createElement('div');
+    rankEl.className = `record-rank ${rank <= 3 ? 'top-rank' : 'muted-rank'}`;
+    rankEl.textContent = `#${rank}`;
+
+    const info = document.createElement('div');
+    info.className = 'record-info';
+
+    const scoreRow = document.createElement('div');
+    scoreRow.className = 'record-score-row';
+    const scoreVal = document.createElement('span');
+    scoreVal.className = 'record-score';
+    scoreVal.textContent = (entry.points || 0).toLocaleString('en-US');
+    const pts = document.createElement('span');
+    pts.className = 'record-pts';
+    pts.textContent = 'pts';
+    scoreRow.appendChild(scoreVal);
+    scoreRow.appendChild(pts);
+
+    const subRow = document.createElement('div');
+    subRow.className = 'record-sub-row';
+    const movesSpan = document.createElement('span');
+    movesSpan.textContent = `${entry.moves || 0} moves`;
+    const dotSep = document.createElement('span');
+    dotSep.className = 'record-dot-sep';
+    dotSep.textContent = '•';
+    const tileSpan = document.createElement('span');
+    tileSpan.className = 'record-tile-label';
+    tileSpan.textContent = `Tile ${entry.maxTile || 2}`;
+    subRow.appendChild(movesSpan);
+    subRow.appendChild(dotSep);
+    subRow.appendChild(tileSpan);
+
+    info.appendChild(scoreRow);
+    info.appendChild(subRow);
+    left.appendChild(rankEl);
+    left.appendChild(info);
+
+    // Right block: Date + Relics
+    const right = document.createElement('div');
+    right.className = 'record-right';
+
+    const dateEl = document.createElement('span');
+    dateEl.className = 'record-date';
+    let dateStr = '';
+    if (entry.endedAt) {
+      try {
+        const d = new Date(entry.endedAt);
+        if (!isNaN(d.getTime())) {
+          dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+      } catch {}
+    }
+    dateEl.textContent = dateStr;
+    right.appendChild(dateEl);
+
+    const CANONICAL_RELIC_ORDER = [
+      'diagonal_charge', 'eraser', 'rewind', 'fault_line',
+      'mason', 'siphon', 'shatter', 'last_stand'
+    ];
+    const ownedSet = new Set(Array.isArray(entry.relics) ? entry.relics : []);
+    const relicsWrap = document.createElement('div');
+    relicsWrap.className = 'record-relics-grid';
+    for (const rid of CANONICAL_RELIC_ORDER) {
+      const isOwned = ownedSet.has(rid) || (rid === 'diagonal_charge' && ownedSet.has('diagonal_merge'));
+      const chip = document.createElement('span');
+      chip.className = `record-relic-chip ${isOwned ? 'is-owned' : 'is-unowned'}`;
+      chip.setAttribute('title', `${RELIC_NAMES[rid] || rid}${isOwned ? '' : ' (not owned)'}`);
+      chip.setAttribute('data-relic', rid);
+      const iconEl = getRelicIconElement(rid, 14);
+      chip.appendChild(iconEl);
+      relicsWrap.appendChild(chip);
+    }
+    right.appendChild(relicsWrap);
+
+    card.appendChild(left);
+    card.appendChild(right);
+    listEl.appendChild(card);
+  });
+}
+
+function showBestRunsOverlay(source) {
+  previousOverlayBeforeBestRuns = source || (startOverlay && !startOverlay.classList.contains('hidden') ? startOverlay : pauseOverlay);
+  renderBestRunsList();
+  if (source && source.classList) {
+    source.classList.add('hidden');
+  }
+  const bestRunsOverlay = document.getElementById('best-runs-overlay');
+  if (bestRunsOverlay) {
+    bestRunsOverlay.classList.remove('hidden');
+    const closeBtn = document.getElementById('btn-best-runs-close');
+    if (closeBtn) closeBtn.focus();
+  }
+}
+
+function hideBestRunsOverlay() {
+  const bestRunsOverlay = document.getElementById('best-runs-overlay');
+  if (bestRunsOverlay) {
+    bestRunsOverlay.classList.add('hidden');
+  }
+  if (previousOverlayBeforeBestRuns && previousOverlayBeforeBestRuns.classList) {
+    previousOverlayBeforeBestRuns.classList.remove('hidden');
+  }
+  previousOverlayBeforeBestRuns = null;
+}
+
+const btnStartTrophy = document.getElementById('btn-start-trophy');
+if (btnStartTrophy) {
+  btnStartTrophy.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showBestRunsOverlay(startOverlay);
+  });
+}
+
+const btnPauseTrophy = document.getElementById('btn-pause-trophy');
+if (btnPauseTrophy) {
+  btnPauseTrophy.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showBestRunsOverlay(pauseOverlay);
+  });
+}
+
+const btnBestRunsClose = document.getElementById('btn-best-runs-close');
+if (btnBestRunsClose) {
+  btnBestRunsClose.addEventListener('click', (e) => {
+    e.preventDefault();
+    hideBestRunsOverlay();
+  });
+}
+
+const bestRunsOverlayEl = document.getElementById('best-runs-overlay');
+if (bestRunsOverlayEl) {
+  bestRunsOverlayEl.addEventListener('click', (e) => {
+    if (e.target === bestRunsOverlayEl) {
+      hideBestRunsOverlay();
+    }
+  });
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const bro = document.getElementById('best-runs-overlay');
+    if (bro && !bro.classList.contains('hidden')) {
+      e.preventDefault();
+      e.stopPropagation();
+      hideBestRunsOverlay();
+    }
+  }
+});
+
+window.getTopRuns = getTopRuns;
+window.saveTopRun = saveTopRun;
+window.showBestRunsOverlay = showBestRunsOverlay;
+window.hideBestRunsOverlay = hideBestRunsOverlay;
+window.getMovesToNextDraft = getMovesToNextDraft;
 
 window.getCopyPayload = () => {
   const metadata = getDiagnosticMetadata();

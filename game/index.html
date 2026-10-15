@@ -32,9 +32,15 @@
 
       <!-- Row 2: Hazard telegraph -->
       <div id="hazard-telegraph" class="telegraph hazard-row" aria-live="polite">
-        <span class="haz" aria-hidden="true">⬟</span>
-        <span class="haztext hazard-status" id="hazard-status">Next stone in <strong id="stone-countdown">75</strong> <span id="hazard-unit">moves</span></span>
-        <div class="track"><div class="fill" id="hazard-fill"></div></div>
+        <div id="telegraph-stone" class="telegraph-part telegraph-stone" role="button" tabindex="0" aria-label="Stone countdown">
+          <span class="haz" aria-hidden="true">⬟</span>
+          <span class="haztext hazard-status" id="hazard-status">Next stone in <strong id="stone-countdown">75</strong> <span id="hazard-unit">moves</span></span>
+          <div class="track"><div class="fill" id="hazard-fill"></div></div>
+        </div>
+        <div id="telegraph-relic" class="telegraph-part telegraph-relic hidden" aria-live="polite">
+          <span class="relic-cue-star" aria-hidden="true">✦</span>
+          <span class="relic-status" id="relic-status">Relic in <strong id="relic-countdown">60</strong></span>
+        </div>
       </div>
 
       <!-- Row 3: Stats cards -->
@@ -133,13 +139,24 @@
     <!-- Start Screen Overlay -->
     <div id="start-overlay" class="overlay modal-overlay" role="dialog" aria-modal="true">
       <div class="modal start-card">
+        <button id="btn-start-trophy" class="trophy-btn" type="button" aria-label="Best runs">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+            <path d="M4 22h16"></path>
+            <path d="M10 14.66V17c0 .55-.45 1-1 1H8c-.55 0-1 .45-1 1v1c0 .55.45 1 1 1h8c.55 0 1-.45 1-1v-1c0-.55-.45-1-1-1h-1c-.55 0-1-.45-1-1v-2.34"></path>
+            <path d="M6 4h12v5a6 6 0 0 1-12 0V4z"></path>
+          </svg>
+        </button>
         <div class="logo">R·2</div>
         <div class="eyebrow">A PUZZLE ROGUELIKE</div>
         <h1 class="title">ROGUE<br>2048</h1>
         <p class="sub">Merge upward. Hold the line. Outlast the grid.</p>
-        <button id="btn-play-start" class="primary btn btn-primary" type="button" aria-label="Start Game">START RUN ↗</button>
-        <div class="best">BEST: <b id="start-best-score">0</b></div>
-        <button class="sheetbutton btn-sound-toggle" id="btn-sound-start" type="button" aria-label="Toggle sound">SOUND: ON 🔊</button>
+        <button id="btn-play-start" class="primary btn btn-primary" type="button" aria-label="Start Game">START RUN <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: middle; display: inline-block; margin-left: 4px;"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button>
+        <div class="start-best-row">
+          <div class="best">BEST: <b id="start-best-score">0</b></div>
+        </div>
+        <button class="sheetbutton btn-sound-toggle" id="btn-sound-start" type="button" aria-label="Toggle sound">SOUND: ON <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: middle; display: inline-block; margin-left: 6px;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg></button>
         <button class="link" id="btn-start-how" type="button" aria-expanded="false">How to play</button>
         <ul class="how hidden" id="start-how-list">
           <li>Swipe and merge matching tiles.</li>
@@ -167,13 +184,22 @@
 
     <!-- Pause Menu Modal -->
     <div id="pause-overlay" class="overlay modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title">
-      <div class="modal">
+      <div class="modal pause-card">
+        <button id="btn-pause-trophy" class="trophy-btn" type="button" aria-label="Best runs">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+            <path d="M4 22h16"></path>
+            <path d="M10 14.66V17c0 .55-.45 1-1 1H8c-.55 0-1 .45-1 1v1c0 .55.45 1 1 1h8c.55 0 1-.45 1-1v-1c0-.55-.45-1-1-1h-1c-.55 0-1-.45-1-1v-2.34"></path>
+            <path d="M6 4h12v5a6 6 0 0 1-12 0V4z"></path>
+          </svg>
+        </button>
         <div class="eyebrow">Run suspended</div>
         <h2 id="pause-title" class="title">PAUSED</h2>
         <p class="sub">Take a breath. The grid can wait.</p>
-        <button class="sheetbutton" id="btn-pause-resume" type="button">Resume <span style="float:right">↗</span></button>
+        <button class="sheetbutton" id="btn-pause-resume" type="button">Resume <span style="float:right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg></span></button>
         <button class="sheetbutton" id="btn-pause-restart" type="button">Restart run <span style="float:right">↻</span></button>
-        <button class="sheetbutton btn-sound-toggle" id="btn-pause-sound" type="button" aria-label="Toggle sound">Sound: On <span style="float:right">🔊</span></button>
+        <button class="sheetbutton btn-sound-toggle" id="btn-pause-sound" type="button" aria-label="Toggle sound">Sound: On <span style="float:right"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: middle;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg></span></button>
         <button class="sheetbutton" id="btn-pause-how" type="button">How to play</button>
         <ul class="how hidden" id="pause-how-list">
           <li>Swipe and merge matching tiles.</li>
@@ -181,6 +207,33 @@
           <li>Pick a relic every 60 moves.</li>
           <li>Abilities are free actions.</li>
         </ul>
+      </div>
+    </div>
+
+    <!-- Best Runs Overlay -->
+    <div id="best-runs-overlay" class="overlay modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="best-runs-title">
+      <div class="modal best-runs-card">
+        <div class="best-runs-header">
+          <button id="btn-best-runs-close" class="best-runs-close-btn" type="button" aria-label="Close Best runs">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+          <div class="best-runs-eyebrow">LOCAL RECORDS</div>
+          <h2 id="best-runs-title" class="best-runs-title">BEST RUNS</h2>
+          <p class="best-runs-sub">Top 10 runs on this device.</p>
+        </div>
+        <div id="best-runs-list" class="best-runs-list theme-scroll">
+          <div class="best-runs-empty">No runs yet.</div>
+        </div>
+        <div class="best-runs-footer">
+          <span class="best-runs-footer-left">
+            <span class="best-runs-dot"></span>
+            Auto-saved locally
+          </span>
+          <span id="best-runs-count" class="best-runs-footer-right">0 entries recorded</span>
+        </div>
       </div>
     </div>
 

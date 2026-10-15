@@ -887,6 +887,379 @@ async function runSmokeTest() {
     assert.ok(hazardPopoverCheck.closedOnEsc, 'Popover must close on Escape key');
     console.log('[Smoke Test] ✔ Hazard telegraph popover opens on tap, fits within 320px, displays expected text, and closes on Escape.');
 
+    // -------------------------------------------------------------
+    // S1 Smoke Check: No PAIR or MERGE text in Diagonal targeting
+    // -------------------------------------------------------------
+    console.log('[Smoke Test] Checking Diagonal targeting for absent PAIR and MERGE text...');
+    await cdp.send('Page.navigate', { url: makeUrl('?seed=42&start=diagonal_charge&debug=1') });
+    await sleep(400);
+
+    const diagCheck = await cdp.eval(`
+      (() => {
+        window.controller.state.board = [
+          2, 0, 0, 0,
+          0, 2, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0
+        ];
+        window.controller.state.abilities.diagonal_charge = { charges: 3, maxCharges: 3, counter: 0, swipesAtMax: 0, swipesPerCharge: 10 };
+        window.syncBoard(window.controller.getBoard(), 'resync');
+
+        function checkPairOrMerge() {
+          const allEls = Array.from(document.querySelectorAll('*'));
+          for (const el of allEls) {
+            const t = el.textContent ? el.textContent.trim() : '';
+            if (t === 'PAIR' || t === 'MERGE') return true;
+            const beforeContent = window.getComputedStyle(el, ':before').getPropertyValue('content');
+            if (beforeContent && (beforeContent.includes('PAIR') || beforeContent.includes('MERGE'))) return true;
+            const afterContent = window.getComputedStyle(el, ':after').getPropertyValue('content');
+            if (afterContent && (afterContent.includes('PAIR') || afterContent.includes('MERGE'))) return true;
+          }
+          return false;
+        }
+
+        // Step 1: activate targeting
+        window.executeAbility('diagonal_charge');
+        const hasPairOrMergeStep1 = checkPairOrMerge();
+
+        // Step 2: select first tile (cell 0)
+        const cell0 = document.querySelector('.cell[data-index="0"]');
+        if (cell0) cell0.click();
+        const hasPairOrMergeStep2 = checkPairOrMerge();
+
+        window.cancelTargeting();
+        return {
+          hasPairOrMergeStep1,
+          hasPairOrMergeStep2
+        };
+      })()
+    `);
+    assert.strictEqual(diagCheck.hasPairOrMergeStep1, false, 'Diagonal step 1 must not contain text PAIR or MERGE');
+    assert.strictEqual(diagCheck.hasPairOrMergeStep2, false, 'Diagonal step 2 must not contain text PAIR or MERGE');
+    console.log('[Smoke Test] ✔ Diagonal targeting steps 1 and 2 contain no PAIR or MERGE text.');
+
+    // -------------------------------------------------------------
+    // S4 Smoke Checks: Best Runs Top 10
+    // -------------------------------------------------------------
+    console.log('[Smoke Test] Testing S4 Best Runs top 10 local storage and UI...');
+
+    // 1. Two real runs produce two sorted entries
+    const twoRunsResult = await cdp.eval(`
+      (() => {
+        localStorage.removeItem('2048_rogue_top_runs');
+        localStorage.removeItem('2048_rogue_run_history');
+
+        // First run
+        window.saveTopRun({
+          runId: 'run_test_1',
+          points: 1200,
+          moves: 45,
+          maxTile: 64,
+          relics: ['siphon'],
+          endedAt: new Date().toISOString()
+        });
+
+        // Second run with higher score
+        window.saveTopRun({
+          runId: 'run_test_2',
+          points: 3400,
+          moves: 80,
+          maxTile: 256,
+          relics: ['siphon', 'shatter'],
+          endedAt: new Date().toISOString()
+        });
+
+        const list = window.getTopRuns();
+        return {
+          length: list.length,
+          topPoints: list[0].points,
+          secondPoints: list[1].points,
+          firstRunId: list[0].runId
+        };
+      })()
+    `);
+    assert.strictEqual(twoRunsResult.length, 2, 'Two runs must produce two entries');
+    assert.strictEqual(twoRunsResult.topPoints, 3400, 'Entries must be sorted points desc (3400 first)');
+    assert.strictEqual(twoRunsResult.secondPoints, 1200, 'Second entry must be 1200');
+    assert.strictEqual(twoRunsResult.firstRunId, 'run_test_2', 'First runId must be run_test_2');
+    console.log('[Smoke Test] ✔ Two real runs produce two sorted entries.');
+
+    // 2. Reload persists
+    await cdp.send('Page.reload');
+    await sleep(400);
+    const reloadResult = await cdp.eval(`
+      (() => {
+        const list = window.getTopRuns();
+        return {
+          length: list.length,
+          topPoints: list[0]?.points,
+          secondPoints: list[1]?.points
+        };
+      })()
+    `);
+    assert.strictEqual(reloadResult.length, 2, 'Entries must persist across page reload');
+    assert.strictEqual(reloadResult.topPoints, 3400, 'Top points must persist');
+    assert.strictEqual(reloadResult.secondPoints, 1200, 'Second points must persist');
+    console.log('[Smoke Test] ✔ Top runs persist across reload.');
+
+    // 3. Same run is not duplicated
+    const dupResult = await cdp.eval(`
+      (() => {
+        window.saveTopRun({
+          runId: 'run_test_1',
+          points: 1200,
+          moves: 45,
+          maxTile: 64,
+          relics: ['siphon'],
+          endedAt: new Date().toISOString()
+        });
+        return window.getTopRuns().length;
+      })()
+    `);
+    assert.strictEqual(dupResult, 2, 'Saving an existing runId must not duplicate entry');
+    console.log('[Smoke Test] ✔ Same run is not duplicated.');
+
+    // 4. 11 entries pre-seeded are capped to 10 with the lowest dropped
+    const capResult = await cdp.eval(`
+      (() => {
+        const eleven = [];
+        for (let i = 1; i <= 11; i++) {
+          eleven.push({
+            runId: 'seed_' + i,
+            points: i * 100,
+            moves: i * 10,
+            maxTile: 32,
+            relics: [],
+            endedAt: new Date().toISOString()
+          });
+        }
+        localStorage.setItem('2048_rogue_top_runs', JSON.stringify(eleven));
+        const list = window.getTopRuns();
+        return {
+          length: list.length,
+          minPoints: list[list.length - 1].points,
+          maxPoints: list[0].points
+        };
+      })()
+    `);
+    assert.strictEqual(capResult.length, 10, 'Pre-seeded 11 entries must be capped to 10');
+    assert.strictEqual(capResult.maxPoints, 1100, 'Highest score (1100) must be first');
+    assert.strictEqual(capResult.minPoints, 200, 'Lowest score (100) must be dropped, new lowest is 200');
+    console.log('[Smoke Test] ✔ 11 entries pre-seeded are capped to 10 with the lowest dropped.');
+
+    // 5. Seeding from history works
+    const seedFromHistResult = await cdp.eval(`
+      (() => {
+        localStorage.removeItem('2048_rogue_top_runs');
+        const fakeHist = [
+          { runId: 'hist_1', points: 500, moves: 20, maxTile: 32, relicsOwned: ['eraser'], timestamp: new Date().toISOString() },
+          { runId: 'hist_2', points: 1500, moves: 50, maxTile: 128, relicsOwned: ['rewind'], timestamp: new Date().toISOString() }
+        ];
+        localStorage.setItem('2048_rogue_run_history', JSON.stringify(fakeHist));
+        const list = window.getTopRuns();
+        return {
+          length: list.length,
+          topPoints: list[0]?.points,
+          topRunId: list[0]?.runId
+        };
+      })()
+    `);
+    assert.strictEqual(seedFromHistResult.length, 2, 'Must seed 2 entries from run history');
+    assert.strictEqual(seedFromHistResult.topPoints, 1500, 'History entries must be sorted desc');
+    assert.strictEqual(seedFromHistResult.topRunId, 'hist_2', 'hist_2 must be first');
+    console.log('[Smoke Test] ✔ Seeding top runs from history works.');
+
+    // 6. Trophy exists on START and PAUSE, hit area >= 36px
+    const trophyCheck = await cdp.eval(`
+      (() => {
+        const startOverlay = document.getElementById('start-overlay');
+        const pauseOverlay = document.getElementById('pause-overlay');
+        if (startOverlay) startOverlay.classList.remove('hidden');
+        const startTrophy = document.getElementById('btn-start-trophy');
+        const sRect = startTrophy ? startTrophy.getBoundingClientRect() : null;
+
+        if (pauseOverlay) pauseOverlay.classList.remove('hidden');
+        const pauseTrophy = document.getElementById('btn-pause-trophy');
+        const pRect = pauseTrophy ? pauseTrophy.getBoundingClientRect() : null;
+        if (pauseOverlay) pauseOverlay.classList.add('hidden');
+        return {
+          startExists: Boolean(startTrophy),
+          pauseExists: Boolean(pauseTrophy),
+          startHitAreaOk: sRect ? (sRect.width >= 36 && sRect.height >= 36) : false,
+          pauseHitAreaOk: pRect ? (pRect.height >= 36) : false,
+          startAriaLabel: startTrophy?.getAttribute('aria-label'),
+          pauseAriaLabel: pauseTrophy?.getAttribute('aria-label'),
+          sRect: sRect ? { width: sRect.width, height: sRect.height, top: sRect.top, left: sRect.left } : null,
+          pRect: pRect ? { width: pRect.width, height: pRect.height, top: pRect.top, left: pRect.left } : null
+        };
+      })()
+    `);
+    console.log('[Smoke Test Debug] trophyCheck:', trophyCheck);
+    assert.ok(trophyCheck.startExists, 'Trophy button must exist on START overlay');
+    assert.ok(trophyCheck.pauseExists, 'Trophy button must exist on PAUSE overlay');
+    assert.ok(trophyCheck.startHitAreaOk, 'START trophy button hit area must be >= 36px');
+    assert.ok(trophyCheck.pauseHitAreaOk, 'PAUSE trophy button hit area must be >= 36px');
+    assert.strictEqual(trophyCheck.startAriaLabel, 'Best runs', 'START trophy aria-label must be "Best runs"');
+    assert.strictEqual(trophyCheck.pauseAriaLabel, 'Best runs', 'PAUSE trophy aria-label must be "Best runs"');
+    console.log('[Smoke Test] ✔ Trophy buttons exist on START and PAUSE with >= 36px hit area and correct aria-labels.');
+
+    // 7. Overlay opens/closes and returns to the right overlay
+    const overlayFlowCheck = await cdp.eval(`
+      (() => {
+        const startOverlay = document.getElementById('start-overlay');
+        const pauseOverlay = document.getElementById('pause-overlay');
+        const bestRunsOverlay = document.getElementById('best-runs-overlay');
+        const startTrophy = document.getElementById('btn-start-trophy');
+        const pauseTrophy = document.getElementById('btn-pause-trophy');
+        const closeBtn = document.getElementById('btn-best-runs-close');
+
+        // Flow A: Open from START, close by close button -> returns to START
+        startOverlay.classList.remove('hidden');
+        pauseOverlay.classList.add('hidden');
+        bestRunsOverlay.classList.add('hidden');
+
+        startTrophy.click();
+        const openedFromStart = !bestRunsOverlay.classList.contains('hidden') && startOverlay.classList.contains('hidden');
+
+        closeBtn.click();
+        const returnedToStart = bestRunsOverlay.classList.contains('hidden') && !startOverlay.classList.contains('hidden');
+
+        // Flow B: Open from PAUSE, close by Escape -> returns to PAUSE
+        startOverlay.classList.add('hidden');
+        pauseOverlay.classList.remove('hidden');
+
+        pauseTrophy.click();
+        const openedFromPause = !bestRunsOverlay.classList.contains('hidden') && pauseOverlay.classList.contains('hidden');
+
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+        const returnedToPause = bestRunsOverlay.classList.contains('hidden') && !pauseOverlay.classList.contains('hidden');
+
+        return {
+          openedFromStart,
+          returnedToStart,
+          openedFromPause,
+          returnedToPause
+        };
+      })()
+    `);
+    assert.ok(overlayFlowCheck.openedFromStart, 'Trophy click from START must open BEST RUNS overlay');
+    assert.ok(overlayFlowCheck.returnedToStart, 'Closing BEST RUNS must return to START overlay');
+    assert.ok(overlayFlowCheck.openedFromPause, 'Trophy click from PAUSE must open BEST RUNS overlay');
+    assert.ok(overlayFlowCheck.returnedToPause, 'Escape on BEST RUNS must return to PAUSE overlay');
+    console.log('[Smoke Test] ✔ BEST RUNS overlay opens/closes and returns to the originating overlay.');
+
+    // 8. START best text unchanged
+    const bestTextCheck = await cdp.eval(`
+      (() => {
+        const bestEl = document.querySelector('.best');
+        const bestScoreEl = document.getElementById('start-best-score');
+        return {
+          hasBestEl: Boolean(bestEl),
+          text: bestEl ? bestEl.textContent.trim() : '',
+          scoreText: bestScoreEl ? bestScoreEl.textContent.trim() : ''
+        };
+      })()
+    `);
+    assert.ok(bestTextCheck.hasBestEl, '.best element must exist on START screen');
+    assert.ok(bestTextCheck.text.startsWith('BEST:'), 'START best text must start with "BEST:"');
+    console.log('[Smoke Test] ✔ START best text unchanged.');
+
+    // 9. No layout shift at 320x568
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 320,
+      height: 568,
+      deviceScaleFactor: 2,
+      mobile: true,
+    });
+    await sleep(200);
+
+    const layout320Check = await cdp.eval(`
+      (() => {
+        const board = document.getElementById('game-board');
+        const bRect = board ? board.getBoundingClientRect() : null;
+        const header = document.getElementById('header') || document.querySelector('.game-header');
+        const hRect = header ? header.getBoundingClientRect() : null;
+
+        return {
+          boardTop: bRect ? Math.round(bRect.top) : null,
+          headerHeight: hRect ? Math.round(hRect.height) : null
+        };
+      })()
+    `);
+    assert.strictEqual(layout320Check.boardTop, 170, 'Board top Y at 320x568 must be exactly 170');
+    assert.strictEqual(layout320Check.headerHeight, 158, 'Header height at 320x568 must be exactly 158');
+    // T1 / T2: Best Runs modal assertions
+    console.log('[Smoke Test] Testing Best Runs overlay interactions (close X, Esc, outside tap, pause return)...');
+    const bestRunsTestRes = await cdp.eval(`
+      (async () => {
+        const startOverlay = document.getElementById('start-overlay');
+        const pauseOverlay = document.getElementById('pause-overlay');
+        const bestRunsOverlay = document.getElementById('best-runs-overlay');
+        const startTrophy = document.getElementById('btn-start-trophy');
+        const pauseTrophy = document.getElementById('btn-pause-trophy');
+        const closeX = document.getElementById('btn-best-runs-close');
+
+        // 1. Open from start overlay
+        startTrophy.click();
+        const openedFromStart = !bestRunsOverlay.classList.contains('hidden') && startOverlay.classList.contains('hidden');
+
+        // 2. Close via Close X
+        closeX.click();
+        const closedViaX = bestRunsOverlay.classList.contains('hidden') && !startOverlay.classList.contains('hidden');
+
+        // 3. Open again and close via Escape
+        startTrophy.click();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        const closedViaEsc = bestRunsOverlay.classList.contains('hidden') && !startOverlay.classList.contains('hidden');
+
+        // 4. Open again and close via Outside Tap
+        startTrophy.click();
+        bestRunsOverlay.click();
+        const closedViaOutsideTap = bestRunsOverlay.classList.contains('hidden') && !startOverlay.classList.contains('hidden');
+
+        // 5. Open from Pause overlay and return to Pause overlay
+        startOverlay.classList.add('hidden');
+        pauseOverlay.classList.remove('hidden');
+        pauseTrophy.click();
+        const openedFromPause = !bestRunsOverlay.classList.contains('hidden') && pauseOverlay.classList.contains('hidden');
+        closeX.click();
+        const returnedToPause = bestRunsOverlay.classList.contains('hidden') && !pauseOverlay.classList.contains('hidden');
+        pauseOverlay.classList.add('hidden');
+
+        return {
+          openedFromStart,
+          closedViaX,
+          closedViaEsc,
+          closedViaOutsideTap,
+          openedFromPause,
+          returnedToPause
+        };
+      })()
+    `);
+    assert.strictEqual(bestRunsTestRes.openedFromStart, true, 'Best runs opens from Start overlay');
+    assert.strictEqual(bestRunsTestRes.closedViaX, true, 'Best runs closes via top-right X button');
+    assert.strictEqual(bestRunsTestRes.closedViaEsc, true, 'Best runs closes via Escape key');
+    assert.strictEqual(bestRunsTestRes.closedViaOutsideTap, true, 'Best runs closes via outside tap');
+    assert.strictEqual(bestRunsTestRes.openedFromPause, true, 'Best runs opens from Pause overlay');
+    assert.strictEqual(bestRunsTestRes.returnedToPause, true, 'Best runs returns to Pause overlay');
+    console.log('[Smoke Test] ✔ Best Runs overlay modal transitions and controls verified.');
+
+    // Dist scan for forbidden strings
+    console.log('[Smoke Test] Scanning dist/ for forbidden strings (tailwind, googleapis, fredoka)...');
+    const distFiles = fs.readdirSync(distDir, { recursive: true }).filter(f => {
+      const full = path.join(distDir, f);
+      return fs.statSync(full).isFile() && (f.endsWith('.html') || f.endsWith('.js') || f.endsWith('.css'));
+    });
+    let forbiddenCount = 0;
+    for (const df of distFiles) {
+      const content = fs.readFileSync(path.join(distDir, df), 'utf8').toLowerCase();
+      if (content.includes('tailwind') || content.includes('googleapis') || content.includes('fredoka')) {
+        forbiddenCount++;
+      }
+    }
+    assert.strictEqual(forbiddenCount, 0, 'No forbidden strings (tailwind, googleapis, fredoka) in dist/');
+    console.log('[Smoke Test] ✔ 0 forbidden strings in dist/.');
+
     cdp.close();
   } finally {
     if (chromeProcess) chromeProcess.kill();

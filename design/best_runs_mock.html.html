@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local Records - Best Runs</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Fredoka for that exact thick, friendly rounded typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Fredoka', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: radial-gradient(circle at center, #261e1b 0%, #151110 60%, #0d0a09 100%);
+      color: #fff6ee;
+    }
+
+    /* Exact Color Tokens from Original Design */
+    :root {
+      --bg-modal: #241c19;
+      --bg-card: #2b221f;
+      --bg-card-hover: #342a26;
+      --accent-gold: #f2c779;
+      --accent-gold-soft: rgba(242, 199, 121, 0.14);
+      --text-cream: #fff5ed;
+      --text-muted: #8e7f77;
+      --border-subtle: #382c27;
+      --scrollbar-thumb: #524037;
+      --scrollbar-hover: #f2c779;
+    }
+
+    /* Beautiful Theme-Matching Custom Scrollbar */
+    .theme-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .theme-scroll::-webkit-scrollbar-track {
+      background: rgba(26, 20, 18, 0.6);
+      border-radius: 9999px;
+      margin: 8px 0;
+    }
+    .theme-scroll::-webkit-scrollbar-thumb {
+      background: var(--scrollbar-thumb);
+      border-radius: 9999px;
+      border: 1px solid rgba(242, 199, 121, 0.15);
+      transition: background 0.2s ease;
+    }
+    .theme-scroll::-webkit-scrollbar-thumb:hover {
+      background: var(--accent-gold);
+    }
+
+    /* Smooth Micro-Interactions */
+    .record-card {
+      transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), 
+                  background-color 0.18s ease, 
+                  border-color 0.18s ease,
+                  box-shadow 0.18s ease;
+    }
+    .record-card:hover {
+      transform: translateY(-1px);
+      background-color: var(--bg-card-hover);
+      border-color: rgba(242, 199, 121, 0.35);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    }
+
+    /* Top 3 Medals Glow subtle touch */
+    .rank-top1 {
+      box-shadow: 0 0 10px rgba(242, 199, 121, 0.2);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-3 sm:p-6 select-none">
+
+  <!-- Modal Container -->
+  <div id="modalBox" class="relative w-full max-w-[440px] bg-[#241c19] border border-[#382c27] rounded-[28px] shadow-2xl flex flex-col overflow-hidden transition-all duration-300">
+    
+    <!-- Header Section -->
+    <header class="pt-7 pb-4 px-6 text-center relative border-b border-[#342823]/60">
+      
+      <!-- Relocated Sleek 'X' Close Button -->
+      <button 
+        id="closeBtn"
+        aria-label="Close Records"
+        class="absolute right-5 top-5 w-9 h-9 rounded-full bg-[#2f2521] border border-[#42332c] text-[#f2c779] flex items-center justify-center hover:bg-[#f2c779] hover:text-[#241c19] hover:scale-105 active:scale-95 transition-all duration-150 shadow-sm group"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 stroke-current stroke-[2.5]" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+
+      <!-- Subheader Badge -->
+      <span class="inline-block text-[#f2c779] text-[11px] font-bold tracking-[0.22em] uppercase mb-1">
+        LOCAL RECORDS
+      </span>
+
+      <!-- Main Modal Title -->
+      <h1 class="text-3xl font-extrabold text-[#fff5ed] tracking-wide uppercase leading-none drop-shadow-sm">
+        BEST RUNS
+      </h1>
+
+      <!-- Descriptor -->
+      <p class="text-[#8e7f77] text-xs font-semibold mt-1.5 tracking-tight">
+        Top 10 runs on this device.
+      </p>
+    </header>
+
+    <!-- Records Scrollable List -->
+    <main class="p-4 sm:p-5 max-h-[460px] overflow-y-auto space-y-2.5 theme-scroll" id="recordsList">
+      <!-- Generated via JavaScript with structured professional hierarchy -->
+    </main>
+
+    <!-- Professional Footer / Subtle Status bar -->
+    <footer class="py-3 px-6 bg-[#1f1715] border-t border-[#342823]/80 flex items-center justify-between text-[11px] text-[#8e7f77]">
+      <span class="flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-[#f2c779]/80 animate-pulse"></span>
+        Auto-saved locally
+      </span>
+      <span class="font-medium text-[#f2c779]/90">
+        10 Entries Recorded
+      </span>
+    </footer>
+
+  </div>
+
+  <!-- Reopen Floating Trigger (Shown if closed for demo usability) -->
+  <button 
+    id="reopenBtn" 
+    class="fixed bottom-6 right-6 hidden bg-[#f2c779] text-[#241c19] px-4 py-2.5 rounded-full font-bold shadow-lg hover:scale-105 active:scale-95 transition-all text-sm tracking-wide"
+  >
+    View Best Runs ↺
+  </button>
+
+  <script>
+    // Record entries preserving the original image's scores, stats & icons
+    const records = [
+      {
+        rank: 1,
+        score: "5,264",
+        moves: 276,
+        tile: 256,
+        date: "Oct 15",
+        perks: ['crack', 'shield', 'grid', 'book']
+      },
+      {
+        rank: 2,
+        score: "4,344",
+        moves: 278,
+        tile: 256,
+        date: "Oct 15",
+        perks: ['expand', 'hat', 'shield', 'crack']
+      },
+      {
+        rank: 3,
+        score: "4,284",
+        moves: 207,
+        tile: 256,
+        date: "Oct 15",
+        perks: ['expand', 'shield', 'crack']
+      },
+      {
+        rank: 4,
+        score: "3,824",
+        moves: 165,
+        tile: 256,
+        date: "Oct 15",
+        perks: ['hand', 'crack']
+      },
+      {
+        rank: 5,
+        score: "3,752",
+        moves: 239,
+        tile: 256,
+        date: "Oct 15",
+        perks: ['expand', 'shield', 'gem']
+      },
+      {
+        rank: 6,
+        score: "3,704",
+        moves: 214,
+        tile: 256,
+        date: "Oct 15",
+        perks: ['shield', 'crack']
+      },
+      {
+        rank: 7,
+        score: "3,512",
+        moves: 198,
+        tile: 128,
+        date: "Oct 14",
+        perks: ['expand', 'grid']
+      },
+      {
+        rank: 8,
+        score: "3,140",
+        moves: 184,
+        tile: 128,
+        date: "Oct 12",
+        perks: ['shield', 'hat']
+      },
+      {
+        rank: 9,
+        score: "2,890",
+        moves: 142,
+        tile: 128,
+        date: "Oct 10",
+        perks: ['crack']
+      },
+      {
+        rank: 10,
+        score: "2,460",
+        moves: 119,
+        tile: 64,
+        date: "Oct 09",
+        perks: ['expand']
+      }
+    ];
+
+    // Accurate SVG game perk icons matching the in-game stylized badges
+    const perkIcons = {
+      crack: `
+        <svg class="w-3.5 h-3.5 fill-none stroke-[#f2c779] stroke-2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 3L8 12h7l-4 9 9-11h-7l4-7z"/>
+        </svg>`,
+      shield: `
+        <svg class="w-3.5 h-3.5 fill-[#f2c779]/20 stroke-[#f2c779] stroke-2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3s7 3 7 9c0 6-7 9-7 9s-7-3-7-9c0-6 7-9 7-9z"/>
+        </svg>`,
+      grid: `
+        <svg class="w-3.5 h-3.5 fill-[#f2c779]/30 stroke-[#f2c779] stroke-1.5" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="8" height="8" rx="1.5"/>
+          <rect x="13" y="3" width="8" height="8" rx="1.5"/>
+          <rect x="3" y="13" width="8" height="8" rx="1.5"/>
+          <rect x="13" y="13" width="8" height="8" rx="1.5"/>
+        </svg>`,
+      expand: `
+        <svg class="w-3.5 h-3.5 fill-none stroke-[#f2c779] stroke-2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+        </svg>`,
+      hat: `
+        <svg class="w-3.5 h-3.5 fill-[#f2c779]/20 stroke-[#f2c779] stroke-2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M2 17h20M6 17V9a6 6 0 0112 0v8"/>
+        </svg>`,
+      hand: `
+        <svg class="w-3.5 h-3.5 fill-none stroke-[#f2c779] stroke-2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7 11V7a2 2 0 114 0v4m0 0V5a2 2 0 114 0v6m0 0V7a2 2 0 114 0v7a6 6 0 01-12 0v-3"/>
+        </svg>`,
+      book: `
+        <svg class="w-3.5 h-3.5 fill-none stroke-[#f2c779] stroke-2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+        </svg>`,
+      gem: `
+        <svg class="w-3.5 h-3.5 fill-[#f2c779]/20 stroke-[#f2c779] stroke-2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 3h12l4 6-10 12L2 9z"/>
+        </svg>`
+    };
+
+    const container = document.getElementById('recordsList');
+
+    // Render list items with refined visual hierarchy
+    records.forEach(item => {
+      const card = document.createElement('div');
+      card.className = `record-card bg-[#2b221f] border ${item.rank === 1 ? 'border-[#f2c779]/40 rank-top1' : 'border-[#382c27]'} rounded-2xl px-3.5 py-3 flex items-center justify-between gap-3`;
+
+      // Perk badge chips HTML
+      const perksHtml = item.perks.map(p => `
+        <span class="w-6 h-6 rounded-md bg-[#221a17] border border-[#3e3029] flex items-center justify-center hover:border-[#f2c779]/50 transition-colors" title="${p}">
+          ${perkIcons[p] || ''}
+        </span>
+      `).join('');
+
+      card.innerHTML = `
+        <!-- Left: Rank and Core Stats -->
+        <div class="flex items-center gap-3.5 min-w-0">
+          <!-- Rank Badge -->
+          <div class="w-8 h-8 rounded-xl ${item.rank <= 3 ? 'bg-[#f2c779]/15 text-[#f2c779] border border-[#f2c779]/40 font-bold' : 'bg-[#221a17] text-[#8e7f77] border border-[#382c27] font-semibold'} flex items-center justify-center text-sm shrink-0">
+            #${item.rank}
+          </div>
+
+          <!-- Score & Progress Details -->
+          <div class="truncate">
+            <div class="flex items-baseline gap-1">
+              <span class="text-base sm:text-lg font-bold text-[#fff5ed] tracking-wide leading-none">
+                ${item.score}
+              </span>
+              <span class="text-xs font-semibold text-[#f2c779]">pts</span>
+            </div>
+            <div class="text-[12px] font-medium text-[#8e7f77] mt-1 flex items-center gap-1.5 whitespace-nowrap">
+              <span>${item.moves} moves</span>
+              <span class="text-[#4d3f38]">•</span>
+              <span class="text-[#a4938a]">Tile ${item.tile}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Date and Neatly Clustered Perks -->
+        <div class="flex flex-col items-end shrink-0 gap-1.5">
+          <span class="text-[11px] font-semibold text-[#8e7f77] tracking-tight">
+            ${item.date}
+          </span>
+          <div class="flex items-center gap-1">
+            ${perksHtml}
+          </div>
+        </div>
+      `;
+
+      container.appendChild(card);
+    });
+
+    // Close and Reopen Logic
+    const closeBtn = document.getElementById('closeBtn');
+    const modalBox = document.getElementById('modalBox');
+    const reopenBtn = document.getElementById('reopenBtn');
+
+    closeBtn.addEventListener('click', () => {
+      modalBox.classList.add('opacity-0', 'scale-95', 'pointer-events-none');
+      setTimeout(() => {
+        modalBox.classList.add('hidden');
+        reopenBtn.classList.remove('hidden');
+      }, 200);
+    });
+
+    reopenBtn.addEventListener('click', () => {
+      modalBox.classList.remove('hidden');
+      setTimeout(() => {
+        modalBox.classList.remove('opacity-0', 'scale-95', 'pointer-events-none');
+        reopenBtn.classList.add('hidden');
+      }, 20);
+    });
+  </script>
+</body>
+</html>

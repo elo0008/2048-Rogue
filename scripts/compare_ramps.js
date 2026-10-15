@@ -147,41 +147,58 @@ function contrastRatio(l1, l2) {
 }
 
 async function measureRamp(cdp, url) {
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 390,
+    height: 742,
+    deviceScaleFactor: 2,
+    mobile: true,
+  });
+
   await cdp.send('Page.navigate', { url });
   await sleep(400);
 
-  // Dismiss start overlay
+  // Dismiss start overlay and set up reproducible board with stone
   await cdp.eval(`
     (() => {
       const btn = document.getElementById('btn-play-start');
       if (btn) btn.click();
+      window.controller.state.over = false;
+      window.controller.state.board = [
+        2,    4,    8,    16,
+        32,   64,   128,  256,
+        512,  1024, 2048, 'S',
+        0,    2,    4,    8
+      ];
+      window.controller.state.score = 15840;
+      window.controller.state.moveCount = 48;
+      window.controller.state.highestTile = 2048;
+      window.syncBoard(window.controller.getBoard(), 'setup');
+      window.updateHeader();
     })()
   `);
-  await sleep(150);
+  await sleep(200);
 
+  // Read targeting colors and tile colors
   const raw = await cdp.eval(`
     (() => {
       const vals = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
       const emptyCell = document.querySelector('.cell');
       const emptyBg = emptyCell ? window.getComputedStyle(emptyCell).backgroundColor : 'rgb(42, 38, 40)';
 
-      // Stone
-      const stoneEl = document.createElement('div');
-      stoneEl.className = 'tile stone tile-stone';
-      stoneEl.setAttribute('data-val', 'S');
-      const stoneFace = document.createElement('div');
-      stoneFace.className = 'tile-face stone-face';
-      stoneFace.textContent = 'S';
-      stoneEl.appendChild(stoneFace);
-      document.body.appendChild(stoneEl);
-      const stoneBg = window.getComputedStyle(stoneFace).backgroundColor;
-      const stoneColor = window.getComputedStyle(stoneFace).color;
-      stoneEl.remove();
+      // Real targeting colours: gold accent from candidate and eraser red from erasable
+      const candEl = document.createElement('div');
+      candEl.className = 'tile candidate';
+      document.body.appendChild(candEl);
+      const candBefore = window.getComputedStyle(candEl, '::before');
+      const goldColor = candBefore.borderTopColor || candBefore.borderColor;
+      candEl.remove();
 
-      // Read targeting ring colors
-      const rootStyles = window.getComputedStyle(document.documentElement);
-      const ringLight = rootStyles.getPropertyValue('--ring-light').trim() || '#ffffff';
-      const ringDark = rootStyles.getPropertyValue('--ring-dark').trim() || '#141315';
+      const erasableEl = document.createElement('div');
+      erasableEl.className = 'tile erasable';
+      document.body.appendChild(erasableEl);
+      const erasableBefore = window.getComputedStyle(erasableEl, '::before');
+      const eraserColor = erasableBefore.borderTopColor || erasableBefore.borderColor;
+      erasableEl.remove();
 
       const tilesData = [];
       for (const v of vals) {
@@ -210,11 +227,46 @@ async function measureRamp(cdp, url) {
 
       return {
         emptyBg,
-        stoneBg,
-        stoneColor,
-        ringLight,
-        ringDark,
+        goldColor,
+        eraserColor,
         tiles: tilesData
+      };
+    })()
+  `);
+
+  // Measure "stone vs tile 2" from REAL rendered pixels (mean colour of screenshot crop of stone cell)
+  const screenshot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+  const stoneCrop = await cdp.eval(`
+    (async () => {
+      const stoneEl = document.querySelector('.tile.stone') || document.querySelector('.stone');
+      if (!stoneEl) return { r: 29, g: 26, b: 28 };
+      const r = stoneEl.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const img = new Image();
+      img.src = 'data:image/png;base64,' + "${screenshot.data}";
+      await new Promise(res => { img.onload = res; });
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const pad = 4;
+      const cropX = Math.round((r.left + pad) * dpr);
+      const cropY = Math.round((r.top + pad) * dpr);
+      const cropW = Math.round((r.width - pad * 2) * dpr);
+      const cropH = Math.round((r.height - pad * 2) * dpr);
+      const data = ctx.getImageData(cropX, cropY, cropW, cropH).data;
+      let rSum = 0, gSum = 0, bSum = 0, count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        rSum += data[i];
+        gSum += data[i + 1];
+        bSum += data[i + 2];
+        count++;
+      }
+      return {
+        r: Math.round(rSum / count),
+        g: Math.round(gSum / count),
+        b: Math.round(bSum / count),
       };
     })()
   `);
@@ -223,20 +275,17 @@ async function measureRamp(cdp, url) {
   const emptyLum = relLuminance(emptyRgb.r, emptyRgb.g, emptyRgb.b);
   const emptyHex = toHex(emptyRgb.r, emptyRgb.g, emptyRgb.b);
 
-  const stoneRgb = parseRgb(raw.stoneBg);
+  const stoneRgb = stoneCrop;
   const stoneLum = relLuminance(stoneRgb.r, stoneRgb.g, stoneRgb.b);
   const stoneHex = toHex(stoneRgb.r, stoneRgb.g, stoneRgb.b);
 
-  // Parse ring colors
-  const ringLightRgb = raw.ringLight.startsWith('#')
-    ? { r: parseInt(raw.ringLight.slice(1, 3), 16), g: parseInt(raw.ringLight.slice(3, 5), 16), b: parseInt(raw.ringLight.slice(5, 7), 16) }
-    : parseRgb(raw.ringLight);
-  const ringDarkRgb = raw.ringDark.startsWith('#')
-    ? { r: parseInt(raw.ringDark.slice(1, 3), 16), g: parseInt(raw.ringDark.slice(3, 5), 16), b: parseInt(raw.ringDark.slice(5, 7), 16) }
-    : parseRgb(raw.ringDark);
+  const goldRgb = parseRgb(raw.goldColor);
+  const goldLum = relLuminance(goldRgb.r, goldRgb.g, goldRgb.b);
+  const goldHex = toHex(goldRgb.r, goldRgb.g, goldRgb.b);
 
-  const ringLightLum = relLuminance(ringLightRgb.r, ringLightRgb.g, ringLightRgb.b);
-  const ringDarkLum = relLuminance(ringDarkRgb.r, ringDarkRgb.g, ringDarkRgb.b);
+  const eraserRgb = parseRgb(raw.eraserColor);
+  const eraserLum = relLuminance(eraserRgb.r, eraserRgb.g, eraserRgb.b);
+  const eraserHex = toHex(eraserRgb.r, eraserRgb.g, eraserRgb.b);
 
   const tiles = [];
   let prevLum = null;
@@ -250,10 +299,9 @@ async function measureRamp(cdp, url) {
     const emptyRatio = contrastRatio(bgLum, emptyLum);
     const textRatio = contrastRatio(textLum, bgLum);
 
-    // Contrast with ring highlights (light ring and dark ring)
-    const ringLightRatio = contrastRatio(ringLightLum, bgLum);
-    const ringDarkRatio = contrastRatio(ringDarkLum, bgLum);
-    const bestRingRatio = Math.max(ringLightRatio, ringDarkRatio);
+    // Contrast with REAL targeting colours (gold accent and Eraser red)
+    const goldRatio = contrastRatio(goldLum, bgLum);
+    const eraserRatio = contrastRatio(eraserLum, bgLum);
 
     tiles.push({
       val: t.val,
@@ -262,9 +310,8 @@ async function measureRamp(cdp, url) {
       prevRatio,
       emptyRatio,
       textRatio,
-      ringLightRatio,
-      ringDarkRatio,
-      bestRingRatio,
+      goldRatio,
+      eraserRatio,
       boxShadow: t.boxShadow
     });
     prevLum = bgLum;
@@ -276,49 +323,16 @@ async function measureRamp(cdp, url) {
     emptyHex,
     emptyLum,
     stoneHex,
+    stoneRgb,
     stoneLum,
     stoneVsTile2,
-    tiles
+    goldHex,
+    goldLum,
+    eraserHex,
+    eraserLum,
+    tiles,
+    screenshotData: screenshot.data
   };
-}
-
-async function captureBoardScreenshot(cdp, url, outPath) {
-  await cdp.send('Emulation.setDeviceMetricsOverride', {
-    width: 390,
-    height: 742,
-    deviceScaleFactor: 2,
-    mobile: true,
-  });
-
-  await cdp.send('Page.navigate', { url });
-  await sleep(400);
-
-  // Dismiss start overlay and set up reproducible board
-  await cdp.eval(`
-    (() => {
-      const btn = document.getElementById('btn-play-start');
-      if (btn) btn.click();
-      window.controller.state.over = false;
-      window.controller.state.board = [
-        2,    4,    8,    16,
-        32,   64,   128,  256,
-        512,  1024, 2048, 'S',
-        0,    2,    4,    8
-      ];
-      window.controller.state.score = 15840;
-      window.controller.state.moveCount = 48;
-      window.controller.state.highestTile = 2048;
-      window.syncBoard(window.controller.getBoard(), 'setup');
-      window.updateHeader();
-    })()
-  `);
-  await sleep(300);
-
-  const screenshot = await cdp.send('Page.captureScreenshot', {
-    format: 'png',
-  });
-
-  fs.writeFileSync(outPath, Buffer.from(screenshot.data, 'base64'));
 }
 
 async function run() {
@@ -345,12 +359,31 @@ async function run() {
     console.log('Measuring v2 ramp (?ramp=v2)...');
     const v2Ramp = await measureRamp(cdp, `http://localhost:${PORT}/?ramp=v2`);
 
-    // Capture screenshots
-    console.log('Capturing screenshots at 390x742...');
-    await captureBoardScreenshot(cdp, `http://localhost:${PORT}/`, path.join(outDir, 'ramp_default.png'));
-    await captureBoardScreenshot(cdp, `http://localhost:${PORT}/?ramp=v2`, path.join(outDir, 'ramp_v2.png'));
+    // Save screenshots
+    fs.writeFileSync(path.join(outDir, 'ramp_default.png'), Buffer.from(defaultRamp.screenshotData, 'base64'));
+    fs.writeFileSync(path.join(outDir, 'ramp_v2.png'), Buffer.from(v2Ramp.screenshotData, 'base64'));
 
     cdp.close();
+
+    const weakPairs = [];
+
+    // Check default ramp weak pairs
+    if (defaultRamp.stoneVsTile2 < 1.5) {
+      weakPairs.push(`Default Stone vs Tile 2 (${defaultRamp.stoneVsTile2.toFixed(2)}:1)`);
+    }
+    for (const t of defaultRamp.tiles) {
+      if (t.goldRatio < 1.5) weakPairs.push(`Default Gold vs Tile ${t.val} (${t.goldRatio.toFixed(2)}:1)`);
+      if (t.eraserRatio < 1.5) weakPairs.push(`Default Eraser vs Tile ${t.val} (${t.eraserRatio.toFixed(2)}:1)`);
+    }
+
+    // Check v2 ramp weak pairs
+    if (v2Ramp.stoneVsTile2 < 1.5) {
+      weakPairs.push(`v2 Stone vs Tile 2 (${v2Ramp.stoneVsTile2.toFixed(2)}:1)`);
+    }
+    for (const t of v2Ramp.tiles) {
+      if (t.goldRatio < 1.5) weakPairs.push(`v2 Gold vs Tile ${t.val} (${t.goldRatio.toFixed(2)}:1)`);
+      if (t.eraserRatio < 1.5) weakPairs.push(`v2 Eraser vs Tile ${t.val} (${t.eraserRatio.toFixed(2)}:1)`);
+    }
 
     // Generate ramp_compare.txt
     let output = '';
@@ -358,13 +391,14 @@ async function run() {
     output += '                                  TILE RAMP COMPARISON: DEFAULT vs V2                                   \n';
     output += '========================================================================================================\n';
     output += `Switch location in code: game/app.js (parseUrlOptions: ramp === 'v2' sets root.classList.add('ramp-v2'))\n`;
+    output += `Targeting colors: Gold Accent = ${defaultRamp.goldHex} (Lum: ${defaultRamp.goldLum.toFixed(4)}) | Eraser Red = ${defaultRamp.eraserHex} (Lum: ${defaultRamp.eraserLum.toFixed(4)})\n`;
     output += `Empty Cell: Default = ${defaultRamp.emptyHex} (Lum: ${defaultRamp.emptyLum.toFixed(4)}) | v2 = ${v2Ramp.emptyHex} (Lum: ${v2Ramp.emptyLum.toFixed(4)})\n`;
-    output += `Stone:      Default = ${defaultRamp.stoneHex} (Lum: ${defaultRamp.stoneLum.toFixed(4)}) | v2 = ${v2Ramp.stoneHex} (Lum: ${v2Ramp.stoneLum.toFixed(4)})\n`;
-    output += `Stone vs Tile 2 contrast: Default = ${defaultRamp.stoneVsTile2.toFixed(2)}:1 | v2 = ${v2Ramp.stoneVsTile2.toFixed(2)}:1 (req >= 1.5:1)\n`;
+    output += `Stone (pixel mean): Default = rgb(${defaultRamp.stoneRgb.r},${defaultRamp.stoneRgb.g},${defaultRamp.stoneRgb.b}) -> ${defaultRamp.stoneHex} (Lum: ${defaultRamp.stoneLum.toFixed(4)}) | v2 = rgb(${v2Ramp.stoneRgb.r},${v2Ramp.stoneRgb.g},${v2Ramp.stoneRgb.b}) -> ${v2Ramp.stoneHex} (Lum: ${v2Ramp.stoneLum.toFixed(4)})\n`;
+    output += `Stone vs Tile 2 contrast: Default = ${defaultRamp.stoneVsTile2.toFixed(2)}:1${defaultRamp.stoneVsTile2 < 1.5 ? ' [WEAK]' : ''} | v2 = ${v2Ramp.stoneVsTile2.toFixed(2)}:1${v2Ramp.stoneVsTile2 < 1.5 ? ' [WEAK]' : ''} (req >= 1.5:1)\n`;
     output += `Tile 2 vs Empty contrast: Default = ${defaultRamp.tiles[0].emptyRatio.toFixed(2)}:1 | v2 = ${v2Ramp.tiles[0].emptyRatio.toFixed(2)}:1 (req >= 1.5:1)\n\n`;
 
     output += '------------------------------------------------ DEFAULT RAMP ------------------------------------------\n';
-    output += 'Value | Hex     | Rel Lum | Prev Ratio | Empty Ratio | Text Contrast | Ring Contrast (Light / Dark -> Best)\n';
+    output += 'Value | Hex     | Rel Lum | Prev Ratio | Empty Ratio | Text Contrast | Targeting: Gold Accent | Eraser Red\n';
     output += '--------------------------------------------------------------------------------------------------------\n';
     for (const t of defaultRamp.tiles) {
       const v = `${t.val}`.padEnd(5);
@@ -373,12 +407,15 @@ async function run() {
       const pr = t.prevRatio !== null ? `${t.prevRatio.toFixed(2)}:1`.padEnd(10) : 'N/A       ';
       const er = `${t.emptyRatio.toFixed(2)}:1`.padEnd(11);
       const tr = `${t.textRatio.toFixed(2)}:1`.padEnd(13);
-      const rc = `${t.ringLightRatio.toFixed(2)}:1 / ${t.ringDarkRatio.toFixed(2)}:1 -> ${t.bestRingRatio.toFixed(2)}:1`;
-      output += `${v} | ${h} | ${l} | ${pr} | ${er} | ${tr} | ${rc}\n`;
+      const gWeak = t.goldRatio < 1.5 ? ' (WEAK)' : '       ';
+      const eWeak = t.eraserRatio < 1.5 ? ' (WEAK)' : '';
+      const gc = `${t.goldRatio.toFixed(2)}:1${gWeak}`.padEnd(22);
+      const ec = `${t.eraserRatio.toFixed(2)}:1${eWeak}`;
+      output += `${v} | ${h} | ${l} | ${pr} | ${er} | ${tr} | ${gc} | ${ec}\n`;
     }
 
     output += '\n-------------------------------------------------- V2 RAMP ---------------------------------------------\n';
-    output += 'Value | Hex     | Rel Lum | Prev Ratio | Empty Ratio | Text Contrast | Ring Contrast (Light / Dark -> Best)\n';
+    output += 'Value | Hex     | Rel Lum | Prev Ratio | Empty Ratio | Text Contrast | Targeting: Gold Accent | Eraser Red\n';
     output += '--------------------------------------------------------------------------------------------------------\n';
     let v2Monotonic = true;
     let v2AllAdjacentPass = true;
@@ -392,8 +429,11 @@ async function run() {
       const pr = t.prevRatio !== null ? `${t.prevRatio.toFixed(2)}:1`.padEnd(10) : 'N/A       ';
       const er = `${t.emptyRatio.toFixed(2)}:1`.padEnd(11);
       const tr = `${t.textRatio.toFixed(2)}:1`.padEnd(13);
-      const rc = `${t.ringLightRatio.toFixed(2)}:1 / ${t.ringDarkRatio.toFixed(2)}:1 -> ${t.bestRingRatio.toFixed(2)}:1`;
-      output += `${v} | ${h} | ${l} | ${pr} | ${er} | ${tr} | ${rc}\n`;
+      const gWeak = t.goldRatio < 1.5 ? ' (WEAK)' : '       ';
+      const eWeak = t.eraserRatio < 1.5 ? ' (WEAK)' : '';
+      const gc = `${t.goldRatio.toFixed(2)}:1${gWeak}`.padEnd(22);
+      const ec = `${t.eraserRatio.toFixed(2)}:1${eWeak}`;
+      output += `${v} | ${h} | ${l} | ${pr} | ${er} | ${tr} | ${gc} | ${ec}\n`;
 
       if (prevL !== null && t.lum <= prevL) v2Monotonic = false;
       if (t.prevRatio !== null && t.prevRatio < 1.15) v2AllAdjacentPass = false;
@@ -406,7 +446,16 @@ async function run() {
     output += `V2 All adjacent pairs >= 1.15:    ${v2AllAdjacentPass ? 'PASS' : 'FAIL'}\n`;
     output += `V2 Tile 2 vs empty cell >= 1.5:   ${v2Ramp.tiles[0].emptyRatio >= 1.5 ? 'PASS' : 'FAIL'} (${v2Ramp.tiles[0].emptyRatio.toFixed(2)}:1)\n`;
     output += `V2 Stone vs tile 2 >= 1.5:        ${v2Ramp.stoneVsTile2 >= 1.5 ? 'PASS' : 'FAIL'} (${v2Ramp.stoneVsTile2.toFixed(2)}:1)\n`;
-    output += `V2 Number text vs tile >= 4.5:    ${v2AllTextPass ? 'PASS' : 'FAIL'}\n`;
+    output += `V2 Number text vs tile >= 4.5:    ${v2AllTextPass ? 'PASS' : 'FAIL'}\n\n`;
+
+    output += 'WEAK TARGETING / CONTRAST PAIRS (< 1.5:1):\n';
+    if (weakPairs.length === 0) {
+      output += 'None. All pairs >= 1.5:1.\n';
+    } else {
+      for (const w of weakPairs) {
+        output += ` - ${w} < 1.5:1 [WEAK]\n`;
+      }
+    }
     output += '========================================================================================================\n';
 
     fs.writeFileSync(path.join(outDir, 'ramp_compare.txt'), output, 'utf8');

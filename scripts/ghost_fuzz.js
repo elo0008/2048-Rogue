@@ -536,7 +536,7 @@ const WAIT_IDLE_SCRIPT = `
   })
 `;
 
-async function runScenario(cdp, name, urlParams, runner) {
+async function runScenario(cdp, name, urlParams, runner, setupFn = null) {
   console.log(`\n=================== SCENARIO ${name} (${ACTIONS_PER_SCENARIO} actions) ===================`);
   await cdp.send('Page.navigate', { url: `http://localhost:${PORT}/?${urlParams}` });
   await sleep(400);
@@ -562,6 +562,13 @@ async function runScenario(cdp, name, urlParams, runner) {
   `);
   await cdp.eval(START_SLIDE_MONITOR_SCRIPT);
   await sleep(200);
+
+  if (typeof setupFn === 'function') {
+    await setupFn(cdp);
+    await sleep(150);
+  }
+
+  const setupBeforeActions = await cdp.eval(`(window.__correctionsByCallSite && window.__correctionsByCallSite.setup) || 0`);
 
   const history = [];
   let effectiveActions = 0;
@@ -643,20 +650,20 @@ async function runScenario(cdp, name, urlParams, runner) {
   const slideSamples = await cdp.eval(`window.__slideMonitorSamples || 0`);
 
   // Verify headline total matches sum of runtime call sites
-  const otherCalls = { ...callSites };
-  delete otherCalls.initialRender;
-  const sumCategories = (callSites.slideFinish || 0) +
-                        (callSites.rewind || 0) +
-                        (callSites.interrupt || 0) +
-                        (callSites.ability || 0) +
-                        (callSites['decision-resolve'] || 0) +
-                        (callSites['draft-resolve'] || 0) +
-                        (callSites.setup || 0) +
-                        (callSites.other || 0);
+  let sumCategories = 0;
+  for (const [k, v] of Object.entries(callSites)) {
+    if (k !== 'initialRender') sumCategories += v;
+  }
+
+  const setupAfterActions = (callSites.setup || 0) - setupBeforeActions;
+  if (setupAfterActions > 0) {
+    console.error(`❌ FAILURE in Scenario ${name}: ${setupAfterActions} corrections labelled "setup" occurred after the first scripted action!`);
+    return { pass: false, scenario: name, error: `${setupAfterActions} setup corrections occurred after first action` };
+  }
 
   console.log(`✔ Scenario ${name} PASSED all ${ACTIONS_PER_SCENARIO} actions. (effective actions: ${effectiveActions}, gameOvers: ${gameOvers}, playAgains: ${playAgains}, rewinds: ${rewinds}, diagonal: ${diagonalUses}, eraser: ${eraserUses}, idle timeouts: ${idleTimeouts}, syncBoard corrections: ${debugCorrections} [slideFinish: ${callSites.slideFinish || 0}, rewind: ${callSites.rewind || 0}, interrupt: ${callSites.interrupt || 0}, ability: ${callSites.ability || 0}, decision-resolve: ${callSites['decision-resolve'] || 0}, draft-resolve: ${callSites['draft-resolve'] || 0}, setup: ${callSites.setup || 0}, other: ${callSites.other || 0}], initialRender: ${initialRender}, 16ms slide samples: ${slideSamples})`);
   if (callSites.other > 0) {
-    console.log(`   [Call sites breakdown]: ${JSON.stringify(otherCalls)}`);
+    console.log(`   [Call sites breakdown]: ${JSON.stringify(callSites)}`);
   }
   const timeoutDetails = await cdp.eval(`window.__idleTimeoutDetails || []`);
   if (timeoutDetails.length > 0) {
@@ -691,7 +698,7 @@ async function runScenario(cdp, name, urlParams, runner) {
     eraserUses,
     idleTimeouts,
     corrections: debugCorrections,
-    callSites: otherCalls,
+    callSites,
     initialRender,
     slideSamples
   };
@@ -917,7 +924,11 @@ async function runFuzz() {
 
     // Scenario I (NEW): Blocked swipes while stuck
     results.push(await runScenario(cdp, 'I (blocked swipes while stuck)', 'seed=909&start=rewind&debug=1', async (c, i) => {
-      // Put board in stuck state with alternating tiles and rewind charge
+      const dir = DIRS[i % 4];
+      await c.eval(`window.handleMove('${dir[5]}')`);
+      return { desc: `Blocked swipe ${dir} while stuck` };
+    }, async (c) => {
+      // Put board in stuck state with alternating tiles and rewind charge before actions begin
       await c.eval(`
         (() => {
           window.controller.state.board = [
@@ -930,9 +941,6 @@ async function runFuzz() {
           window.syncBoard(window.controller.getBoard(), 'setup');
         })()
       `);
-      const dir = DIRS[i % 4];
-      await c.eval(`window.handleMove('${dir[5]}')`);
-      return { desc: `Blocked swipe ${dir} while stuck` };
     }));
 
     // Scenario J (NEW): Stone spawns (?stones=0.1)
@@ -967,7 +975,7 @@ async function runFuzz() {
 
             window.controller.state.over = false;
             window.controller.state.board = [...setup.board];
-            window.syncBoard(window.controller.getBoard(), 'setup');
+            window.syncBoard(window.controller.getBoard(), 'shatter-test');
             const actsBefore = (window.controller.getState().relicActivations?.shatter || 0);
 
             window.handleMove(setup.dir, 'swipe');
@@ -1051,7 +1059,7 @@ async function runFuzz() {
             window.controller.state.over = false;
             window.controller.state.board = [...setup.board];
             window.controller.state.abilities.diagonal_charge = { charges: 3, counter: 0, swipesAtMax: 0, maxCharges: 3, swipesPerCharge: 10 };
-            window.syncBoard(window.controller.getBoard(), 'setup');
+            window.syncBoard(window.controller.getBoard(), 'shatter-test');
             const actsBefore = (window.controller.getState().relicActivations?.shatter || 0);
 
             window.executeAbility('diagonal_charge', { from: setup.from, to: setup.to });
@@ -1136,8 +1144,6 @@ async function runFuzz() {
         // Eraser mode shape test
         const data = await cdp.eval(`
           (() => {
-            window.controller.state.board = [2, 4, 8, 16, 128, 256, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-            window.syncBoard(window.controller.getBoard(), 'setup');
             const btn = document.querySelector('button.ability-btn[data-relic="eraser"]');
             if (btn) btn.click();
 
@@ -1161,8 +1167,6 @@ async function runFuzz() {
         // Diagonal step 1 shape & pulse test
         const data = await cdp.eval(`
           (() => {
-            window.controller.state.board = [2, 0, 0, 0, 0, 2, 128, 256, 0, 0, 0, 0, 0, 0, 0, 0];
-            window.syncBoard(window.controller.getBoard(), 'setup');
             window.renderAbilityBar();
             window.startTargeting('diagonal_charge');
 
@@ -1187,8 +1191,6 @@ async function runFuzz() {
         // Diagonal step 2 partner pulse, selected steady, & dim test
         const data = await cdp.eval(`
           (() => {
-            window.controller.state.board = [2, 0, 0, 0, 0, 2, 128, 256, 0, 0, 0, 0, 0, 0, 0, 0];
-            window.syncBoard(window.controller.getBoard(), 'setup');
             window.renderAbilityBar();
             window.startTargeting('diagonal_charge');
 
@@ -1220,15 +1222,200 @@ async function runFuzz() {
         if (data.tRadius === data.ringRadius && data.ringRadius === '8px') ringRadiusAssertions++;
         return { desc: `Diagonal step 2 check (steady: ${data.selSteady}, partnerPulses: ${data.partnerPulses})`, diagonal: 1 };
       }
+    }, async (c) => {
+      // Set up board once before action 0
+      await c.eval(`
+        (() => {
+          window.controller.state.board = [2, 0, 0, 0, 0, 2, 128, 256, 0, 0, 0, 0, 0, 0, 0, 0];
+          window.syncBoard(window.controller.getBoard(), 'setup');
+        })()
+      `);
     }));
     console.log(`[Scenario L Radius Stats]: ring-radius == tile-radius assertions performed: ${ringRadiusAssertions}`);
+
+    // Scenario M (NEW): Force EACH passive relic (fault_line, siphon, shatter, mason, last_stand) to fire
+    const mFired = {
+      fault_line: 0,
+      siphon: 0,
+      shatter: 0,
+      mason: 0,
+      last_stand: 0,
+    };
+    let mSlideFallbacks = 0;
+
+    results.push(await runScenario(cdp, 'M (force all 5 passives to fire)', 'seed=1313&start=fault_line,siphon,shatter,mason,last_stand&debug=1', async (c, i) => {
+      const mode = i % 5;
+      let desc = '';
+      if (mode === 0) {
+        // 1. fault_line: stone shift
+        const res = await c.eval(`
+          new Promise((resolve) => {
+            window.controller.state.board = [
+              2, 4, 'S', 0,
+              0, 0, 0, 0,
+              0, 0, 0, 0,
+              0, 0, 0, 0
+            ];
+            window.syncBoard(window.controller.getBoard(), 'passive-test');
+            const actsBefore = (window.controller.getState().relicActivations?.fault_line || 0);
+            const fbBefore = window.__slideFallbackCount || 0;
+            window.handleMove('R', 'swipe');
+            const actsAfter = (window.controller.getState().relicActivations?.fault_line || 0);
+            const fbAfter = window.__slideFallbackCount || 0;
+            resolve({ fired: actsAfter > actsBefore, fallbacks: fbAfter - fbBefore });
+          })
+        `);
+        if (res.fired) mFired.fault_line++;
+        if (res.fallbacks > 0) mSlideFallbacks += res.fallbacks;
+        desc = `Fault line shift (fired: ${res.fired}, fallbacks: ${res.fallbacks})`;
+      } else if (mode === 1) {
+        // 2. siphon: merge >= 16 skips tile spawn
+        const res = await c.eval(`
+          new Promise((resolve) => {
+            window.controller.state.board = [
+              8, 8, 0, 0,
+              0, 0, 0, 0,
+              0, 0, 0, 0,
+              0, 0, 0, 0
+            ];
+            window.syncBoard(window.controller.getBoard(), 'passive-test');
+            const actsBefore = (window.controller.getState().relicActivations?.siphon || 0);
+            const fbBefore = window.__slideFallbackCount || 0;
+            window.handleMove('L', 'swipe');
+            const actsAfter = (window.controller.getState().relicActivations?.siphon || 0);
+            const fbAfter = window.__slideFallbackCount || 0;
+            resolve({ fired: actsAfter > actsBefore, fallbacks: fbAfter - fbBefore });
+          })
+        `);
+        if (res.fired) mFired.siphon++;
+        if (res.fallbacks > 0) mSlideFallbacks += res.fallbacks;
+        desc = `Siphon merge >=16 (fired: ${res.fired}, fallbacks: ${res.fallbacks})`;
+      } else if (mode === 2) {
+        // 3. shatter: merge >= 64 destroys touching stone
+        const res = await c.eval(`
+          new Promise((resolve) => {
+            window.controller.state.board = [
+              0, 32, 32, 'S',
+              0, 0, 0, 0,
+              0, 0, 0, 0,
+              0, 0, 0, 0
+            ];
+            window.syncBoard(window.controller.getBoard(), 'passive-test');
+            const actsBefore = (window.controller.getState().relicActivations?.shatter || 0);
+            const fbBefore = window.__slideFallbackCount || 0;
+            window.handleMove('R', 'swipe');
+            const actsAfter = (window.controller.getState().relicActivations?.shatter || 0);
+            const fbAfter = window.__slideFallbackCount || 0;
+            resolve({ fired: actsAfter > actsBefore, fallbacks: fbAfter - fbBefore });
+          })
+        `);
+        if (res.fired) mFired.shatter++;
+        if (res.fallbacks > 0) mSlideFallbacks += res.fallbacks;
+        desc = `Shatter stone destruction (fired: ${res.fired}, fallbacks: ${res.fallbacks})`;
+      } else if (mode === 3) {
+        // 4. mason: stone due -> decision -> placement
+        const res = await c.eval(`
+          new Promise((resolve) => {
+            window.controller.state.board = [
+              0, 2, 4, 0,
+              0, 0, 0, 0,
+              0, 0, 0, 0,
+              0, 0, 0, 0
+            ];
+            const sched = window.controller.state.config.hazardSchedule || [];
+            const interval = sched.length > 0 ? sched[0].interval : 75;
+            window.controller.state.movesSinceLastStone = interval - 1;
+            window.syncBoard(window.controller.getBoard(), 'passive-test');
+            const actsBefore = (window.controller.getState().relicActivations?.mason || 0);
+            const fbBefore = window.__slideFallbackCount || 0;
+            window.handleMove('L', 'swipe');
+            if (typeof window.finishCurrentAnimationImmediately === 'function') {
+              window.finishCurrentAnimationImmediately();
+            }
+            resolve({ actsBefore, fbBefore });
+          })
+        `);
+        await sleep(180);
+        const resolved = await c.eval(`
+          (() => {
+            const dec = window.controller.getPendingDecision();
+            let decisionHandled = false;
+            if (dec && dec.type === 'mason' && dec.candidates && dec.candidates.length > 0) {
+              const choice = dec.candidates[0];
+              const cell = document.querySelector('.cell[data-index="' + choice + '"]') || document.querySelector('.grid-cell[data-index="' + choice + '"]');
+              if (cell) cell.click();
+              if (window.controller.hasPendingDecision()) {
+                window.controller.resolveDecision(choice);
+                window.syncBoard(window.controller.getBoard(), 'decision-resolve');
+              }
+              decisionHandled = true;
+            }
+            const actsAfter = (window.controller.getState().relicActivations?.mason || 0);
+            const fbAfter = window.__slideFallbackCount || 0;
+            return { decisionHandled, actsAfter, fbAfter };
+          })()
+        `);
+        const fired = resolved.actsAfter > res.actsBefore;
+        const fallbacks = (resolved.fbAfter || 0) - res.fbBefore;
+        if (fired) mFired.mason++;
+        if (fallbacks > 0) mSlideFallbacks += fallbacks;
+        desc = `Mason placement (fired: ${fired}, decisionHandled: ${resolved.decisionHandled}, fallbacks: ${fallbacks})`;
+      } else if (mode === 4) {
+        // 5. last_stand: no legal moves -> low tiles vanish
+        const res = await c.eval(`
+          new Promise((resolve) => {
+            window.controller.state.lastStandUsed = false;
+            window.controller.state.board = [
+              2, 4, 8, 16,
+              32, 64, 128, 256,
+              512, 1024, 2048, 4096,
+              8192, 16384, 0, 32768
+            ];
+            window.syncBoard(window.controller.getBoard(), 'passive-test');
+            const actsBefore = (window.controller.getState().relicActivations?.last_stand || 0);
+            const fbBefore = window.__slideFallbackCount || 0;
+            window.handleMove('L', 'swipe');
+            const actsAfter = (window.controller.getState().relicActivations?.last_stand || 0);
+            const fbAfter = window.__slideFallbackCount || 0;
+            resolve({ fired: actsAfter > actsBefore, fallbacks: fbAfter - fbBefore });
+          })
+        `);
+        if (res.fired) mFired.last_stand++;
+        if (res.fallbacks > 0) mSlideFallbacks += res.fallbacks;
+        desc = `Last Stand activation (fired: ${res.fired}, fallbacks: ${res.fallbacks})`;
+      }
+      return { desc };
+    }));
+
+    console.log(`[Scenario M Passive Relic Stats]: fault_line: ${mFired.fault_line}, siphon: ${mFired.siphon}, shatter: ${mFired.shatter}, mason: ${mFired.mason}, last_stand: ${mFired.last_stand}, slideFallbacks: ${mSlideFallbacks}`);
+    const allPassivesFired = mFired.fault_line > 0 && mFired.siphon > 0 && mFired.shatter > 0 && mFired.mason > 0 && mFired.last_stand > 0;
+    if (!allPassivesFired || mSlideFallbacks > 0) {
+      console.error(`❌ FAILURE in Scenario M: not all passives fired (fault_line: ${mFired.fault_line}, siphon: ${mFired.siphon}, shatter: ${mFired.shatter}, mason: ${mFired.mason}, last_stand: ${mFired.last_stand}) or slideFallbacks (${mSlideFallbacks}) > 0!`);
+      results[results.length - 1].pass = false;
+    }
 
     cdp.close();
 
     const failedScenarios = results.filter(r => !r.pass);
-    console.log('\n================================= FUZZ SUMMARY =================================');
-    console.log('Scenario | Status | Actions | Effective | Over/Again | Rew/Diag/Ers | Guard TO | Corrections (tot:[sf/rw/ab/dec/drf/set]) | InitialRender | Slide Samples');
-    console.log('-----------------------------------------------------------------------------------------------------------------------------------------');
+    // Collect and print all recorded labels across all scenarios
+    const allLabels = {};
+    for (const r of results) {
+      for (const [k, v] of Object.entries(r.callSites || {})) {
+        if (k !== 'initialRender') {
+          allLabels[k] = (allLabels[k] || 0) + v;
+        }
+      }
+    }
+    console.log('=== ALL RECORDED CORRECTION LABELS ACROSS ALL RUNS ===');
+    for (const [k, v] of Object.entries(allLabels)) {
+      console.log(`  ${k}: ${v}`);
+    }
+    console.log('======================================================');
+
+    let summaryOutput = '';
+    summaryOutput += '================================= FUZZ SUMMARY =================================\n';
+    summaryOutput += 'Scenario | Status | Actions | Effective | Over/Again | Rew/Diag/Ers | Guard TO | Corrections (tot:[sf/rw/ab/dec/drf/set/oth]) | InitialRender | Slide Samples\n';
+    summaryOutput += '---------------------------------------------------------------------------------------------------------------------------------------------\n';
     let totalSlideFinish = 0;
     let totalRewind = 0;
     let totalAbility = 0;
@@ -1237,6 +1424,8 @@ async function runFuzz() {
     let totalSetup = 0;
     let totalOther = 0;
     let totalSamples = 0;
+    let totalRowCorrections = 0;
+
     for (const r of results) {
       const sf = r.callSites?.slideFinish || 0;
       const rw = r.callSites?.rewind || 0;
@@ -1244,7 +1433,21 @@ async function runFuzz() {
       const dec = r.callSites?.['decision-resolve'] || 0;
       const drf = r.callSites?.['draft-resolve'] || 0;
       const set = r.callSites?.setup || 0;
-      const oth = (r.callSites?.interrupt || 0) + (r.callSites?.other || 0);
+      
+      // Calculate other from all remaining call site labels (e.g. shatter-test, passive-test, interrupt, other)
+      let oth = 0;
+      for (const [k, v] of Object.entries(r.callSites || {})) {
+        if (k !== 'initialRender' && k !== 'slideFinish' && k !== 'rewind' && k !== 'ability' && k !== 'decision-resolve' && k !== 'draft-resolve' && k !== 'setup') {
+          oth += v;
+        }
+      }
+
+      const rowCategorySum = sf + rw + ab + dec + drf + set + oth;
+      if (r.corrections !== rowCategorySum) {
+        console.error(`❌ ACCOUNTING MISMATCH in Scenario ${r.scenario}: total (${r.corrections}) !== sum of categories (${rowCategorySum})!`);
+        r.pass = false;
+      }
+
       totalSlideFinish += sf;
       totalRewind += rw;
       totalAbility += ab;
@@ -1253,23 +1456,32 @@ async function runFuzz() {
       totalSetup += set;
       totalOther += oth;
       totalSamples += r.slideSamples || 0;
-      const corrStr = `${r.corrections} [${sf}/${rw}/${ab}/${dec}/${drf}/${set}]`;
-      console.log(
-        `${r.scenario.padEnd(42)} | ` +
+      totalRowCorrections += r.corrections;
+
+      const corrStr = `${r.corrections} [${sf}/${rw}/${ab}/${dec}/${drf}/${set}/${oth}]`;
+      const row = `${r.scenario.padEnd(42)} | ` +
         `${(r.pass ? 'PASS' : 'FAIL').padEnd(6)} | ` +
         `${String(r.actions).padEnd(7)} | ` +
         `${String(r.effectiveActions).padEnd(9)} | ` +
         `${`${r.gameOvers}/${r.playAgains}`.padEnd(10)} | ` +
         `${`${r.rewinds}/${r.diagonalUses}/${r.eraserUses}`.padEnd(12)} | ` +
         `${String(r.idleTimeouts).padEnd(8)} | ` +
-        `${corrStr.padEnd(39)} | ` +
+        `${corrStr.padEnd(43)} | ` +
         `${String(r.initialRender).padEnd(13)} | ` +
-        `${r.slideSamples}`
-      );
+        `${r.slideSamples}\n`;
+      summaryOutput += row;
     }
-    console.log('-----------------------------------------------------------------------------------------------------------------------------------------');
-    console.log(`TOTALS: slideFinish: ${totalSlideFinish}, rewind: ${totalRewind}, ability: ${totalAbility}, decision-resolve: ${totalDecision}, draft-resolve: ${totalDraft}, setup: ${totalSetup}, other: ${totalOther}, slideSamples: ${totalSamples}`);
-    console.log('=========================================================================================================\n');
+    summaryOutput += '---------------------------------------------------------------------------------------------------------------------------------------------\n';
+    const totalCategorySum = totalSlideFinish + totalRewind + totalAbility + totalDecision + totalDraft + totalSetup + totalOther;
+    if (totalRowCorrections !== totalCategorySum) {
+      console.error(`❌ TOTALS MISMATCH: totalRowCorrections (${totalRowCorrections}) !== totalCategorySum (${totalCategorySum})!`);
+      process.exit(1);
+    }
+    summaryOutput += `TOTALS: slideFinish: ${totalSlideFinish}, rewind: ${totalRewind}, ability: ${totalAbility}, decision-resolve: ${totalDecision}, draft-resolve: ${totalDraft}, setup: ${totalSetup}, other: ${totalOther}, slideSamples: ${totalSamples}\n`;
+    summaryOutput += '=============================================================================================================\n';
+
+    console.log('\n' + summaryOutput);
+    fs.writeFileSync(path.join(outDir, 'fuzz_short.txt'), summaryOutput, 'utf8');
 
     if (failedScenarios.length > 0) {
       console.error(`❌ Fuzz test failed on ${failedScenarios.length} scenarios.`);

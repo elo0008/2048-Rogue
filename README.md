@@ -95,16 +95,26 @@ Customize rules, test specific relic interactions, or replay seeds using query p
 | `?seed=N` | `?seed=42` | Replay an exact deterministic run seed. |
 | `?pool=a,b,c` | `?pool=diagonal_charge,eraser,mason` | Custom draft relic pool (default: `diagonal_charge, eraser, fault_line, mason, siphon, shatter, last_stand`). |
 | `?draft=N` | `?draft=30` | Trigger drafts every N moves (default: 60). |
-| `?first=N` | `?first=30` | First draft at move N, then every `draftEveryMoves` after it (e.g. first=30, every=60 gives 30, 90, 150). |
+| `?first=N` | `?first=30` | First draft at move N, then every `draftEveryMoves` after it (e.g. `first=30&draft=60` drafts at 30, 90, 150). |
+| `?thresholds=a,b,c` | `?thresholds=15,30,60` | Specific fixed move counts where drafts trigger. |
+| `?nodraft=1` | `?nodraft=1` or `?enableDraft=false` | Disables relic drafting entirely, hiding the relic countdown without header layout shift. |
 | `?stones=N` | `?stones=1` or `?stones=3` | Hazard schedule stone interval multiplier (default: 3x). |
+| `?hazard=a,b,c` | `?hazard=75,60,45,30` | Custom hazard interval schedule per 100-move tier. |
+| `?decay=N` | `?decay=30` | Stone lifetime in moves before natural decay. |
 | `?start=<id>` | `?start=diagonal_charge` or `?start=eraser,mason` | Start the run with specified relic(s) from move 0. |
+| `?relic=<id>` | `?relic=siphon` | Alias for `?start`. |
 | `?diag=N` | `?diag=10` | Moves between cooldown charges for Diagonal Merge (default: 10). |
 | `?eraser=N` | `?eraser=20` | Moves between cooldown charges for Eraser (default: 20). |
+| `?rewind=N` | `?rewind=10` | Moves between cooldown charges for Rewind (default: 10). |
 | `?maxcharges=N` | `?maxcharges=3` | Maximum charge capacity for abilities (default: 3). |
-| `?cap=N` | `?cap=2` | Stone-group relic draft cap (`0` = off, prototype default: 2). |
+| `?cap=N` | `?cap=2` | Stone-group relic draft cap (`0` or `off` = off, prototype default: 2). |
 | `?shatter=N` | `?shatter=64` | Minimum merge tile value required for Shatter to destroy adjacent stones (default: 64). |
 | `?siphon=N` | `?siphon=16` | Minimum merge tile value required for Siphon to skip tile spawn (default: 16). |
 | `?laststand=N` | `?laststand=16` | Maximum tile value destroyed by Last Stand on game over (default: 16). |
+| `?nudgeOnInvalid=false` | `?nudgeOnInvalid=false` | Disables the 4px blocked swipe nudge animation (default: true). |
+| `?flashOnInvalid=false` | `?flashOnInvalid=false` | Disables the blocked swipe gold border flash and shock wave (default: true). |
+| `?ramp=v2` | `?ramp=v2` | Uses ramp v2 hazard intervals. |
+| `?hints=0` | `?hints=0` | Disables the status bar tutorial hints. |
 | `?debug=1` | `?debug=1` | Shows the on-screen debug inspector (seed, move number, RNG draw counts, relic activations). |
 
 **Examples:**
