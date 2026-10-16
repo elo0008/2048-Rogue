@@ -74,15 +74,19 @@ The `dist/` directory produced by `npm run build` is completely self-contained w
   - WASD (`W`, `A`, `S`, `D`)
   - `Escape`: Cancel ability targeting mode
 - **Mobile / Touch Screen:**
-  - Swipe gestures in any direction (24px swipe threshold).
-  - Tap highlighted candidate cells when the **Mason** relic is triggered.
+  - Swipe gestures in any direction (24px swipe threshold). Blocked swipes that change nothing on a non-stuck board are pure no-ops with zero animation or DOM mutations.
+  - Tap glowing candidate cells when the **Mason** relic is triggered. Both candidate cells pulse in sync with a slow 3-second breathing gold glow.
   - Tap ability buttons and target tiles for **Diagonal Merge** and **Eraser**.
 - **Player Abilities (Below Board):**
-  - **Diagonal Merge** (`diagonal_charge`): Tap button to enter targeting, select first tile, select matching diagonal partner to merge. Free action.
+  - **Diagonal Merge** (`diagonal_charge`): Tap button to enter targeting. Eligible tiles display an outer dashed gold border; selecting one transitions it into a pressed tile; available diagonal partner tiles glow for selection. Free action.
   - **Eraser** (`eraser`): Tap button to enter targeting, tap number tile to highlight (`ERASE?`), tap same tile again to confirm removal. Free action.
   - Cancel targeting anytime via Cancel button, Escape, or tapping the ability button again.
 - **Relic Drafts:**
   - When a draft occurs, choose from 3 cards by clicking or pressing Enter/Space.
+- **Active Play Time:**
+  - Measures elapsed gameplay time in `mm:ss` (or `h:mm:ss`) via `performance.now()` deltas.
+  - Excludes pause overlay, Best Runs overlay, pre-start screen, and inactive/hidden tabs.
+  - Displayed on the Pause overlay ("Time played") and Game Over summary grid ("TIME"), and stored in run logs.
 
 ---
 
@@ -111,8 +115,6 @@ Customize rules, test specific relic interactions, or replay seeds using query p
 | `?shatter=N` | `?shatter=64` | Minimum merge tile value required for Shatter to destroy adjacent stones (default: 64). |
 | `?siphon=N` | `?siphon=16` | Minimum merge tile value required for Siphon to skip tile spawn (default: 16). |
 | `?laststand=N` | `?laststand=16` | Maximum tile value destroyed by Last Stand on game over (default: 16). |
-| `?nudgeOnInvalid=false` | `?nudgeOnInvalid=false` | Disables the 4px blocked swipe nudge animation (default: true). |
-| `?flashOnInvalid=false` | `?flashOnInvalid=false` | Disables the blocked swipe subtle pale-white shock wave (default: true). |
 | `?ramp=v2` | `?ramp=v2` | Uses ramp v2 hazard intervals. |
 | `?hints=0` | `?hints=0` | Disables the status bar tutorial hints. |
 | `?debug=1` | `?debug=1` | Shows the on-screen debug inspector (seed, move number, RNG draw counts, relic activations). |
@@ -135,8 +137,10 @@ Customize rules, test specific relic interactions, or replay seeds using query p
   - Anonymous Player ID & Run ID
   - Seed & active configuration
   - Total moves survived & move at death
+  - Active play duration in milliseconds (`activeMs`)
   - Final board state (stone count & tile values)
   - Drafts seen, offered relics, selected relics, and decision time in ms
   - Per-relic activation counters and Last Stand trigger flag
 - The last 20 runs are stored locally in `localStorage`.
+- Top 10 high scores are recorded in `2048_rogue_top_runs` including `activeMs`.
 - Click **Copy Run Log** on the Game Over screen to copy the full history as JSON (with an automatic file download fallback).

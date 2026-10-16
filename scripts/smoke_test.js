@@ -52,7 +52,8 @@ function startStaticServer() {
   const server = http.createServer((req, res) => {
     const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     let pathname = decodeURIComponent(parsedUrl.pathname);
-    let filePath = path.join(distDir, pathname === '/' ? 'index.html' : pathname);
+    let relPath = pathname.replace(/^\/+/, '');
+    let filePath = path.join(distDir, relPath === '' ? 'index.html' : relPath);
 
     if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -1243,6 +1244,200 @@ async function runSmokeTest() {
     assert.strictEqual(bestRunsTestRes.openedFromPause, true, 'Best runs opens from Pause overlay');
     assert.strictEqual(bestRunsTestRes.returnedToPause, true, 'Best runs returns to Pause overlay');
     console.log('[Smoke Test] ✔ Best Runs overlay modal transitions and controls verified.');
+
+    // V1 Smoke: Blocked non-stuck swipe is pure no-op (0 DOM mutations, no waves, no nudges)
+    console.log('[Smoke Test] Testing V1: Blocked non-stuck swipe zero effects...');
+    const v1SmokeRes = await cdp.eval(`
+      (async () => {
+        // Start game
+        const startOverlay = document.getElementById('start-overlay');
+        if (startOverlay && !startOverlay.classList.contains('hidden')) {
+          document.getElementById('btn-play-start').click();
+        }
+        controller.state.over = false;
+        controller.state.board = [
+          2, 4, 8, 16,
+          0, 0, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0
+        ];
+        syncBoard(controller.getBoard(), 'v1-test');
+
+        let mutations = 0;
+        const observer = new MutationObserver(records => { mutations += records.length; });
+        observer.observe(document.getElementById('game-board'), { attributes: true, childList: true, subtree: true });
+
+        // Swipe Up is blocked because all tiles are already at top
+        window.handleMove('U');
+        await new Promise(r => setTimeout(r, 100));
+        observer.disconnect();
+
+        const waves = document.querySelectorAll('.blocked-impact-wave').length;
+        const nudged = document.querySelectorAll('.blocked-nudge').length;
+
+        return {
+          mutations,
+          waves,
+          nudged
+        };
+      })()
+    `);
+    assert.strictEqual(v1SmokeRes.mutations, 0, 'V1: 0 DOM mutations on blocked non-stuck swipe');
+    assert.strictEqual(v1SmokeRes.waves, 0, 'V1: 0 wave elements spawned on blocked swipe');
+    assert.strictEqual(v1SmokeRes.nudged, 0, 'V1: 0 nudge classes applied on non-stuck swipe');
+    console.log('[Smoke Test] ✔ V1 verified: Blocked swipe is completely clean no-op.');
+
+    // V2 Smoke: Mason slow breathing glow (3s cycle, no PLACE text, tap stops glow)
+    console.log('[Smoke Test] Testing V2: Mason breathing glow & candidate tap...');
+    const v2SmokeRes = await cdp.eval(`
+      (() => {
+        window.activateMasonMode([5, 6]);
+        const cell5 = document.querySelector('.cell[data-index="5"]');
+        const style5 = window.getComputedStyle(cell5);
+        const after5 = window.getComputedStyle(cell5, '::after');
+        const instruction = document.getElementById('status-hint-text').textContent;
+
+        const hasAnim = style5.animationName.includes('masonGlow');
+        const afterContentNone = after5.content === 'none' || after5.content === '""' || after5.display === 'none';
+
+        // Tap candidate to stop
+        controller.pendingDecision = {
+          type: 'mason',
+          candidates: [5, 6],
+          resolve: (idx) => {
+            controller.pendingDecision = null;
+            return { success: true, decision: null };
+          }
+        };
+        cell5.click();
+        const stopped = !cell5.classList.contains('mason');
+
+        return {
+          hasAnim,
+          afterContentNone,
+          instructionMatch: instruction.includes('Mason: Choose where the stone lands'),
+          stopped
+        };
+      })()
+    `);
+    assert.strictEqual(v2SmokeRes.hasAnim, true, 'V2: Candidate cell animates with masonGlow');
+    assert.strictEqual(v2SmokeRes.afterContentNone, true, 'V2: ::after content none (PLACE text removed)');
+    assert.strictEqual(v2SmokeRes.instructionMatch, true, 'V2: Status instruction text matches requirement');
+    assert.strictEqual(v2SmokeRes.stopped, true, 'V2: Tapping candidate stops glow immediately');
+    console.log('[Smoke Test] ✔ V2 verified: Mason breathing glow & immediate stop on tap.');
+
+    // V3 Smoke: Diagonal Merge visuals (dashed border in gap, pressed selected tile, pulsing partner)
+    console.log('[Smoke Test] Testing V3: Diagonal Merge Step 1 dashed border & Step 2 pressed button...');
+    const v3SmokeRes = await cdp.eval(`
+      (async () => {
+        controller.state.board = [
+          2, 0, 0, 0,
+          0, 2, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0
+        ];
+        controller.state.relics.add('diagonal_charge');
+        controller.state.abilities.diagonal_charge = { charges: 3, maxCharges: 3, counter: 0 };
+        syncBoard(controller.getBoard(), 'v3-test');
+
+        // Step 1: Start targeting
+        window.startTargeting('diagonal_charge');
+        const tile0 = document.querySelector('.tile[data-index="0"]');
+        const before0 = window.getComputedStyle(tile0, '::before');
+        const step1Dashed = before0.borderTopStyle === 'dashed';
+        const step1Width = before0.borderTopWidth;
+        const step1Color = before0.borderTopColor;
+        const step1Anim = before0.animationName || 'none';
+
+        // Step 2: Click cell 0 to select
+        const cell0 = document.querySelector('.cell[data-index="0"]');
+        cell0.click();
+        await new Promise(r => setTimeout(r, 200));
+
+        const face0 = tile0.querySelector('.tile-face');
+        const faceStyle = window.getComputedStyle(face0);
+        const tr = faceStyle.transform;
+        const isPressed = tr.includes('0.94');
+
+        const partnerTile = document.querySelector('.tile.valid, .tile.target-partner, .tile[data-index="5"]');
+        const partnerAnim = window.getComputedStyle(partnerTile).animationName;
+
+        // Cancel
+        window.cancelTargeting();
+        const candRemaining = document.querySelectorAll('.tile.candidate, .tile.target-candidate').length;
+        const selRemaining = document.querySelectorAll('.tile.selected, .tile.target-selected').length;
+
+        return {
+          step1Dashed,
+          step1Width,
+          step1Color,
+          step1Anim,
+          isPressed,
+          partnerAnim,
+          cleanedUp: candRemaining === 0 && selRemaining === 0
+        };
+      })()
+    `);
+    assert.strictEqual(v3SmokeRes.step1Dashed, true, 'V3: Step 1 eligible candidate has dashed border');
+    assert.strictEqual(v3SmokeRes.step1Width, '2px', 'V3: Dashed border width is 2px');
+    assert.strictEqual(v3SmokeRes.step1Color, 'rgb(242, 199, 126)', 'V3: Dashed border uses accent gold');
+    assert.strictEqual(v3SmokeRes.step1Anim, 'none', 'V3: Step 1 candidate border is static (no pulse)');
+    assert.strictEqual(v3SmokeRes.isPressed, true, 'V3: Step 2 selected tile transitions to scale(0.94)');
+    assert.strictEqual(v3SmokeRes.partnerAnim, 'pulse', 'V3: Step 2 partner tile pulses');
+    assert.strictEqual(v3SmokeRes.cleanedUp, true, 'V3: Cancel targeting cleans all classes');
+    console.log('[Smoke Test] ✔ V3 verified: Diagonal Merge dashed border, pressed button & partner pulse.');
+
+    // V4 Smoke: Active play timer, freeze at game over, run log persistence, and Play Again reset
+    console.log('[Smoke Test] Testing V4: Active play timer tracking, freeze, run log, & Play Again reset...');
+    const v4SmokeRes = await cdp.eval(`
+      (async () => {
+        // Start fresh game
+        startNewGame();
+        await new Promise(r => setTimeout(r, 600));
+
+        const activeMs1 = window.getActivePlayMs();
+        const pauseTime = document.getElementById('pause-time-val')?.textContent;
+
+        // Trigger Game Over
+        controller.state.board = [2,4,8,16,32,64,128,256,512,1024,2048,4096,2,4,8,16];
+        handleGameOver();
+
+        const endDisplay = document.getElementById('end-time')?.textContent;
+        const logActiveMs = window.getCurrentRunLog ? window.getCurrentRunLog()?.activeMs : null;
+        const frozenMs1 = window.getActivePlayMs();
+
+        await new Promise(r => setTimeout(r, 500));
+        const frozenMs2 = window.getActivePlayMs();
+        const isFrozen = frozenMs1 === frozenMs2;
+
+        // Click Play Again
+        document.getElementById('btn-play-again').click();
+        const resetActiveMs = window.getActivePlayMs();
+        const resetEndTime = document.getElementById('end-time')?.textContent;
+        const newScore = document.getElementById('stat-score')?.textContent;
+        const newTilesCount = document.querySelectorAll('.tile').length;
+
+        return {
+          timerStarted: activeMs1 > 0,
+          endDisplayValid: Boolean(endDisplay && endDisplay.includes(':')),
+          logActiveMsMatches: typeof logActiveMs === 'number' && logActiveMs > 0,
+          isFrozen,
+          resetActiveMsZero: resetActiveMs === 0,
+          resetEndTimeZero: resetEndTime === '0:00',
+          newScoreZero: newScore === '0',
+          newTilesRendered: newTilesCount >= 2
+        };
+      })()
+    `);
+    assert.strictEqual(v4SmokeRes.timerStarted, true, 'V4: Timer starts on new game');
+    assert.strictEqual(v4SmokeRes.endDisplayValid, true, 'V4: Formatted time displayed on Game Over');
+    assert.strictEqual(v4SmokeRes.logActiveMsMatches, true, 'V4: activeMs recorded in run log');
+    assert.strictEqual(v4SmokeRes.isFrozen, true, 'V4: Timer freezes after Game Over');
+    assert.strictEqual(v4SmokeRes.resetActiveMsZero, true, 'V4: Play Again immediately resets activeMs to 0');
+    assert.strictEqual(v4SmokeRes.resetEndTimeZero, true, 'V4: Play Again resets end-time to 0:00');
+    assert.strictEqual(v4SmokeRes.newScoreZero, true, 'V4: Play Again resets score to 0');
+    assert.strictEqual(v4SmokeRes.newTilesRendered, true, 'V4: Play Again immediately renders new tiles (no blank board)');
+    console.log('[Smoke Test] ✔ V4 verified: Play timer lifecycle, freeze, run log, & clean Play Again reset.');
 
     // Dist scan for forbidden strings
     console.log('[Smoke Test] Scanning dist/ for forbidden strings (tailwind, googleapis, fredoka)...');

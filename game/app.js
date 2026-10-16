@@ -106,6 +106,7 @@ function getTopRuns() {
         maxTile: h.maxTile || 2,
         relics: Array.isArray(h.relicsOwned) ? [...h.relicsOwned] : (Array.isArray(h.relics) ? [...h.relics] : []),
         endedAt: h.timestamp || h.endedAt || new Date().toISOString(),
+        activeMs: h.activeMs ?? null,
       });
     }
     seeded.sort((a, b) => (b.points || 0) - (a.points || 0));
@@ -123,10 +124,14 @@ function getTopRuns() {
 
 function saveTopRun(entry) {
   if (!entry || !entry.runId) return;
+  const sanitizedEntry = {
+    ...entry,
+    activeMs: entry.activeMs ?? null,
+  };
   try {
     let list = getTopRuns();
-    if (list.some(r => r.runId === entry.runId)) return;
-    list = [...list, entry];
+    if (list.some(r => r.runId === sanitizedEntry.runId)) return;
+    list = [...list, sanitizedEntry];
     // Stable sort by points desc (ties: earlier run stays ahead)
     list.sort((a, b) => (b.points || 0) - (a.points || 0));
     const top10 = list.slice(0, 10);
@@ -136,8 +141,8 @@ function saveTopRun(entry) {
     sessionTopRuns = top10;
   } catch {
     if (!sessionTopRuns) sessionTopRuns = [];
-    if (!sessionTopRuns.some(r => r.runId === entry.runId)) {
-      sessionTopRuns.push(entry);
+    if (!sessionTopRuns.some(r => r.runId === sanitizedEntry.runId)) {
+      sessionTopRuns.push(sanitizedEntry);
       sessionTopRuns.sort((a, b) => (b.points || 0) - (a.points || 0));
       sessionTopRuns = sessionTopRuns.slice(0, 10);
     }
@@ -313,21 +318,10 @@ function parseUrlOptions() {
     forcedRelics: [],
     forceAtMove: 0,
     rewindEvery: 10,
-    nudgeOnInvalid: true,
   };
 
   let seed = null;
   let debug = false;
-
-  if (params.has('nudgeOnInvalid')) {
-    config.nudgeOnInvalid = params.get('nudgeOnInvalid') !== 'false';
-  }
-  window.nudgeOnInvalid = config.nudgeOnInvalid;
-
-  if (params.has('flashOnInvalid')) {
-    config.flashOnInvalid = params.get('flashOnInvalid') !== 'false';
-  }
-  window.flashOnInvalid = config.flashOnInvalid ?? true;
 
   if (params.has('seed')) {
     const s = parseInt(params.get('seed'), 10);
@@ -669,9 +663,69 @@ const endMovesEl = document.getElementById('end-moves');
 const endMaxTileEl = document.getElementById('end-max-tile');
 const endDraftsEl = document.getElementById('end-drafts');
 const endSeedEl = document.getElementById('end-seed');
+const endTimeEl = document.getElementById('end-time');
 const endRelicsList = document.getElementById('end-relics-list');
 const btnPlayAgain = document.getElementById('btn-play-again');
 const btnCopyLog = document.getElementById('btn-copy-log');
+
+const pauseTimeVal = document.getElementById('pause-time-val');
+const bestRunsOverlay = document.getElementById('best-runs-overlay');
+
+/* -------------------------------------------------------------
+ * Play Time Tracker (Active run time, accumulated from performance.now)
+ * ------------------------------------------------------------- */
+let activePlayMs = 0;
+let lastPerfTime = null;
+let isRunActive = false;
+let lastDisplayedSecond = -1;
+let playTimerInterval = null;
+
+function isTimerAccumulating() {
+  if (!isRunActive) return false;
+  if (controller && controller.isGameOver()) return false;
+  if (startOverlay && !startOverlay.classList.contains('hidden')) return false;
+  if (pauseOverlay && !pauseOverlay.classList.contains('hidden')) return false;
+  if (bestRunsOverlay && !bestRunsOverlay.classList.contains('hidden')) return false;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return false;
+  return true;
+}
+
+function formatPlayTime(ms) {
+  const totalSec = Math.floor(Math.max(0, ms) / 1000);
+  const hours = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  const secStr = String(secs).padStart(2, '0');
+  if (hours > 0) {
+    const minStr = String(mins).padStart(2, '0');
+    return `${hours}:${minStr}:${secStr}`;
+  }
+  return `${mins}:${secStr}`;
+}
+
+function tickPlayTimer() {
+  const now = performance.now();
+  if (lastPerfTime !== null && isTimerAccumulating()) {
+    const delta = now - lastPerfTime;
+    if (delta > 0) {
+      activePlayMs += delta;
+    }
+  }
+  lastPerfTime = now;
+
+  const totalSec = Math.floor(activePlayMs / 1000);
+  if (totalSec !== lastDisplayedSecond) {
+    lastDisplayedSecond = totalSec;
+    const formatted = formatPlayTime(activePlayMs);
+    if (endTimeEl) endTimeEl.textContent = formatted;
+    if (pauseTimeVal) pauseTimeVal.textContent = formatted;
+  }
+}
+
+function startPlayTimer() {
+  if (playTimerInterval) clearInterval(playTimerInterval);
+  playTimerInterval = setInterval(tickPlayTimer, 200);
+}
 
 const debugPanel = document.getElementById('debug-panel');
 const dbgSeedEl = document.getElementById('dbg-seed');
@@ -889,27 +943,6 @@ function triggerStuckWave() {
   }
 }
 
-let blockedFlashTimer = null;
-function triggerBlockedFlash() {
-  if (!boardEl) return;
-  const oldWaves = boardEl.querySelectorAll('.blocked-impact-wave');
-  for (const w of oldWaves) w.remove();
-  if (blockedFlashTimer) {
-    clearTimeout(blockedFlashTimer);
-    blockedFlashTimer = null;
-  }
-  boardEl.classList.remove('blocked-flash');
-
-  const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (!prefersReduced) {
-    const wave = document.createElement('div');
-    wave.className = 'blocked-impact-wave';
-    boardEl.appendChild(wave);
-    blockedFlashTimer = setTimeout(() => {
-      wave.remove();
-    }, 260);
-  }
-}
 
 function performBlockedNudge(direction) {
   if (!tilesLayer) return;
@@ -1915,6 +1948,7 @@ function cleanupAbilityFocus(isKeyboard = false) {
 }
 
 function cancelTargeting(isKeyboard = false) {
+  if (!activeTargeting) return;
   activeTargeting = null;
   if (btnCancelTargeting) btnCancelTargeting.classList.add('hidden');
   if (targetingBar) targetingBar.classList.add('hidden');
@@ -2433,15 +2467,6 @@ function handleMove(direction, inputType = 'key') {
       if (!prefersReducedMotion) {
         performBlockedNudge(direction);
       }
-    } else {
-      const doNudge = controller?.config?.nudgeOnInvalid ?? window.nudgeOnInvalid ?? true;
-      if (doNudge && !prefersReducedMotion) {
-        performBlockedNudge(direction);
-      }
-      const doFlash = controller?.config?.flashOnInvalid ?? window.flashOnInvalid ?? true;
-      if (doFlash) {
-        triggerBlockedFlash();
-      }
     }
     return;
   }
@@ -2934,8 +2959,15 @@ function postMoveResolution(res) {
  * Game Over & End Screen
  * ------------------------------------------------------------- */
 function handleGameOver() {
+  tickPlayTimer();
+  isRunActive = false;
+  if (playTimerInterval) {
+    clearInterval(playTimerInterval);
+    playTimerInterval = null;
+  }
   const metadata = getDiagnosticMetadata();
   currentRunLog = controller.getRunLog(metadata);
+  currentRunLog.activeMs = Math.round(activePlayMs);
   saveRunToHistory(currentRunLog);
   saveTopRun({
     runId: currentRunLog.runId || (currentRunLog.timestamp ? `run_${currentRunLog.timestamp}` : `run_${Date.now()}`),
@@ -2944,6 +2976,7 @@ function handleGameOver() {
     maxTile: currentRunLog.maxTile || 2,
     relics: Array.isArray(currentRunLog.relicsOwned) ? [...currentRunLog.relicsOwned] : [],
     endedAt: currentRunLog.timestamp || new Date().toISOString(),
+    activeMs: currentRunLog.activeMs,
   });
 
   // Score headline & local storage best score check
@@ -2981,6 +3014,7 @@ function handleGameOver() {
   if (endMaxTileEl) endMaxTileEl.textContent = currentRunLog.maxTile;
   if (endDraftsEl) endDraftsEl.textContent = currentRunLog.draftsSeen;
   if (endSeedEl) endSeedEl.textContent = currentRunLog.seed;
+  if (endTimeEl) endTimeEl.textContent = formatPlayTime(activePlayMs);
 
   if (endRelicsList) {
     endRelicsList.innerHTML = '';
@@ -3005,6 +3039,15 @@ function handleGameOver() {
  * Run Initialization
  * ------------------------------------------------------------- */
 function startNewGame(seed = null) {
+  tickPlayTimer();
+  activePlayMs = 0;
+  lastPerfTime = performance.now();
+  isRunActive = true;
+  lastDisplayedSecond = -1;
+  if (endTimeEl) endTimeEl.textContent = '0:00';
+  if (pauseTimeVal) pauseTimeVal.textContent = '0:00';
+  startPlayTimer();
+
   const chosenSeed = seed !== null ? seed : (initialSeed !== null ? initialSeed : Math.floor(Math.random() * 2147483647) + 1);
   const bestScore = getStoredBestScore();
   controller = new GameController(chosenSeed, activeConfig, playerId);
@@ -3043,6 +3086,7 @@ function startNewGame(seed = null) {
   window.cancelTargeting = cancelTargeting;
   window.showDraftModal = showDraftModal;
   window.handleGameOver = handleGameOver;
+  window.startNewGame = startNewGame;
   window.handleMove = handleMove;
   window.triggerShatterAnimation = triggerShatterAnimation;
   window.showLastStandMoment = showLastStandMoment;
@@ -3058,10 +3102,12 @@ function startNewGame(seed = null) {
   window.animateStoneSpawn = animateStoneSpawn;
   window.handleMove = handleMove;
   window.computeSlide = computeSlide;
-  window.triggerBlockedFlash = triggerBlockedFlash;
   window.cleanupAbilityFocus = cleanupAbilityFocus;
   window.showFirstTimeHint = showFirstTimeHint;
   window.showHazardPopover = showHazardPopover;
+  window.getActivePlayMs = () => activePlayMs;
+  window.formatPlayTime = formatPlayTime;
+  window.getCurrentRunLog = () => currentRunLog;
   Object.defineProperty(window, 'activeTargeting', {
     get: () => activeTargeting,
     set: (v) => { activeTargeting = v; },
@@ -3345,6 +3391,8 @@ if (btnCancelTargeting) {
 if (btnPauseMenu && pauseOverlay) {
   btnPauseMenu.addEventListener('click', () => {
     controller.recordInput('tap');
+    tickPlayTimer();
+    if (pauseTimeVal) pauseTimeVal.textContent = formatPlayTime(activePlayMs);
     pauseOverlay.classList.remove('hidden');
   });
 }
@@ -3352,6 +3400,7 @@ if (btnPauseMenu && pauseOverlay) {
 if (btnPauseResume && pauseOverlay) {
   btnPauseResume.addEventListener('click', () => {
     pauseOverlay.classList.add('hidden');
+    lastPerfTime = performance.now();
     if (isAnimating) {
       finishCurrentAnimationImmediately();
     }
@@ -3363,6 +3412,10 @@ if (btnPauseResume && pauseOverlay) {
 
 // Reconcile board DOM on visibilitychange
 document.addEventListener('visibilitychange', () => {
+  tickPlayTimer();
+  if (document.visibilityState === 'visible') {
+    lastPerfTime = performance.now();
+  }
   if (isAnimating) {
     finishCurrentAnimationImmediately();
   }
@@ -3468,6 +3521,9 @@ if (btnCopyLog) {
     playClick();
     const metadata = getDiagnosticMetadata();
     const currentRun = currentRunLog || controller.getRunLog(metadata);
+    if (currentRun && (currentRun.activeMs === undefined || currentRun.activeMs === null)) {
+      currentRun.activeMs = Math.round(activePlayMs);
+    }
     const history = getStoredHistory();
     const errors = getStoredErrors();
     const payload = { currentRun, history, errors };
@@ -3613,6 +3669,7 @@ function renderBestRunsList() {
 }
 
 function showBestRunsOverlay(source) {
+  tickPlayTimer();
   previousOverlayBeforeBestRuns = source || (startOverlay && !startOverlay.classList.contains('hidden') ? startOverlay : pauseOverlay);
   renderBestRunsList();
   if (source && source.classList) {
@@ -3635,6 +3692,7 @@ function hideBestRunsOverlay() {
     previousOverlayBeforeBestRuns.classList.remove('hidden');
   }
   previousOverlayBeforeBestRuns = null;
+  lastPerfTime = performance.now();
 }
 
 const btnStartTrophy = document.getElementById('btn-start-trophy');
@@ -3686,10 +3744,15 @@ window.saveTopRun = saveTopRun;
 window.showBestRunsOverlay = showBestRunsOverlay;
 window.hideBestRunsOverlay = hideBestRunsOverlay;
 window.getMovesToNextDraft = getMovesToNextDraft;
+window.getActivePlayMs = () => Math.round(activePlayMs);
+window.formatPlayTime = formatPlayTime;
 
 window.getCopyPayload = () => {
   const metadata = getDiagnosticMetadata();
   const currentRun = currentRunLog || controller.getRunLog(metadata);
+  if (currentRun && (currentRun.activeMs === undefined || currentRun.activeMs === null)) {
+    currentRun.activeMs = Math.round(activePlayMs);
+  }
   const history = getStoredHistory();
   const errors = getStoredErrors();
   return { currentRun, history, errors };
