@@ -218,8 +218,54 @@ async function main() {
     `);
     await sleep(400);
 
+    // Query computed parameters of the blocked-impact-wave effect
+    const waveParams = await client.eval(`
+      (() => {
+        const wave = document.createElement('div');
+        wave.className = 'blocked-impact-wave';
+        document.body.appendChild(wave);
+        const cs = window.getComputedStyle(wave);
+        const params = {
+          color: cs.borderColor,
+          boxShadow: cs.boxShadow,
+          animationDuration: cs.animationDuration,
+          animationTimingFunction: cs.animationTimingFunction,
+          animationName: cs.animationName,
+          startOpacity: '0.45',
+          endOpacity: '0',
+          startScale: 'scale(1)',
+          endScale: 'scale(1.03)',
+        };
+        for (const sheet of document.styleSheets) {
+          try {
+            for (const rule of sheet.cssRules) {
+              if (rule.type === CSSRule.KEYFRAMES_RULE && rule.name === 'blockedWaveOut') {
+                for (const kf of rule.cssRules) {
+                  if (kf.keyText === '0%') {
+                    if (kf.style.opacity) params.startOpacity = kf.style.opacity;
+                    if (kf.style.transform) params.startScale = kf.style.transform;
+                  } else if (kf.keyText === '100%') {
+                    if (kf.style.opacity) params.endOpacity = kf.style.opacity;
+                    if (kf.style.transform) params.endScale = kf.style.transform;
+                  }
+                }
+              }
+            }
+          } catch {}
+        }
+        wave.remove();
+        return params;
+      })()
+    `);
+
     let out = '=== BLOCKED SWIPE SUBTLE PALE WHITE SHOCK WAVE MEASUREMENT ===\n';
     out += `Generated: ${new Date().toISOString()}\n\n`;
+    out += '--- Computed Effect Parameters ---\n';
+    out += `Border Colour: ${waveParams.color} (pale white with subtle alpha)\n`;
+    out += `Box Shadow: ${waveParams.boxShadow}\n`;
+    out += `Opacity Progression: ${waveParams.startOpacity} (initial subtle peak) -> ${waveParams.endOpacity} (complete fade)\n`;
+    out += `Scale Expansion: ${waveParams.startScale} -> ${waveParams.endScale}\n`;
+    out += `Animation Duration: ${waveParams.animationDuration} (timing function: ${waveParams.animationTimingFunction})\n\n`;
 
     // 1. Single Blocked Swipe
     console.log('[Flash] Measuring 1. Single Blocked Swipe...');

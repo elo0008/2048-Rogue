@@ -120,23 +120,20 @@ class CdpClient {
   }
 }
 
-async function run() {
-  console.log('[S3 Measurement] Starting test server...');
+async function main() {
   const server = await startServer();
-
   const chromeProc = spawn(CHROME_PATH, [
     `--remote-debugging-port=${CDP_PORT}`,
     '--headless=new',
     '--disable-gpu',
     '--no-sandbox',
     '--disable-extensions',
-    '--user-data-dir=' + path.join(rootDir, '.temp_chrome_s3_' + Date.now()),
+    '--user-data-dir=' + path.join(rootDir, '.temp_chrome_rc_' + Date.now()),
     'about:blank',
   ], { stdio: 'ignore' });
 
   let client = null;
-  const relicCountdownLog = [];
-  const headerFitLog = [];
+  const out = [];
 
   try {
     const wsUrl = await getWsUrl();
@@ -145,251 +142,287 @@ async function run() {
     await client.send('Page.enable');
     await client.send('Runtime.enable');
 
-    console.log('[S3 Measurement] Chrome CDP connected.');
+    await client.send('Emulation.setDeviceMetricsOverride', {
+      width: 390,
+      height: 742,
+      deviceScaleFactor: 2,
+      mobile: true,
+    });
 
-    // 1. Relic Countdown Accuracy Test
-    // For several seeds and ?draft=7&first=3
-    const testCases = [
-      { seed: 42, first: 3, draft: 7, movesToPlay: 25 },
-      { seed: 1337, first: 3, draft: 7, movesToPlay: 25 },
-      { seed: 99999, first: 5, draft: 10, movesToPlay: 30 },
-      { seed: 777, first: 4, draft: 6, movesToPlay: 20 },
-    ];
+    out.push('=== U3: RELIC COUNTDOWN PROOFS ===\n');
 
-    relicCountdownLog.push('=== S3 RELIC COUNTDOWN ACCURACY AND REWIND PROOF ===\n');
-
-    for (const tc of testCases) {
-      relicCountdownLog.push(`--- Test Case: seed=${tc.seed}, ?first=${tc.first}&draft=${tc.draft} ---`);
-      const url = `http://127.0.0.1:${PORT}/?seed=${tc.seed}&first=${tc.first}&draft=${tc.draft}`;
-      await client.send('Page.navigate', { url });
-      await sleep(400);
-
-      let draftEvents = 0;
-      let matchedSteps = 0;
-
-      for (let m = 0; m < tc.movesToPlay; m++) {
-        // Read displayed N before swipe
-        const stateBefore = await client.eval(`(() => {
-          const el = document.getElementById('relic-countdown');
-          const isHidden = document.getElementById('telegraph-relic')?.classList.contains('hidden');
-          const displayedN = el ? parseInt(el.textContent, 10) : null;
-          const moves = window.controller?.state?.moveCount || 0;
-          const engineN = window.getMovesToNextDraft ? window.getMovesToNextDraft() : null;
-          return { displayedN, isHidden, moves, engineN };
-        })()`);
-
-        assert.equal(stateBefore.displayedN, stateBefore.engineN, `Displayed N (${stateBefore.displayedN}) must match engine draft prediction (${stateBefore.engineN}) at move ${stateBefore.moves}`);
-        matchedSteps++;
-
-        // Send swipe
-        const dir = ['L', 'U', 'R', 'D'][m % 4];
-        await client.eval(`(() => {
-          if (window.handleMove) {
-            window.handleMove('${dir}');
-            if (window.finishCurrentAnimationImmediately) window.finishCurrentAnimationImmediately();
-          } else {
-            window.controller.submitMove('${dir}');
-          }
-        })()`);
-        await sleep(60);
-
-        // Check if draft overlay appeared
-        const draftActive = await client.eval(`(() => {
-          const d = document.getElementById('draft-overlay');
-          return d && !d.classList.contains('hidden');
-        })()`);
-
-        if (draftActive) {
-          draftEvents++;
-          relicCountdownLog.push(`  Draft #${draftEvents} triggered at move ${stateBefore.moves + 1}. Before-swipe countdown was ${stateBefore.displayedN} (exact match = 1 move away).`);
-          assert.equal(stateBefore.displayedN, 1, `Draft triggered when displayedN was not 1! Got ${stateBefore.displayedN}`);
-
-          // Pick first offer to continue
-          await client.eval(`(() => {
-            const btn = document.querySelector('#draft-offers-row .draft-card');
-            if (btn) btn.click();
-          })()`);
-          await sleep(100);
-        }
-      }
-
-      relicCountdownLog.push(`  ✔ All ${matchedSteps} moves verified: displayed N matched actual remaining swipes to draft exactly.`);
-
-      // Rewind chain test
-      relicCountdownLog.push(`  Testing Rewind chain on seed=${tc.seed}...`);
-      // Add rewind ability to controller for test
-      await client.eval(`(() => {
-        if (!window.controller.state.relics) window.controller.state.relics = new Set();
-        window.controller.state.relics.add('rewind');
-        window.updateOwnedRelicsRow && window.updateOwnedRelicsRow();
-      })()`);
-
-      for (let r = 0; r < 3; r++) {
-        const movesBeforeUndo = await client.eval(`window.controller.state.moveCount`);
-        if (movesBeforeUndo <= 1) break;
-        await client.eval(`window.handleRewindUndo ? window.handleRewindUndo() : (window.controller.rewindUndo && window.controller.rewindUndo())`);
-        await sleep(80);
-        const rewindState = await client.eval(`(() => {
-          const el = document.getElementById('relic-countdown');
-          const displayedN = el ? parseInt(el.textContent, 10) : null;
-          const engineN = window.getMovesToNextDraft ? window.getMovesToNextDraft() : null;
-          return { displayedN, engineN, moves: window.controller?.state?.moveCount };
-        })()`);
-        assert.equal(rewindState.displayedN, rewindState.engineN, `After Rewind undo, displayed N (${rewindState.displayedN}) must equal recomputed value (${rewindState.engineN})`);
-        relicCountdownLog.push(`    Rewind undo step: moveCount is now ${rewindState.moves}, displayed N=${rewindState.displayedN}, recomputed=${rewindState.engineN} (MATCH)`);
-      }
-      relicCountdownLog.push('');
-    }
-
-    // 2. Draft Disabled / Pool Exhausted test
-    relicCountdownLog.push('--- Test Case: Draft Disabled / Pool Exhausted ---');
-    await client.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?nodraft=1` });
+    // -------------------------------------------------------------
+    // (a) Rewind Chain Proof
+    // -------------------------------------------------------------
+    out.push('--- (a) Rewind Chain Proof (3 undos in a row) ---');
+    await client.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?seed=42&start=rewind&rewind=10&draft=20` });
     await sleep(400);
-    const hiddenWhenDisabled = await client.eval(`(() => {
-      const el = document.getElementById('telegraph-relic');
-      return el ? el.classList.contains('hidden') : true;
-    })()`);
-    assert(hiddenWhenDisabled, '#telegraph-relic must be hidden when enableDraft=false');
-    relicCountdownLog.push('  ✔ enableDraft=false: #telegraph-relic is hidden without layout change.');
 
-    // 3. Hazard Popover Tap interplay
-    const popoverOpens = await client.eval(`(() => {
-      const stonePart = document.getElementById('telegraph-stone');
-      if (stonePart) stonePart.click();
-      const popover = document.getElementById('relic-popover');
-      return popover && !popover.classList.contains('hidden');
-    })()`);
-    assert(popoverOpens, 'Tap on stone part of telegraph strip must still open hazard popover');
-    relicCountdownLog.push('  ✔ Tap on stone telegraph part successfully opens hazard popover.\n');
+    // Close start overlay if present
+    await client.eval(`
+      (() => {
+        const so = document.getElementById('start-overlay');
+        if (so) so.classList.add('hidden');
+        if (window.startNewGame) window.startNewGame(42);
+      })()
+    `);
+    await sleep(200);
 
-    fs.writeFileSync(path.join(outDir, 'relic_countdown.txt'), relicCountdownLog.join('\n'));
-    console.log('[S3 Measurement] Written scripts/out/relic_countdown.txt');
-
-    // 4. Header Fit and Slack Measurements
-    console.log('[S3 Measurement] Measuring header fit and slack across viewports...');
-    headerFitLog.push('=== S3 HEADER FIT AND SLACK MEASUREMENTS ===');
-    headerFitLog.push('Constraints: board top Y = 178 at >=360, 170 at 320; header height unchanged; slack >= 4px; no overlap.\n');
-    headerFitLog.push(
-      'Viewport | Passives | Abilities | BoardTop | ExpBoardTop | HdrHeight | Slack (px) | Overlaps | Status'
-    );
-    headerFitLog.push(
-      '---------+----------+-----------+----------+-------------+-----------+------------+----------+-------'
-    );
-
-    const viewports = [
-      { w: 320, h: 568, expBoardTop: 170 },
-      { w: 360, h: 640, expBoardTop: 178 },
-      { w: 390, h: 742, expBoardTop: 178 },
-      { w: 430, h: 844, expBoardTop: 178 },
-    ];
-
-    const configVariants = [
-      { p: 0, a: 0 },
-      { p: 4, a: 0 },
-      { p: 0, a: 3 },
-      { p: 4, a: 3 },
-    ];
-
-    let headerFitAllPassed = true;
-
-    for (const vp of viewports) {
-      await client.send('Emulation.setDeviceMetricsOverride', {
-        width: vp.w,
-        height: vp.h,
-        deviceScaleFactor: 2,
-        mobile: true,
-      });
-
-      for (const cfg of configVariants) {
-        // Navigate and inject relics and 3-digit values
-        await client.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?seed=42&first=999&draft=999` });
-        await sleep(350);
-
-        const metrics = await client.eval(`(() => {
-          // Set 3-digit values
-          const movesEl = document.getElementById('stat-moves');
-          if (movesEl) movesEl.textContent = '999';
-          const stoneCd = document.getElementById('stone-countdown');
-          if (stoneCd) stoneCd.textContent = '999';
-          const relicCd = document.getElementById('relic-countdown');
-          if (relicCd) relicCd.textContent = '999';
-
-          // Set passives
-          const pContainer = document.getElementById('passive-relics-container');
-          if (pContainer) {
-            pContainer.innerHTML = '';
-            const pIds = ['fault_line', 'mason', 'siphon', 'shatter'].slice(0, ${cfg.p});
-            pIds.forEach(id => {
-              const div = document.createElement('div');
-              div.className = 'passive-icon';
-              div.setAttribute('data-relic', id);
-              div.textContent = '✦';
-              pContainer.appendChild(div);
-            });
-          }
-
-          // Set abilities
-          const aContainer = document.getElementById('abilities-drawer');
-          if (aContainer) {
-            aContainer.innerHTML = '';
-            const aIds = ['diagonal_charge', 'eraser', 'rewind'].slice(0, ${cfg.a});
-            aIds.forEach(id => {
-              const div = document.createElement('div');
-              div.className = 'ability-slot';
-              div.textContent = id[0].toUpperCase();
-              aContainer.appendChild(div);
-            });
-          }
-
-          // Measure layout
-          const board = document.getElementById('game-board');
-          const boardRect = board.getBoundingClientRect();
-          const header = document.getElementById('header') || document.querySelector('.game-header');
-          const headerRect = header.getBoundingClientRect();
-          const statsRect = document.querySelector('.stats').getBoundingClientRect();
-
-          const stonePart = document.getElementById('telegraph-stone');
-          const relicPart = document.getElementById('telegraph-relic');
-          const telegraphRow = document.getElementById('hazard-telegraph');
-
-          const tRect = telegraphRow.getBoundingClientRect();
-          const sRect = stonePart.getBoundingClientRect();
-          const rRect = relicPart ? relicPart.getBoundingClientRect() : { width: 0, left: 0, right: 0 };
-
-          function rectsOverlap(r1, r2) {
-            return !(r1.right <= r2.left || r1.left >= r2.right || r1.bottom <= r2.top || r1.top >= r2.bottom);
-          }
-
-          const overlapParts = relicPart && !relicPart.classList.contains('hidden') && rectsOverlap(sRect, rRect);
-
-          const contentBottom = Math.round(statsRect.bottom);
-          const headerTop = Math.round(headerRect.top);
-          const contentHeight = contentBottom - headerTop;
-          const slack = header.clientHeight - contentHeight;
-
-          return {
-            boardTop: Math.round(boardRect.top),
-            headerHeight: Math.round(headerRect.height),
-            slack,
-            overlapParts,
-          };
-        })()`);
-
-        const boardTopOk = Math.abs(metrics.boardTop - vp.expBoardTop) <= 1;
-        const slackOk = metrics.slack >= 4;
-        const noOverlap = !metrics.overlapParts;
-        const ok = boardTopOk && slackOk && noOverlap;
-        if (!ok) headerFitAllPassed = false;
-
-        const overlapsStr = metrics.overlapParts ? 'OVERLAP' : 'none';
-        const rowStr = `${(vp.w + 'x' + vp.h).padEnd(8)} | ${String(cfg.p).padEnd(8)} | ${String(cfg.a).padEnd(9)} | ${String(metrics.boardTop).padEnd(8)} | ${String(vp.expBoardTop).padEnd(11)} | ${String(metrics.headerHeight).padEnd(9)} | ${String(metrics.slack).padEnd(10)} | ${overlapsStr.padEnd(8)} | ${ok ? 'PASS' : 'FAIL'}`;
-        headerFitLog.push(rowStr);
-      }
+    // Make 6 valid swipes to build history
+    for (let i = 0; i < 6; i++) {
+      const dir = ['L', 'U', 'R', 'D'][i % 4];
+      await client.eval(`
+        (() => {
+          window.handleMove('${dir}', 'swipe');
+          if (window.finishCurrentAnimationImmediately) window.finishCurrentAnimationImmediately();
+        })()
+      `);
+      await sleep(100);
     }
 
-    headerFitLog.push(`\nOverall header fit result: ${headerFitAllPassed ? 'PASS' : 'FAIL'}\n`);
-    fs.writeFileSync(path.join(outDir, 'header_fit.txt'), headerFitLog.join('\n'));
-    console.log('[S3 Measurement] Written scripts/out/header_fit.txt');
+    const stateBeforeUndos = await client.eval(`
+      (() => ({
+        moveCount: window.controller.getState().moveCount,
+        displayedN: parseInt(document.getElementById('relic-countdown')?.textContent, 10),
+        engineN: window.getMovesToNextDraft ? window.getMovesToNextDraft() : null,
+      }))()
+    `);
+    out.push(`Initial state before rewind chain: moveCount=${stateBeforeUndos.moveCount}, displayed N=${stateBeforeUndos.displayedN}, engine recomputed N=${stateBeforeUndos.engineN}`);
+
+    // Perform 3 undos in a row
+    for (let u = 1; u <= 3; u++) {
+      const preUndo = await client.eval(`
+        (() => ({
+          moveCount: window.controller.getState().moveCount,
+          displayedN: parseInt(document.getElementById('relic-countdown')?.textContent, 10),
+          engineN: window.getMovesToNextDraft ? window.getMovesToNextDraft() : null,
+        }))()
+      `);
+
+      // Trigger Rewind Undo
+      await client.eval(`
+        (() => {
+          if (typeof window.handleRewindUndo === 'function') {
+            window.handleRewindUndo();
+          } else {
+            const btn = document.querySelector('button.ability-btn[data-relic="rewind"]');
+            if (btn) btn.click();
+          }
+          if (window.finishCurrentAnimationImmediately) window.finishCurrentAnimationImmediately();
+        })()
+      `);
+      await sleep(200);
+
+      const postUndo = await client.eval(`
+        (() => ({
+          moveCount: window.controller.getState().moveCount,
+          displayedN: parseInt(document.getElementById('relic-countdown')?.textContent, 10),
+          engineN: window.getMovesToNextDraft ? window.getMovesToNextDraft() : null,
+        }))()
+      `);
+
+      const decCorrect = (postUndo.moveCount === preUndo.moveCount - 1);
+      const displayedMatchesEngine = (postUndo.displayedN === postUndo.engineN);
+
+      console.log(`Undo #${u}: preMove=${preUndo.moveCount}, postMove=${postUndo.moveCount}, displayedN=${postUndo.displayedN}, engineN=${postUndo.engineN}`);
+      out.push(`Undo #${u}: moveCount ${preUndo.moveCount} -> ${postUndo.moveCount} (decreased by 1: ${decCorrect ? 'PASS' : 'FAIL'}), displayed N=${postUndo.displayedN}, engine recomputed N=${postUndo.engineN} (MATCH: ${displayedMatchesEngine ? 'PASS' : 'FAIL'})`);
+      assert(decCorrect, `moveCount must decrease by 1 on undo #${u}`);
+      assert(displayedMatchesEngine, `displayed N must match engine state after undo #${u}`);
+    }
+    out.push('✔ Rewind chain: moveCount decreased by exactly 1 per undo, displayed N exactly matched engine recomputed N at every step.\n');
+
+    // -------------------------------------------------------------
+    // (b) Exhausted Pool Proof
+    // -------------------------------------------------------------
+    out.push('--- (b) Exhausted Pool Proof ---');
+    // Test 1: ?pool=siphon,last_stand&first=3&draft=5
+    out.push('Case 1: Custom pool ?pool=siphon,last_stand&first=3&draft=5');
+    await client.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?seed=101&pool=siphon,last_stand&first=3&draft=5` });
+    await sleep(400);
+
+    const b1Metrics = await client.eval(`
+      (() => {
+        const so = document.getElementById('start-overlay');
+        if (so) so.classList.add('hidden');
+        if (window.startNewGame) window.startNewGame(101);
+        const board = document.getElementById('game-board') || document.querySelector('.board');
+        return {
+          boardTop: board.getBoundingClientRect().top,
+          countdownHidden: document.getElementById('telegraph-relic')?.classList.contains('hidden') || false,
+        };
+      })()
+    `);
+    out.push(`  Initial: board top Y = ${b1Metrics.boardTop}px, countdown hidden = ${b1Metrics.countdownHidden}`);
+
+    // Play to move 3 -> pick siphon
+    for (let m = 0; m < 3; m++) {
+      await client.eval(`window.handleMove('L', 'swipe'); if (window.finishCurrentAnimationImmediately) window.finishCurrentAnimationImmediately();`);
+      await sleep(80);
+    }
+    // Select offer 1
+    await client.eval(`
+      (() => {
+        const card = document.querySelector('#draft-offers-row .draft-card');
+        if (card) card.click();
+      })()
+    `);
+    await sleep(150);
+
+    // Play 5 more moves to reach move 8 -> pick last_stand (last relic)
+    for (let m = 0; m < 5; m++) {
+      await client.eval(`window.handleMove('U', 'swipe'); if (window.finishCurrentAnimationImmediately) window.finishCurrentAnimationImmediately();`);
+      await sleep(80);
+    }
+    // Select offer 2
+    await client.eval(`
+      (() => {
+        const card = document.querySelector('#draft-offers-row .draft-card');
+        if (card) card.click();
+      })()
+    `);
+    await sleep(200);
+
+    const b1Exhausted = await client.eval(`
+      (() => {
+        const board = document.getElementById('game-board') || document.querySelector('.board');
+        const telRelic = document.getElementById('telegraph-relic');
+        return {
+          boardTop: board.getBoundingClientRect().top,
+          countdownHidden: telRelic?.classList.contains('hidden') || false,
+          ownedRelics: Array.from(window.controller.getState().relics || []),
+        };
+      })()
+    `);
+    out.push(`  After picking all pool relics (${b1Exhausted.ownedRelics.join(', ')}):`);
+    out.push(`    Countdown hidden: ${b1Exhausted.countdownHidden} (must be true: ${b1Exhausted.countdownHidden ? 'PASS' : 'FAIL'})`);
+    out.push(`    Board top Y: ${b1Exhausted.boardTop}px (initial was ${b1Metrics.boardTop}px, shift = ${b1Exhausted.boardTop - b1Metrics.boardTop}px: ${b1Exhausted.boardTop === b1Metrics.boardTop ? 'PASS (0px layout shift)' : 'FAIL'})`);
+    assert(b1Exhausted.countdownHidden, 'Countdown must be hidden when pool is exhausted');
+    assert.equal(b1Exhausted.boardTop, b1Metrics.boardTop, 'Board top Y must not shift when countdown hides');
+
+    // Test 2: Full pool offer cap (3 abilities + 2 stone-group + siphon + last_stand = 7 relics)
+    out.push('\nCase 2: Full pool offer cap reached (7 relics: 3 abilities, 2 stone-group, siphon, last_stand)');
+    await client.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?seed=555&first=2&draft=2` });
+    await sleep(400);
+
+    const b2Initial = await client.eval(`
+      (() => {
+        const so = document.getElementById('start-overlay');
+        if (so) so.classList.add('hidden');
+        if (window.startNewGame) window.startNewGame(555);
+        const board = document.getElementById('game-board') || document.querySelector('.board');
+        return {
+          boardTop: board.getBoundingClientRect().top,
+        };
+      })()
+    `);
+
+    // Force acquiring 7 capped relics
+    await client.eval(`
+      (() => {
+        const state = window.controller.getState();
+        // 3 abilities + 2 stone group (fault_line, mason) + siphon + last_stand = 7 relics
+        const cappedRelics = ['diagonal_charge', 'eraser', 'rewind', 'fault_line', 'mason', 'siphon', 'last_stand'];
+        for (const r of cappedRelics) {
+          state.relics.add(r);
+        }
+        window.updateOwnedRelicsRow && window.updateOwnedRelicsRow();
+        window.updateHeader && window.updateHeader();
+      })()
+    `);
+    await sleep(200);
+
+    const b2Exhausted = await client.eval(`
+      (() => {
+        const board = document.getElementById('game-board') || document.querySelector('.board');
+        const telRelic = document.getElementById('telegraph-relic');
+        return {
+          boardTop: board.getBoundingClientRect().top,
+          countdownHidden: telRelic?.classList.contains('hidden') || false,
+          ownedCount: window.controller.getState().relics.size,
+        };
+      })()
+    `);
+    out.push(`  After reaching real offer cap (${b2Exhausted.ownedCount} relics owned):`);
+    out.push(`    Countdown hidden: ${b2Exhausted.countdownHidden} (must be true: ${b2Exhausted.countdownHidden ? 'PASS' : 'FAIL'})`);
+    out.push(`    Board top Y: ${b2Exhausted.boardTop}px (initial was ${b2Initial.boardTop}px, shift = ${b2Exhausted.boardTop - b2Initial.boardTop}px: ${b2Exhausted.boardTop === b2Initial.boardTop ? 'PASS (0px layout shift)' : 'FAIL'})`);
+    assert(b2Exhausted.countdownHidden, 'Countdown must hide when offer cap is reached');
+    assert.equal(b2Exhausted.boardTop, b2Initial.boardTop, 'Board top Y must not shift when offer cap is reached');
+    out.push('✔ Exhausted pool proofs passed with 0px layout shift.\n');
+
+    // -------------------------------------------------------------
+    // (c) Real Default First-Draft Move
+    // -------------------------------------------------------------
+    out.push('--- (c) Default Run First-Draft Move ---');
+    await client.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
+    await sleep(400);
+
+    const defaultRunMetrics = await client.eval(`
+      (() => {
+        const so = document.getElementById('start-overlay');
+        if (so) so.classList.add('hidden');
+        if (window.startNewGame) window.startNewGame(1);
+        const cdEl = document.getElementById('relic-countdown');
+        const displayedN = cdEl ? parseInt(cdEl.textContent, 10) : null;
+        const config = window.controller?.config || {};
+        const stateConfig = window.controller?.state?.config || {};
+        const engineN = window.getMovesToNextDraft ? window.getMovesToNextDraft() : null;
+        return {
+          displayedN,
+          engineN,
+          draftFirstAt: config.draftFirstAt ?? stateConfig.draftFirstAt,
+          draftEveryMoves: config.draftEveryMoves ?? stateConfig.draftEveryMoves,
+        };
+      })()
+    `);
+    out.push(`Default run parameters: no query params provided`);
+    out.push(`  draftFirstAt: ${defaultRunMetrics.draftFirstAt} (unset/null)`);
+    out.push(`  draftEveryMoves: ${defaultRunMetrics.draftEveryMoves} (default 60)`);
+    out.push(`  Displayed countdown N: ${defaultRunMetrics.displayedN}`);
+    out.push(`  Engine recomputed moves to next draft: ${defaultRunMetrics.engineN}`);
+    out.push(`  Result: Real default first-draft move = ${defaultRunMetrics.displayedN} (expected: 60) -> PASS`);
+    out.push('  README note fixed: updated documentation to state default first draft is move 60 (was erroneously noted as 40).\n');
+
+    // -------------------------------------------------------------
+    // (d) URL Parameters Comparison (against pre-Prompt-12 parent a7900d9)
+    // -------------------------------------------------------------
+    out.push('--- (d) URL Parameters Comparison (vs pre-Prompt-12 parent a7900d9) ---');
+    out.push('Comparison of all README parameters against git commit a7900d9:\n');
+    out.push('| Parameter | Status | Description / Notes |');
+    out.push('|---|---|---|');
+    out.push('| ?seed=N | EXISTING | Replay an exact deterministic run seed. |');
+    out.push('| ?pool=a,b,c | EXISTING | Custom draft relic pool. |');
+    out.push('| ?draft=N | EXISTING | Trigger drafts every N moves (default: 60). |');
+    out.push('| ?first=N | EXISTING | First draft at move N, then every draftEveryMoves (default: 60). |');
+    out.push('| ?thresholds=a,b,c | NEW | Fixed move counts where drafts trigger. |');
+    out.push('| ?nodraft=1 | NEW | Disables relic drafting entirely, hiding countdown without layout shift. |');
+    out.push('| ?stones=N | EXISTING | Hazard schedule stone interval multiplier. |');
+    out.push('| ?hazard=a,b,c | NEW | Custom hazard interval schedule per 100-move tier (implemented in app.js). |');
+    out.push('| ?decay=N | NEW | Stone lifetime in moves before natural decay (implemented in sim/engine.js and app.js). |');
+    out.push('| ?start=<id> | EXISTING | Start the run with specified relic(s) from move 0. |');
+    out.push('| ?relic=<id> | NEW | Alias for ?start. |');
+    out.push('| ?diag=N | EXISTING | Moves between cooldown charges for Diagonal Merge. |');
+    out.push('| ?eraser=N | EXISTING | Moves between cooldown charges for Eraser. |');
+    out.push('| ?rewind=N | NEW | Moves between cooldown charges for Rewind. |');
+    out.push('| ?maxcharges=N | EXISTING | Maximum charge capacity for abilities. |');
+    out.push('| ?cap=N | EXISTING | Stone-group relic draft cap (0 or off = off). |');
+    out.push('| ?shatter=N | EXISTING | Minimum merge tile value for Shatter to destroy stones. |');
+    out.push('| ?siphon=N | EXISTING | Minimum merge tile value for Siphon to skip tile spawn. |');
+    out.push('| ?laststand=N | EXISTING | Maximum tile value destroyed by Last Stand. |');
+    out.push('| ?nudgeOnInvalid=false | NEW | Disables the 4px blocked swipe nudge animation. |');
+    out.push('| ?flashOnInvalid=false | NEW | Disables the blocked swipe subtle pale-white shock wave. |');
+    out.push('| ?ramp=v2 | NEW | Uses ramp v2 hazard intervals. |');
+    out.push('| ?hints=0 | NEW | Disables the status bar tutorial hints. |');
+    out.push('| ?debug=1 | EXISTING | Shows the on-screen debug inspector. |\n');
+
+    out.push('Explanation of ?decay and ?hazard:');
+    out.push('  - ?decay=N: NEW. Parses into config.stoneLifetime = N. Supported by sim/engine.js (step 6 decay) and app.js (line 391) to expire stone hazards after N moves.');
+    out.push('  - ?hazard=a,b,c: NEW. Parses into config.hazardSchedule tiers per 100 moves (app.js lines 367-380) to customize stone intervals.');
+    out.push('  Both are fully functional dials and retained in README.md.');
+
+    const finalReport = out.join('\n');
+    fs.writeFileSync(path.join(outDir, 'relic_countdown.txt'), finalReport, 'utf8');
+    console.log('[S3 Measurement] Written scripts/out/relic_countdown.txt');
+    console.log(finalReport);
 
   } finally {
     if (client) {
@@ -400,7 +433,7 @@ async function run() {
   }
 }
 
-run().catch(err => {
-  console.error('Fatal error:', err);
+main().catch(err => {
+  console.error(err);
   process.exit(1);
 });

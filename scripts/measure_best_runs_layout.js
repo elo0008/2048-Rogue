@@ -324,6 +324,22 @@ async function main() {
           }
         }
 
+        const slotMetrics = chips.map(chip => {
+          const icon = chip.querySelector('svg, img, canvas') || chip;
+          const iRect = icon.getBoundingClientRect();
+          const cRect = chip.getBoundingClientRect();
+          return {
+            relic: chip.getAttribute('data-relic'),
+            slotW: Math.round(cRect.width * 10) / 10,
+            slotH: Math.round(cRect.height * 10) / 10,
+            iconW: Math.round(iRect.width * 10) / 10,
+            iconH: Math.round(iRect.height * 10) / 10,
+          };
+        });
+
+        const minIconW = slotMetrics.length > 0 ? Math.min(...slotMetrics.map(s => s.iconW)) : 0;
+        const minIconH = slotMetrics.length > 0 ? Math.min(...slotMetrics.map(s => s.iconH)) : 0;
+
         return {
           modalRect: mRect ? { x: mRect.x, y: mRect.y, w: mRect.width, h: mRect.height } : null,
           listRect: lRect ? { x: lRect.x, y: lRect.y, w: lRect.width, h: lRect.height } : null,
@@ -331,16 +347,26 @@ async function main() {
           rowOverflows,
           clippedChips,
           minFontSize: minFontSize === 999 ? 0 : minFontSize,
+          slotMetricsSample: slotMetrics.slice(0, 8),
+          minIconW,
+          minIconH,
         };
       })()`);
 
       // Capture screenshot of best runs
       const shot = await client.send('Page.captureScreenshot', { format: 'png' });
-      fs.writeFileSync(path.join(outDir, `best_runs_${vp.name}.png`), Buffer.from(shot.data, 'base64'));
+      const shotFilename = `best_runs_${vp.name}.png`;
+      fs.writeFileSync(path.join(outDir, shotFilename), Buffer.from(shot.data, 'base64'));
 
       report += `[Viewport: ${vp.name} (${vp.width}x${vp.height})]\n`;
+      report += `  Modal Width: ${layoutMetrics.modalRect.w.toFixed(1)}px (Rect: { x: ${layoutMetrics.modalRect.x.toFixed(1)}, y: ${layoutMetrics.modalRect.y.toFixed(1)}, w: ${layoutMetrics.modalRect.w.toFixed(1)}, h: ${layoutMetrics.modalRect.h.toFixed(1)} }, max-width <= 440px: ${layoutMetrics.modalRect.w <= 440})\n`;
+      report += `  Screenshot: ${shotFilename} (measured modal width: ${layoutMetrics.modalRect.w.toFixed(1)}px)\n`;
+      report += `  Relic Slot Rendered Icon Sizes (2x4 grid, sample row 1):\n`;
+      for (const sm of layoutMetrics.slotMetricsSample) {
+        report += `    Slot [${sm.relic}]: slot=${sm.slotW}x${sm.slotH}px, rendered icon=${sm.iconW}x${sm.iconH}px (>= 14px: ${sm.iconW >= 14 && sm.iconH >= 14 ? 'PASS' : 'FAIL'})\n`;
+      }
+      report += `  Min Rendered Icon Size Across All Slots: ${layoutMetrics.minIconW}x${layoutMetrics.minIconH}px (must be >= 14px: ${layoutMetrics.minIconW >= 14 && layoutMetrics.minIconH >= 14 ? 'PASS' : 'FAIL'})\n`;
       report += `  Start Trophy Button: Rect: { x: ${trophyStartMetrics.btnRect.x.toFixed(1)}, y: ${trophyStartMetrics.btnRect.y.toFixed(1)}, w: ${trophyStartMetrics.btnRect.w.toFixed(1)}, h: ${trophyStartMetrics.btnRect.h.toFixed(1)} }, hit area >= 36px: ${trophyStartMetrics.hitAreaW >= 36 && trophyStartMetrics.hitAreaH >= 36}, aria-label: "${trophyStartMetrics.ariaLabel}", overlapsLogo: ${trophyStartMetrics.overlapsLogo}, overlapsTitle: ${trophyStartMetrics.overlapsTitle}\n`;
-      report += `  Modal Rect: { x: ${layoutMetrics.modalRect.x.toFixed(1)}, y: ${layoutMetrics.modalRect.y.toFixed(1)}, w: ${layoutMetrics.modalRect.w.toFixed(1)}, h: ${layoutMetrics.modalRect.h.toFixed(1)} } (max-width <= 440px: ${layoutMetrics.modalRect.w <= 440})\n`;
       report += `  List Rect: { x: ${layoutMetrics.listRect.x.toFixed(1)}, y: ${layoutMetrics.listRect.y.toFixed(1)}, w: ${layoutMetrics.listRect.w.toFixed(1)}, h: ${layoutMetrics.listRect.h.toFixed(1)} }\n`;
       report += `  Row Count: ${layoutMetrics.rowCount}\n`;
       const anyRowOverflow = layoutMetrics.rowOverflows.some(r => r.overflowX);

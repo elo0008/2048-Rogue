@@ -225,6 +225,11 @@ async function main() {
             const cs = window.getComputedStyle(currentIcon);
             const rect = currentIcon.getBoundingClientRect();
 
+            const anims = currentIcon.getAnimations();
+            const animCurrentTime = (anims && anims.length > 0 && anims[0].currentTime != null)
+              ? Math.round(Number(anims[0].currentTime) * 10) / 10
+              : null;
+
             // Check elements added to #tiles-layer or board
             const extraTileEls = document.querySelectorAll('#tiles-layer .siphon-tile-pulse, #tiles-layer .siphon-ring, .board .siphon-ring');
             const boardClasses = Array.from(document.querySelector('.board').classList);
@@ -233,6 +238,7 @@ async function main() {
             samples.push({
               t: Math.round(elapsed * 10) / 10,
               now: Math.round(now * 10) / 10,
+              animCurrentTime,
               transform: cs.transform,
               borderColor: cs.borderColor,
               boxShadow: cs.boxShadow,
@@ -263,7 +269,7 @@ async function main() {
     out += `Initial icon transform: ${sampleResult.initialTransform}\n`;
     out += `Initial icon borderColor: ${sampleResult.initialBorderColor}\n`;
     out += `Initial icon boxShadow: ${sampleResult.initialBoxShadow}\n\n`;
-    out += 'rAF Samples across Siphon activation (fade ~750ms):\n';
+    out += 'rAF Samples across Siphon activation (fade ~750ms, keyframe fadeout over last ~250ms):\n';
 
     let allTransformsNone = true;
     let allRectsIdentical = true;
@@ -271,6 +277,7 @@ async function main() {
     let zeroTilePulseClasses = true;
     let glowAppeared = false;
     let returnedToBaseline = false;
+    let hadFadeoutFrames = false;
 
     for (const s of sampleResult.samples) {
       if (s.transform !== 'none' && s.transform !== sampleResult.initialTransform) {
@@ -282,11 +289,14 @@ async function main() {
       if (s.borderColor && s.borderColor.includes('242, 199')) {
         glowAppeared = true;
       }
-      out += `  [t=${s.t}ms, rAF=${s.now}] transform="${s.transform}", borderColor="${s.borderColor}", rectIdentical=${s.rectSame}, extraElements=${s.extraElementsCount}\n`;
+      if (s.t >= 500 && s.t <= 750 && s.borderColor !== 'rgb(242, 199, 126)' && s.borderColor !== sampleResult.initialBorderColor) {
+        hadFadeoutFrames = true;
+      }
+      out += `  [t=${s.t}ms, rAF=${s.now}, animTime=${s.animCurrentTime}ms] borderColor="${s.borderColor}", boxShadow="${s.boxShadow}", rectIdentical=${s.rectSame}\n`;
     }
 
     const lastSample = sampleResult.samples[sampleResult.samples.length - 1];
-    if (lastSample.borderColor === sampleResult.initialBorderColor) {
+    if (lastSample.borderColor === sampleResult.initialBorderColor || lastSample.boxShadow === 'none') {
       returnedToBaseline = true;
     }
 

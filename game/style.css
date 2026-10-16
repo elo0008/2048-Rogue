@@ -633,15 +633,28 @@ button:focus-visible {
 }
 
 /* Siphon feedback cues - Icon glow only (T4) */
+@keyframes siphonGlowFade {
+  0% {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px rgba(242, 199, 126, 0.65), inset 0 0 4px rgba(242, 199, 126, 0.35);
+  }
+  66.7% {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px rgba(242, 199, 126, 0.65), inset 0 0 4px rgba(242, 199, 126, 0.35);
+  }
+  100% {
+    border-color: #6a5343;
+    box-shadow: none;
+  }
+}
+
 .relic-mini.siphon-glow {
-  border-color: var(--accent) !important;
-  box-shadow: 0 0 8px rgba(242, 199, 126, 0.65), inset 0 0 4px rgba(242, 199, 126, 0.35) !important;
-  transition: border-color 0.75s ease, box-shadow 0.75s ease;
+  animation: siphonGlowFade 750ms ease-out forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .relic-mini.siphon-glow {
-    transition: none;
+    animation: none;
   }
 }
 
@@ -2419,11 +2432,12 @@ button:focus-visible {
 .record-relic-chip img,
 .record-relic-chip svg,
 .record-relic-chip .relic-monogram {
-  width: 14px;
-  height: 14px;
-  max-width: 14px;
-  max-height: 14px;
+  width: 16px;
+  height: 16px;
+  max-width: 16px;
+  max-height: 16px;
   display: block;
+  transform: none;
 }
 
 /* Footer Section */

@@ -548,15 +548,62 @@ async function runScenario(cdp, name, urlParams, runner, setupFn = null) {
       if (btn && !btn.closest('.hidden')) btn.click();
       window.__syncBoardCorrections = 0;
       window.__idleGuardTimeouts = 0;
-      if (window.__correctionsByCallSite) {
-        window.__correctionsByCallSite.slideFinish = 0;
-        window.__correctionsByCallSite.interrupt = 0;
-        window.__correctionsByCallSite.rewind = 0;
-        window.__correctionsByCallSite.ability = 0;
-        window.__correctionsByCallSite['decision-resolve'] = 0;
-        window.__correctionsByCallSite['draft-resolve'] = 0;
-        window.__correctionsByCallSite.setup = 0;
-        window.__correctionsByCallSite.other = 0;
+      window.__injectionActive = false;
+      window.__liveCorrections = 0;
+      window.__correctionEvents = [];
+      window.__scriptedSwipesDone = 0;
+
+      window.beginInjection = () => { window.__injectionActive = true; };
+      window.endInjection = () => { window.__injectionActive = false; };
+
+      window.__correctionsByCallSite = {
+        slideFinish: 0,
+        interrupt: 0,
+        rewind: 0,
+        ability: 0,
+        'decision-resolve': 0,
+        'draft-resolve': 0,
+        setup: 0,
+        inj: 0,
+        live: 0,
+        other: 0,
+      };
+
+      if (!window.__origSyncBoard) {
+        window.__origSyncBoard = window.syncBoard;
+        window.syncBoard = function(board, callSite) {
+          const before = window.__syncBoardCorrections || 0;
+          let targetSite;
+          if (window.__injectionActive) {
+            targetSite = 'inj';
+          } else if (callSite === 'inj') {
+            targetSite = 'live';
+          } else {
+            targetSite = callSite;
+          }
+
+          window.__origSyncBoard.call(this, board, targetSite);
+          const after = window.__syncBoardCorrections || 0;
+          const delta = after - before;
+
+          if (delta > 0 && targetSite !== 'initialRender') {
+            const isExpected = (targetSite === 'inj' || targetSite === 'rewind' || targetSite === 'ability' || targetSite === 'decision-resolve' || targetSite === 'draft-resolve' || targetSite === 'setup');
+
+            if (!isExpected) {
+              // Outside window and not an expected ability/decision/draft/setup sync -> counts as live!
+              window.__liveCorrections = (window.__liveCorrections || 0) + delta;
+            }
+
+            for (let c = 0; c < delta; c++) {
+              window.__correctionEvents.push({
+                callSite: targetSite,
+                delta: 1,
+                scriptedSwipesDone: window.__scriptedSwipesDone || 0,
+                time: performance.now()
+              });
+            }
+          }
+        };
       }
     })()
   `);
@@ -569,6 +616,7 @@ async function runScenario(cdp, name, urlParams, runner, setupFn = null) {
   }
 
   const setupBeforeActions = await cdp.eval(`(window.__correctionsByCallSite && window.__correctionsByCallSite.setup) || 0`);
+  const setupEvents = await cdp.eval(`window.__correctionEvents ? [...window.__correctionEvents] : []`);
 
   const history = [];
   let effectiveActions = 0;
@@ -610,6 +658,7 @@ async function runScenario(cdp, name, urlParams, runner, setupFn = null) {
       await sleep(100);
     }
 
+    await cdp.eval(`window.__scriptedSwipesDone = ${actionIdx + 1}`);
     const actionResult = await runner(cdp, actionIdx, history);
     const actionDesc = typeof actionResult === 'string' ? actionResult : actionResult.desc;
     effectiveActions++;
@@ -661,8 +710,26 @@ async function runScenario(cdp, name, urlParams, runner, setupFn = null) {
     return { pass: false, scenario: name, error: `${setupAfterActions} setup corrections occurred after first action` };
   }
 
-  console.log(`✔ Scenario ${name} PASSED all ${ACTIONS_PER_SCENARIO} actions. (effective actions: ${effectiveActions}, gameOvers: ${gameOvers}, playAgains: ${playAgains}, rewinds: ${rewinds}, diagonal: ${diagonalUses}, eraser: ${eraserUses}, idle timeouts: ${idleTimeouts}, syncBoard corrections: ${debugCorrections} [slideFinish: ${callSites.slideFinish || 0}, rewind: ${callSites.rewind || 0}, interrupt: ${callSites.interrupt || 0}, ability: ${callSites.ability || 0}, decision-resolve: ${callSites['decision-resolve'] || 0}, draft-resolve: ${callSites['draft-resolve'] || 0}, setup: ${callSites.setup || 0}, other: ${callSites.other || 0}], initialRender: ${initialRender}, 16ms slide samples: ${slideSamples})`);
-  if (callSites.other > 0) {
+  const liveCorrections = (callSites.live || 0) + ((await cdp.eval(`window.__liveCorrections || 0`)) || 0);
+  if (liveCorrections > 0) {
+    console.error(`❌ FAILURE in Scenario ${name}: ${liveCorrections} live corrections detected (must be 0)!`);
+    return { pass: false, scenario: name, error: `live corrections: ${liveCorrections}` };
+  }
+
+  if (name.startsWith('I ') || name.startsWith('L ')) {
+    console.log(`\n[Scenario ${name[0]} Setup Corrections relative to first scripted swipe]:`);
+    const sEvts = setupEvents.filter(e => e.callSite === 'setup');
+    const totalSet = sEvts.length;
+    console.log(`  Total setup corrections: ${totalSet}`);
+    console.log(`  First scripted swipe: action #1`);
+    sEvts.forEach((evt, idx) => {
+      const ordinal = idx - totalSet;
+      console.log(`  Correction ${idx + 1}/${totalSet}: ordinal ${ordinal} (pre-swipe 1, callSite: setup)`);
+    });
+  }
+
+  console.log(`✔ Scenario ${name} PASSED all ${ACTIONS_PER_SCENARIO} actions. (effective actions: ${effectiveActions}, gameOvers: ${gameOvers}, playAgains: ${playAgains}, rewinds: ${rewinds}, diagonal: ${diagonalUses}, eraser: ${eraserUses}, idle timeouts: ${idleTimeouts}, syncBoard corrections: ${debugCorrections} [slideFinish: ${callSites.slideFinish || 0}, rewind: ${callSites.rewind || 0}, interrupt: ${callSites.interrupt || 0}, ability: ${callSites.ability || 0}, decision-resolve: ${callSites['decision-resolve'] || 0}, draft-resolve: ${callSites['draft-resolve'] || 0}, setup: ${callSites.setup || 0}, inj: ${callSites.inj || 0}], initialRender: ${initialRender}, 16ms slide samples: ${slideSamples})`);
+  if (callSites.inj > 0) {
     console.log(`   [Call sites breakdown]: ${JSON.stringify(callSites)}`);
   }
   const timeoutDetails = await cdp.eval(`window.__idleTimeoutDetails || []`);
@@ -700,7 +767,8 @@ async function runScenario(cdp, name, urlParams, runner, setupFn = null) {
     corrections: debugCorrections,
     callSites,
     initialRender,
-    slideSamples
+    slideSamples,
+    liveCorrections: 0
   };
 }
 
@@ -975,7 +1043,9 @@ async function runFuzz() {
 
             window.controller.state.over = false;
             window.controller.state.board = [...setup.board];
-            window.syncBoard(window.controller.getBoard(), 'shatter-test');
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
             const actsBefore = (window.controller.getState().relicActivations?.shatter || 0);
 
             window.handleMove(setup.dir, 'swipe');
@@ -1059,7 +1129,9 @@ async function runFuzz() {
             window.controller.state.over = false;
             window.controller.state.board = [...setup.board];
             window.controller.state.abilities.diagonal_charge = { charges: 3, counter: 0, swipesAtMax: 0, maxCharges: 3, swipesPerCharge: 10 };
-            window.syncBoard(window.controller.getBoard(), 'shatter-test');
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
             const actsBefore = (window.controller.getState().relicActivations?.shatter || 0);
 
             window.executeAbility('diagonal_charge', { from: setup.from, to: setup.to });
@@ -1256,7 +1328,9 @@ async function runFuzz() {
               0, 0, 0, 0,
               0, 0, 0, 0
             ];
-            window.syncBoard(window.controller.getBoard(), 'passive-test');
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
             const actsBefore = (window.controller.getState().relicActivations?.fault_line || 0);
             const fbBefore = window.__slideFallbackCount || 0;
             window.handleMove('R', 'swipe');
@@ -1278,7 +1352,9 @@ async function runFuzz() {
               0, 0, 0, 0,
               0, 0, 0, 0
             ];
-            window.syncBoard(window.controller.getBoard(), 'passive-test');
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
             const actsBefore = (window.controller.getState().relicActivations?.siphon || 0);
             const fbBefore = window.__slideFallbackCount || 0;
             window.handleMove('L', 'swipe');
@@ -1300,7 +1376,9 @@ async function runFuzz() {
               0, 0, 0, 0,
               0, 0, 0, 0
             ];
-            window.syncBoard(window.controller.getBoard(), 'passive-test');
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
             const actsBefore = (window.controller.getState().relicActivations?.shatter || 0);
             const fbBefore = window.__slideFallbackCount || 0;
             window.handleMove('R', 'swipe');
@@ -1313,29 +1391,19 @@ async function runFuzz() {
         if (res.fallbacks > 0) mSlideFallbacks += res.fallbacks;
         desc = `Shatter stone destruction (fired: ${res.fired}, fallbacks: ${res.fallbacks})`;
       } else if (mode === 3) {
-        // 4. mason: stone due -> decision -> placement
+        // 4. mason: stone due -> swipe -> wait for slide -> click candidate
         const res = await c.eval(`
-          new Promise((resolve) => {
-            window.controller.state.board = [
-              0, 2, 4, 0,
-              0, 0, 0, 0,
-              0, 0, 0, 0,
-              0, 0, 0, 0
-            ];
+          (() => {
             const sched = window.controller.state.config.hazardSchedule || [];
             const interval = sched.length > 0 ? sched[0].interval : 75;
             window.controller.state.movesSinceLastStone = interval - 1;
-            window.syncBoard(window.controller.getBoard(), 'passive-test');
             const actsBefore = (window.controller.getState().relicActivations?.mason || 0);
             const fbBefore = window.__slideFallbackCount || 0;
             window.handleMove('L', 'swipe');
-            if (typeof window.finishCurrentAnimationImmediately === 'function') {
-              window.finishCurrentAnimationImmediately();
-            }
-            resolve({ actsBefore, fbBefore });
-          })
+            return { actsBefore, fbBefore };
+          })()
         `);
-        await sleep(180);
+        await sleep(250);
         const resolved = await c.eval(`
           (() => {
             const dec = window.controller.getPendingDecision();
@@ -1344,10 +1412,6 @@ async function runFuzz() {
               const choice = dec.candidates[0];
               const cell = document.querySelector('.cell[data-index="' + choice + '"]') || document.querySelector('.grid-cell[data-index="' + choice + '"]');
               if (cell) cell.click();
-              if (window.controller.hasPendingDecision()) {
-                window.controller.resolveDecision(choice);
-                window.syncBoard(window.controller.getBoard(), 'decision-resolve');
-              }
               decisionHandled = true;
             }
             const actsAfter = (window.controller.getState().relicActivations?.mason || 0);
@@ -1371,7 +1435,9 @@ async function runFuzz() {
               512, 1024, 2048, 4096,
               8192, 16384, 0, 32768
             ];
-            window.syncBoard(window.controller.getBoard(), 'passive-test');
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
             const actsBefore = (window.controller.getState().relicActivations?.last_stand || 0);
             const fbBefore = window.__slideFallbackCount || 0;
             window.handleMove('L', 'swipe');
@@ -1412,9 +1478,14 @@ async function runFuzz() {
     }
     console.log('======================================================');
 
+    if (process.env.FUZZ_FORCE_MISMATCH === '1' && results.length > 0) {
+      console.log('[FUZZ_FORCE_MISMATCH=1 active: Corrupting Scenario A total to test accounting mismatch assertion]');
+      results[0].corrections += 999;
+    }
+
     let summaryOutput = '';
     summaryOutput += '================================= FUZZ SUMMARY =================================\n';
-    summaryOutput += 'Scenario | Status | Actions | Effective | Over/Again | Rew/Diag/Ers | Guard TO | Corrections (tot:[sf/rw/ab/dec/drf/set/oth]) | InitialRender | Slide Samples\n';
+    summaryOutput += 'Scenario | Status | Actions | Effective | Over/Again | Rew/Diag/Ers | Guard TO | Corrections (tot:[sf/rw/ab/dec/drf/set/inj]) | InitialRender | Slide Samples\n';
     summaryOutput += '---------------------------------------------------------------------------------------------------------------------------------------------\n';
     let totalSlideFinish = 0;
     let totalRewind = 0;
@@ -1422,7 +1493,7 @@ async function runFuzz() {
     let totalDecision = 0;
     let totalDraft = 0;
     let totalSetup = 0;
-    let totalOther = 0;
+    let totalInj = 0;
     let totalSamples = 0;
     let totalRowCorrections = 0;
 
@@ -1433,16 +1504,15 @@ async function runFuzz() {
       const dec = r.callSites?.['decision-resolve'] || 0;
       const drf = r.callSites?.['draft-resolve'] || 0;
       const set = r.callSites?.setup || 0;
-      
-      // Calculate other from all remaining call site labels (e.g. shatter-test, passive-test, interrupt, other)
-      let oth = 0;
-      for (const [k, v] of Object.entries(r.callSites || {})) {
-        if (k !== 'initialRender' && k !== 'slideFinish' && k !== 'rewind' && k !== 'ability' && k !== 'decision-resolve' && k !== 'draft-resolve' && k !== 'setup') {
-          oth += v;
-        }
+      const inj = r.callSites?.inj || 0;
+      const live = r.liveCorrections || 0;
+
+      if (live !== 0) {
+        console.error(`❌ LIVE CORRECTIONS DETECTED in Scenario ${r.scenario}: live=${live} (must be 0)!`);
+        r.pass = false;
       }
 
-      const rowCategorySum = sf + rw + ab + dec + drf + set + oth;
+      const rowCategorySum = sf + rw + ab + dec + drf + set + inj;
       if (r.corrections !== rowCategorySum) {
         console.error(`❌ ACCOUNTING MISMATCH in Scenario ${r.scenario}: total (${r.corrections}) !== sum of categories (${rowCategorySum})!`);
         r.pass = false;
@@ -1454,11 +1524,11 @@ async function runFuzz() {
       totalDecision += dec;
       totalDraft += drf;
       totalSetup += set;
-      totalOther += oth;
+      totalInj += inj;
       totalSamples += r.slideSamples || 0;
       totalRowCorrections += r.corrections;
 
-      const corrStr = `${r.corrections} [${sf}/${rw}/${ab}/${dec}/${drf}/${set}/${oth}]`;
+      const corrStr = `${r.corrections} [${sf}/${rw}/${ab}/${dec}/${drf}/${set}/${inj}]`;
       const row = `${r.scenario.padEnd(42)} | ` +
         `${(r.pass ? 'PASS' : 'FAIL').padEnd(6)} | ` +
         `${String(r.actions).padEnd(7)} | ` +
@@ -1472,16 +1542,17 @@ async function runFuzz() {
       summaryOutput += row;
     }
     summaryOutput += '---------------------------------------------------------------------------------------------------------------------------------------------\n';
-    const totalCategorySum = totalSlideFinish + totalRewind + totalAbility + totalDecision + totalDraft + totalSetup + totalOther;
+    const totalCategorySum = totalSlideFinish + totalRewind + totalAbility + totalDecision + totalDraft + totalSetup + totalInj;
     if (totalRowCorrections !== totalCategorySum) {
       console.error(`❌ TOTALS MISMATCH: totalRowCorrections (${totalRowCorrections}) !== totalCategorySum (${totalCategorySum})!`);
       process.exit(1);
     }
-    summaryOutput += `TOTALS: slideFinish: ${totalSlideFinish}, rewind: ${totalRewind}, ability: ${totalAbility}, decision-resolve: ${totalDecision}, draft-resolve: ${totalDraft}, setup: ${totalSetup}, other: ${totalOther}, slideSamples: ${totalSamples}\n`;
+    summaryOutput += `TOTALS: slideFinish: ${totalSlideFinish}, rewind: ${totalRewind}, ability: ${totalAbility}, decision-resolve: ${totalDecision}, draft-resolve: ${totalDraft}, setup: ${totalSetup}, inj: ${totalInj}, slideSamples: ${totalSamples}\n`;
     summaryOutput += '=============================================================================================================\n';
 
-    console.log('\n' + summaryOutput);
-    fs.writeFileSync(path.join(outDir, 'fuzz_short.txt'), summaryOutput, 'utf8');
+    origLog('\n' + summaryOutput);
+    logStream.end();
+    fs.writeFileSync(outFilePath, summaryOutput, 'utf8');
 
     if (failedScenarios.length > 0) {
       console.error(`❌ Fuzz test failed on ${failedScenarios.length} scenarios.`);
