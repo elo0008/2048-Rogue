@@ -1551,14 +1551,15 @@ async function runFuzz() {
     summaryOutput += '=============================================================================================================\n';
 
     origLog('\n' + summaryOutput);
-    logStream.end();
     fs.writeFileSync(outFilePath, summaryOutput, 'utf8');
 
     if (failedScenarios.length > 0) {
-      console.error(`❌ Fuzz test failed on ${failedScenarios.length} scenarios.`);
+      origErr(`❌ Fuzz test failed on ${failedScenarios.length} scenarios.`);
+      try { logStream.end(); } catch {}
       process.exit(1);
     } else {
-      console.log('✔ All fuzz scenarios passed cleanly!');
+      origLog('✔ All fuzz scenarios passed cleanly!');
+      try { logStream.end(); } catch {}
     }
 
   } finally {

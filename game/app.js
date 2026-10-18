@@ -127,7 +127,9 @@ function saveTopRun(entry) {
   const sanitizedEntry = {
     ...entry,
     activeMs: entry.activeMs ?? null,
+    eventsCount: entry.eventsCount ?? (Array.isArray(entry.events) ? entry.events.length : 0),
   };
+  delete sanitizedEntry.events;
   try {
     let list = getTopRuns();
     if (list.some(r => r.runId === sanitizedEntry.runId)) return;
@@ -188,6 +190,7 @@ function recordCapturedError(message, source, line, col, error) {
     ? controller.state.moveCount
     : 0;
   const msgStr = typeof message === 'string' ? message : (error?.message || String(message || ''));
+  const stackStr = typeof error?.stack === 'string' ? error.stack.slice(0, 300) : (typeof error === 'string' ? error.slice(0, 300) : '');
   const record = {
     message: msgStr.slice(0, 200),
     file: getBasename(source || error?.fileName || ''),
@@ -195,8 +198,12 @@ function recordCapturedError(message, source, line, col, error) {
     col: col || error?.columnNumber || 0,
     ts: Date.now(),
     moveCountAtError: currentMoves,
+    stack: stackStr,
   };
   saveErrorRecord(record);
+  if (typeof controller !== 'undefined' && controller?.recordRunError) {
+    controller.recordRunError(record);
+  }
 }
 
 if (typeof window !== 'undefined') {
@@ -418,6 +425,10 @@ function parseUrlOptions() {
   if (params.has('siphon')) {
     const s = parseInt(params.get('siphon'), 10);
     if (!isNaN(s) && s > 0) config.siphonMin = s;
+  }
+  if (params.has('shatter')) {
+    const sh = parseInt(params.get('shatter'), 10);
+    if (!isNaN(sh) && sh > 0) config.shatterMin = sh;
   }
   if (params.has('debug')) {
     debug = params.get('debug') === '1' || params.get('debug') === 'true';
@@ -1063,8 +1074,9 @@ function triggerShatterAnimation(mergeDestinations, boardBefore, boardAfter) {
       if (c > 0) neighbors.push(r * 4 + (c - 1));
       if (c < 3) neighbors.push(r * 4 + (c + 1));
 
+      const shatterThreshold = controller?.state?.config?.shatterMin ?? controller?.config?.shatterMin ?? activeConfig?.shatterMin ?? 64;
       const touchingDest = (mergeDestinations || []).find(d => neighbors.includes(d)) ??
-        neighbors.find(n => typeof boardAfter[n] === 'number' && boardAfter[n] >= (config.shatterMin ?? 64)) ??
+        neighbors.find(n => typeof boardAfter[n] === 'number' && boardAfter[n] >= shatterThreshold) ??
         neighbors[0];
       if (!destroyedCells.some(d => d.stoneCell === i)) {
         destroyedCells.push({ stoneCell: i, mergeDest: touchingDest });
@@ -2443,7 +2455,7 @@ function handleMove(direction, inputType = 'key') {
 
   cancelTargeting();
   dismissHint();
-  controller.recordInput(inputType);
+  controller.recordInput(inputType, direction);
   initAudio();
 
   const boardBefore = controller.getBoard();
@@ -2588,8 +2600,9 @@ function handleMove(direction, inputType = 'key') {
     }
     if (shatteredStoneSet.size > 0) {
       const mergeDests = [];
+      const shatterThreshold = controller?.state?.config?.shatterMin ?? controller?.config?.shatterMin ?? activeConfig?.shatterMin ?? 64;
       for (let i = 0; i < 16; i++) {
-        if (typeof boardAfter[i] === 'number' && boardAfter[i] >= (config.shatterMin ?? 64)) {
+        if (typeof boardAfter[i] === 'number' && boardAfter[i] >= shatterThreshold) {
           mergeDests.push(i);
         }
       }
@@ -2977,6 +2990,7 @@ function handleGameOver() {
     relics: Array.isArray(currentRunLog.relicsOwned) ? [...currentRunLog.relicsOwned] : [],
     endedAt: currentRunLog.timestamp || new Date().toISOString(),
     activeMs: currentRunLog.activeMs,
+    eventsCount: Array.isArray(currentRunLog.events) ? currentRunLog.events.length : 0,
   });
 
   // Score headline & local storage best score check
@@ -3108,6 +3122,7 @@ function startNewGame(seed = null) {
   window.getActivePlayMs = () => activePlayMs;
   window.formatPlayTime = formatPlayTime;
   window.getCurrentRunLog = () => currentRunLog;
+  window.getDiagnosticMetadata = getDiagnosticMetadata;
   Object.defineProperty(window, 'activeTargeting', {
     get: () => activeTargeting,
     set: (v) => { activeTargeting = v; },

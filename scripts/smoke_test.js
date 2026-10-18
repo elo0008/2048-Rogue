@@ -17,25 +17,15 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-// 1. Run `node --check` over every .js file in repository
+// 1. Run `node --check` over tracked .js files (git ls-files)
 function runNodeCheck() {
-  console.log('[Smoke Test] Running `node --check` over all .js files...');
-  function getJsFiles(dir) {
-    let res = [];
-    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (ent.name === 'node_modules' || ent.name.startsWith('.')) continue;
-      const full = path.join(dir, ent.name);
-      if (ent.isDirectory()) res = res.concat(getJsFiles(full));
-      else if (ent.name.endsWith('.js')) res.push(full);
-    }
-    return res;
-  }
-
-  const jsFiles = getJsFiles(rootDir);
+  console.log('[Smoke Test] Running `node --check` over tracked .js files...');
+  const stdout = execFileSync('git', ['ls-files', '*.js'], { cwd: rootDir, encoding: 'utf8' });
+  const jsFiles = stdout.split(/\r?\n/).map(f => f.trim()).filter(Boolean).map(f => path.join(rootDir, f));
   for (const f of jsFiles) {
     execFileSync(process.execPath, ['--check', f]);
   }
-  console.log(`[Smoke Test] ✔ ${jsFiles.length} JS files passed syntax check.`);
+  console.log(`[Smoke Test] ✔ ${jsFiles.length} tracked JS files passed syntax check.`);
 }
 
 function startStaticServer() {
@@ -1438,6 +1428,56 @@ async function runSmokeTest() {
     assert.strictEqual(v4SmokeRes.newScoreZero, true, 'V4: Play Again resets score to 0');
     assert.strictEqual(v4SmokeRes.newTilesRendered, true, 'V4: Play Again immediately renders new tiles (no blank board)');
     console.log('[Smoke Test] ✔ V4 verified: Play timer lifecycle, freeze, run log, & clean Play Again reset.');
+
+    // V5: Shatter stone break / fallback repro asserting zero errors (W1 bug prevention)
+    console.log('[Smoke Test] Testing Shatter stone-break animations and fallback paths for "config is not defined" regression...');
+    const v5Res = await cdp.eval(`
+      (async () => {
+        const STONE = 'S';
+        // 1. Animated path test with Shatter active (32+32 -> 64 destroying adjacent stone)
+        controller.state.relics.add('shatter');
+        controller.state.board = [
+          STONE, 32, 32, 0,
+          0,     0,  0,  0,
+          0,     0,  0,  0,
+          0,     0,  0,  0
+        ];
+        window.syncBoard(controller.getBoard(), 'shatter-setup');
+        window.handleMove('L', 'swipe');
+        await new Promise(r => setTimeout(r, 200));
+
+        // 2. Reduced motion / fallback path test (32+32 -> 64 destroying adjacent stone)
+        const origMatchMedia = window.matchMedia;
+        try {
+          window.matchMedia = (query) => {
+            if (query.includes('prefers-reduced-motion')) return { matches: true };
+            return origMatchMedia ? origMatchMedia(query) : { matches: false };
+          };
+          controller.state.board = [
+            STONE, 64, 64, 0,
+            0,     0,  0,  0,
+            0,     0,  0,  0,
+            0,     0,  0,  0
+          ];
+          window.syncBoard(controller.getBoard(), 'shatter-setup-fallback');
+          window.handleMove('L', 'swipe');
+          await new Promise(r => setTimeout(r, 200));
+        } finally {
+          window.matchMedia = origMatchMedia;
+        }
+
+        const errorsCaptured = (window.controller?.runErrors || []).length;
+        const board = controller.getBoard();
+        return {
+          ok: true,
+          errorsCaptured,
+          stoneBroken: board[0] !== 'S'
+        };
+      })()
+    `);
+    assert.strictEqual(v5Res.ok, true, 'V5: Shatter moves executed without exception');
+    assert.strictEqual(v5Res.errorsCaptured, 0, 'V5: 0 controller errors during Shatter stone break');
+    console.log('[Smoke Test] ✔ V5 verified: Shatter stone-break animated and fallback paths completed with 0 errors.');
 
     // Dist scan for forbidden strings
     console.log('[Smoke Test] Scanning dist/ for forbidden strings (tailwind, googleapis, fredoka)...');

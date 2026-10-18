@@ -56,8 +56,9 @@ export class GameController {
       seed = Math.floor(Math.random() * 2147483647) + 1;
     }
     this.seed = Number(seed);
-    this.config = { ...configOverrides };
-    this.state = createGame(this.seed, this.config);
+    this.configOverrides = { ...configOverrides };
+    this.state = createGame(this.seed, this.configOverrides);
+    this.config = this.state.config;
 
     this.runId = this._generateRunId();
     this.startTimestamp = Date.now();
@@ -74,14 +75,27 @@ export class GameController {
     this.abilityUses = [];
     this._pendingRewindEntries = [];
     this.inputCounts = { swipe: 0, key: 0, tap: 0 };
+    this.events = [];
+    this.errorCount = 0;
+    this.runErrors = [];
 
     return this;
   }
 
-  recordInput(type) {
+  recordInput(type, detail = null) {
     if (this.inputCounts && type in this.inputCounts) {
       this.inputCounts[type] += 1;
     }
+    if (type === 'swipe') {
+      const dir = detail || this.lastValidSwipeDir || this.lastSubmittedDir || 'L';
+      this.events.push(`s:${dir}`);
+    }
+  }
+
+  recordRunError(record) {
+    this.errorCount = (this.errorCount || 0) + 1;
+    if (!this.runErrors) this.runErrors = [];
+    this.runErrors.push(record);
   }
 
   /**
@@ -207,6 +221,9 @@ export class GameController {
       }
 
       this.abilityUses.push(entry);
+      const targetStr = (relicId === 'rewind' || !target) ? '-' : (typeof target === 'string' ? target : JSON.stringify(target));
+      if (!this.events) this.events = [];
+      this.events.push(`a:${relicId}:${targetStr}`);
 
       if (this.state.lastStandUsed) {
         this.lastStandFired = true;
@@ -272,6 +289,11 @@ export class GameController {
         move: this.state.moveCount,
         durationMs,
       });
+      if (!this.events) this.events = [];
+      this.events.push(`d:${choice}`);
+    } else if (type === 'mason') {
+      if (!this.events) this.events = [];
+      this.events.push(`m:${choice}`);
     }
 
     const res = this.pendingDecision.resolve(choice);
@@ -374,10 +396,19 @@ export class GameController {
     };
 
     const resolvedConfig = { ...(this.state?.config || {}), ...(this.config || {}) };
+    const startTime = this.startTimestamp || 0;
+    const endTime = this.endTimestamp || Date.now();
+    const allErrors = Array.isArray(metadata.errors) ? metadata.errors : (this.runErrors || []);
+    const runErrors = allErrors.filter(e => e && typeof e.ts === 'number' && e.ts >= startTime && e.ts <= endTime);
+    const diagnostics = {
+      ...(metadata.diagnostics || {}),
+      recentErrors: allErrors,
+    };
 
     return {
       playerId: this.playerId,
       runId: this.runId,
+      rulesVersion: '6E237F71F0F71B30FCAFF1C5A511DFCCF2BE8641E449B1A6291E75A710B8AAE9',
       seed: this.seed,
       config: serializeSafe(resolvedConfig),
       startTimestamp: this.startTimestamp,
@@ -399,6 +430,10 @@ export class GameController {
       capped: Boolean(this.state.capped),
       stuckNeedsAbility: Boolean(this.state.stuckNeedsAbility),
       abilityUses: [...(this.abilityUses || [])],
+      events: [...(this.events || [])],
+      errorCount: this.errorCount || 0,
+      errors: runErrors,
+      diagnostics,
       swipesAtMax,
       chargesAtDeath,
       inputMethodCounts: { ...(this.inputCounts || { swipe: 0, key: 0, tap: 0 }) },
@@ -414,7 +449,6 @@ export class GameController {
       lang: metadata.lang ?? (typeof navigator !== 'undefined' ? (navigator.language || '') : ''),
       soundEnabled: metadata.soundEnabled ?? true,
       audioState: metadata.audioState ?? 'none',
-      errors: Array.isArray(metadata.errors) ? metadata.errors : [],
     };
   }
 }

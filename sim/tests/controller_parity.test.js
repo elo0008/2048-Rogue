@@ -159,6 +159,7 @@ test('Controller Run-Log: abilityUses context fields and hazardSchedule Infinity
   assert.equal(parsedLastTier.upToMove, 'Infinity');
 
   // 5. Field diagnostics in run log
+  const runErrorTs = ctrl.startTimestamp || Date.now();
   const diagLog = ctrl.getRunLog({
     host: 'example.com',
     embedded: false,
@@ -168,7 +169,7 @@ test('Controller Run-Log: abilityUses context fields and hazardSchedule Infinity
     lang: 'en-US',
     soundEnabled: true,
     audioState: 'running',
-    errors: [{ message: 'test error', file: 'app.js', line: 10, col: 2, ts: 12345, moveCountAtError: 0 }],
+    errors: [{ message: 'test error', file: 'app.js', line: 10, col: 2, ts: runErrorTs, moveCountAtError: 0 }],
   });
   assert.equal(diagLog.host, 'example.com');
   assert.equal(diagLog.embedded, false);
@@ -181,4 +182,30 @@ test('Controller Run-Log: abilityUses context fields and hazardSchedule Infinity
   assert.equal(diagLog.errors.length, 1);
   assert.equal(diagLog.errors[0].message, 'test error');
 });
+
+test('Controller Run-Log: error scoping to run window and recentErrors retention', () => {
+  const ctrl = new GameController(101);
+  const startTime = ctrl.startTimestamp;
+  const insideError = { message: 'inside run error', file: 'app.js', line: 12, col: 4, ts: startTime + 10, moveCountAtError: 0 };
+  const outsideErrorBefore = { message: 'before run error', file: 'app.js', line: 15, col: 2, ts: startTime - 5000, moveCountAtError: 0 };
+  const outsideErrorAfter = { message: 'after run error', file: 'app.js', line: 20, col: 1, ts: startTime + 9999999, moveCountAtError: 0 };
+
+  ctrl.endTimestamp = startTime + 1000;
+
+  const log = ctrl.getRunLog({
+    errors: [outsideErrorBefore, insideError, outsideErrorAfter],
+  });
+
+  // Only the inside error is kept in errors
+  assert.equal(log.errors.length, 1);
+  assert.equal(log.errors[0].message, 'inside run error');
+
+  // All errors are retained under diagnostics.recentErrors
+  assert.ok(log.diagnostics);
+  assert.equal(log.diagnostics.recentErrors.length, 3);
+  assert.equal(log.diagnostics.recentErrors[0].message, 'before run error');
+  assert.equal(log.diagnostics.recentErrors[1].message, 'inside run error');
+  assert.equal(log.diagnostics.recentErrors[2].message, 'after run error');
+});
+
 

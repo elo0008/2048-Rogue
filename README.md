@@ -135,12 +135,20 @@ Customize rules, test specific relic interactions, or replay seeds using query p
 
 - Each finished run generates a structured JSON log containing:
   - Anonymous Player ID & Run ID
+  - `rulesVersion`: SHA-256 hash of the simulation engine rules (`sim/engine.js`)
   - Seed & active configuration
   - Total moves survived & move at death
   - Active play duration in milliseconds (`activeMs`)
   - Final board state (stone count & tile values)
   - Drafts seen, offered relics, selected relics, and decision time in ms
   - Per-relic activation counters and Last Stand trigger flag
+  - `events`: Ordered array of compact input event strings across the entire run:
+    - `s:<L|R|U|D>`: Swipes submitted (including any moves later rewound)
+    - `a:<relicId>:<target>`: Ability activations with target payload (or `-` for Rewind)
+    - `d:<relicId>`: Relic draft picks
+    - `m:<cell>`: Mason stone replacement candidate picks
+  - `errorCount`: Total uncapped error counter for the run session
+  - `errors`: Run-scoped errors strictly within `[startTimestamp, endTimestamp]` (each with first 300 characters of stack trace); device-wide error history preserved under `diagnostics.recentErrors`
 - The last 20 runs are stored locally in `localStorage`.
-- Top 10 high scores are recorded in `2048_rogue_top_runs` including `activeMs`.
+- Top 10 high scores are recorded in `2048_rogue_top_runs` including `activeMs` and `eventsCount` (storing the event count rather than the raw array to optimize storage).
 - Click **Copy Run Log** on the Game Over screen to copy the full history as JSON (with an automatic file download fallback).
