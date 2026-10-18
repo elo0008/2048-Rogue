@@ -152,3 +152,27 @@ Customize rules, test specific relic interactions, or replay seeds using query p
 - The last 20 runs are stored locally in `localStorage`.
 - Top 10 high scores are recorded in `2048_rogue_top_runs` including `activeMs` and `eventsCount` (storing the event count rather than the raw array to optimize storage).
 - Click **Copy Run Log** on the Game Over screen to copy the full history as JSON (with an automatic file download fallback).
+
+---
+
+## Verifying a Run
+
+Run authenticity and reproducibility can be independently verified by replaying the run from its seed, config, and `events` stream using the deterministic rules engine:
+
+```bash
+# Verify a single exported run log:
+node verify/cli.js path/to/run_log.json
+
+# Verify a directory corpus of run logs:
+node verify/cli.js --corpus scripts/out/corpus --out scripts/out/verify_corpus.txt
+```
+
+### Event Semantics
+The `events` array records input actions in exact chronological submission order:
+- `s:<L|R|U|D>`: Directional swipe submitted. A swipe producing no board change (blocked) replays as a legal no-op with no state change. Swipes later undone by Rewind are replayed when encountered and restored when the subsequent rewind event is executed.
+- `a:<relicId>:<target>`: Player ability activation with serialized target payload (or `-` for Rewind).
+- `d:<relicId>`: Relic draft selection resolving an offered draft decision.
+- `m:<cell>`: Mason stone candidate placement resolving a Mason decision.
+
+Replay ordering is strictly the array order (move numbers are never used for ordering). The pure verifier function `verifyRun(runLog, expectedRulesVersion)` re-simulates the game and asserts that `rulesVersion`, final board state, total moves at death, points score, max tile, relics owned, draft picks, and Last Stand activations match the claimed values.
+
