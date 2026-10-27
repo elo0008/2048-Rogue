@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { computeIconMetrics } from './icon_metrics.js';
 import { findChrome } from './find_chrome.js';
+import { computeReplayVersion } from '../verify/version.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,6 +80,9 @@ export async function build(options = {}) {
   const buildId = `build_${timestamp}_${contentHash}`;
   console.log(`Generated buildId: ${buildId}`);
 
+  const replayVersion = computeReplayVersion(targetRootDir);
+  console.log(`Computed replayVersion: ${replayVersion}`);
+
   // Clean or create dist
   if (fs.existsSync(targetDistDir)) {
     fs.rmSync(targetDistDir, { recursive: true, force: true });
@@ -94,9 +98,9 @@ export async function build(options = {}) {
   const styleCss = fs.readFileSync(path.join(targetRootDir, 'game', 'style.css'), 'utf-8');
   fs.writeFileSync(path.join(targetDistDir, 'style.css'), styleCss, 'utf-8');
 
-  // Copy app.js with buildId replacement
+  // Copy app.js with buildId and replayVersion replacement
   let appJs = fs.readFileSync(path.join(targetRootDir, 'game', 'app.js'), 'utf-8');
-  appJs = appJs.replaceAll('__BUILD_ID__', buildId);
+  appJs = appJs.replaceAll('__BUILD_ID__', buildId).replaceAll('__REPLAY_VERSION__', replayVersion);
   fs.writeFileSync(path.join(targetDistDir, 'app.js'), appJs, 'utf-8');
 
   // Copy controller.js and adjust imports to self-contained relative paths
@@ -104,7 +108,8 @@ export async function build(options = {}) {
   controllerJs = controllerJs
     .replace(/from\s+['"]\.\.\/sim\/engine\.js['"]/g, "from './engine.js'")
     .replace(/from\s+['"]\.\.\/sim\/relics\.js['"]/g, "from './relics.js'")
-    .replaceAll('__BUILD_ID__', buildId);
+    .replaceAll('__BUILD_ID__', buildId)
+    .replaceAll('__REPLAY_VERSION__', replayVersion);
   fs.writeFileSync(path.join(targetDistDir, 'controller.js'), controllerJs, 'utf-8');
 
   // Copy engine.js

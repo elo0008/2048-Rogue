@@ -42,6 +42,8 @@ export const DEFAULT_CONFIG = {
   // Stone-group cap settings:
   stoneGroup: ['fault_line', 'mason', 'shatter'],
   stoneGroupCap: null, // default null = off
+  // Ascension settings:
+  ascensionAt: null, // default null = off; positive integer power of two enables it
 };
 
 /**
@@ -939,6 +941,7 @@ export function useAbility(state, relicId, target) {
       }
     }
     state.rewindStack = [];
+    applyAscension(state, mergedVal);
   } else if (relicId === 'eraser') {
     const cell = (typeof target === 'number') ? target : target?.cell;
     if (typeof cell !== 'number' || cell < 0 || cell > 15) {
@@ -1163,6 +1166,9 @@ export function cloneState(state) {
     abilities: clonedAbilities,
     stuckNeedsAbility: state.stuckNeedsAbility || false,
     pendingDecision: state.pendingDecision ? { ...state.pendingDecision } : null,
+    ascensionLevel: state.ascensionLevel || 0,
+    ascensions: state.ascensions ? state.ascensions.map(a => ({ ...a })) : [],
+    endedByPlayer: Boolean(state.endedByPlayer),
     rewindStack: clonedStack,
     get rewindSnapshot() {
       return this.rewindStack && this.rewindStack.length > 0 ? this.rewindStack[this.rewindStack.length - 1] : null;
@@ -1176,6 +1182,94 @@ export function cloneState(state) {
       }
     },
   };
+}
+
+/**
+ * Applies Ascension effect when a merge creates a tile v >= ascensionAt and v > ascensionLevel.
+ *
+ * @param {object} state - Game engine state
+ * @param {number} createdValueMax - Maximum tile value created by merges in triggering action
+ * @returns {boolean} True if ascension triggered, false otherwise
+ */
+export function applyAscension(state, createdValueMax) {
+  const threshold = state.config?.ascensionAt;
+  if (!threshold || typeof threshold !== 'number' || threshold <= 0) {
+    return false;
+  }
+  if (!createdValueMax || createdValueMax < threshold) {
+    return false;
+  }
+  const currentLevel = state.ascensionLevel || 0;
+  if (createdValueMax <= currentLevel) {
+    return false;
+  }
+
+  const v = createdValueMax;
+  let destroyedStones = 0;
+  let destroyedTiles = 0;
+  let payout = 0;
+
+  for (let i = 0; i < 16; i++) {
+    const cell = state.board[i];
+    if (cell === STONE) {
+      state.board[i] = 0;
+      if (state.stoneSpawnMoves) state.stoneSpawnMoves[i] = null;
+      destroyedStones++;
+    } else if (typeof cell === 'number' && cell > 0) {
+      if (cell < threshold) {
+        destroyedTiles++;
+        payout += cell;
+        state.board[i] = 0;
+      }
+    }
+  }
+
+  state.points = (state.points || 0) + payout;
+  state.ascensionLevel = v;
+  state.movesSinceLastStone = 0;
+  state.rewindStack = [];
+
+  if (!state.ascensions) state.ascensions = [];
+  state.ascensions.push({
+    move: state.moveCount,
+    value: v,
+    payout,
+    destroyedTiles,
+    destroyedStones,
+  });
+
+  const validMoves = getValidMoves(state);
+  if (validMoves.length > 0) {
+    state.stuckNeedsAbility = false;
+    state.gameOver = false;
+  } else {
+    if (hasLegalAbility(state)) {
+      state.stuckNeedsAbility = true;
+      state.gameOver = false;
+    } else {
+      state.stuckNeedsAbility = false;
+      state.gameOver = true;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Ends a run voluntarily by player action.
+ *
+ * @param {object} state - Game engine state
+ */
+export function endRun(state) {
+  if (state.gameOver) {
+    throw new Error('Cannot end run: game is already over');
+  }
+  state.gameOver = true;
+  state.endedByPlayer = true;
+  state.moveNumberAtDeath = state.moveCount;
+  state.stuckNeedsAbility = false;
+  state.pendingDecision = null;
+  return state;
 }
 
 /**
@@ -1233,6 +1327,9 @@ export function createGame(seed = 12345, userConfig = {}) {
     abilities: {},
     stuckNeedsAbility: false,
     pendingDecision: null,
+    ascensionLevel: 0,
+    ascensions: [],
+    endedByPlayer: false,
   };
 
   const relicActivations = {};
@@ -1482,6 +1579,9 @@ export function stepInteractive(state, direction, options = {}) {
   const mergeMultiplier = Math.min(4, mergesThisMove);
   state.points = (state.points || 0) + sumCreatedValues * mergeMultiplier;
 
+  // Ascension check (turn order: after slide and post-slide effects, before moveCount += 1)
+  applyAscension(state, maxCreatedThisMove);
+
   // 3. moveCount += 1
   state.moveCount += 1;
   state.score = state.moveCount + state.bonusScore;
@@ -1621,6 +1721,9 @@ export function stepInteractive(state, direction, options = {}) {
               type: 'mason',
               candidates,
               resolve(chosenCell) {
+                if (state.gameOver) {
+                  throw new Error('Cannot resolve decision: game is over');
+                }
                 if (!candidates.includes(chosenCell)) {
                   throw new Error(`Invalid mason candidate cell: ${chosenCell}. Must be one of [${candidates.join(', ')}]`);
                 }
@@ -1769,6 +1872,9 @@ export function stepInteractive(state, direction, options = {}) {
         offers,
         info,
         resolve(pick) {
+          if (state.gameOver) {
+            throw new Error('Cannot resolve decision: game is over');
+          }
           if (!offers.includes(pick)) {
             throw new Error(`Invalid draft pick: ${pick}. Must be one of [${offers.join(', ')}]`);
           }
@@ -1970,6 +2076,9 @@ export function step(state, direction, bot = null, options = {}) {
   const sumCreatedValues = mergeCreatedCells.reduce((sum, item) => sum + item.value, 0);
   const mergeMultiplier = Math.min(4, mergesThisMove);
   state.points = (state.points || 0) + sumCreatedValues * mergeMultiplier;
+
+  // Ascension check (turn order: after slide and post-slide effects, before moveCount += 1)
+  applyAscension(state, maxCreatedThisMove);
 
   // 3. moveCount += 1
   state.moveCount += 1;

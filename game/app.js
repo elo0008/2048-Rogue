@@ -430,6 +430,11 @@ function parseUrlOptions() {
     const sh = parseInt(params.get('shatter'), 10);
     if (!isNaN(sh) && sh > 0) config.shatterMin = sh;
   }
+  if (params.has('ascension')) {
+    const asc = parseInt(params.get('ascension'), 10);
+    if (!isNaN(asc) && asc > 0) config.ascensionAt = asc;
+    else config.ascensionAt = null;
+  }
   if (params.has('debug')) {
     debug = params.get('debug') === '1' || params.get('debug') === 'true';
   }
@@ -662,6 +667,7 @@ const draftOwnedCount = document.getElementById('draft-owned-count');
 const pauseOverlay = document.getElementById('pause-overlay');
 const btnPauseResume = document.getElementById('btn-pause-resume');
 const btnPauseRestart = document.getElementById('btn-pause-restart');
+const btnPauseEndRun = document.getElementById('btn-pause-end-run');
 const btnPauseSound = document.getElementById('btn-pause-sound');
 const btnPauseHow = document.getElementById('btn-pause-how');
 const pauseHowList = document.getElementById('pause-how-list');
@@ -3403,10 +3409,22 @@ if (btnCancelTargeting) {
 }
 
 // Pause Menu controls
+let endRunConfirmTimer = null;
+function resetEndRunButton() {
+  if (endRunConfirmTimer !== null) {
+    clearTimeout(endRunConfirmTimer);
+    endRunConfirmTimer = null;
+  }
+  if (btnPauseEndRun) {
+    btnPauseEndRun.textContent = 'End run';
+  }
+}
+
 if (btnPauseMenu && pauseOverlay) {
   btnPauseMenu.addEventListener('click', () => {
     controller.recordInput('tap');
     tickPlayTimer();
+    resetEndRunButton();
     if (pauseTimeVal) pauseTimeVal.textContent = formatPlayTime(activePlayMs);
     pauseOverlay.classList.remove('hidden');
   });
@@ -3414,6 +3432,7 @@ if (btnPauseMenu && pauseOverlay) {
 
 if (btnPauseResume && pauseOverlay) {
   btnPauseResume.addEventListener('click', () => {
+    resetEndRunButton();
     pauseOverlay.classList.add('hidden');
     lastPerfTime = performance.now();
     if (isAnimating) {
@@ -3441,9 +3460,31 @@ document.addEventListener('visibilitychange', () => {
 
 if (btnPauseRestart && pauseOverlay) {
   btnPauseRestart.addEventListener('click', () => {
+    resetEndRunButton();
     pauseOverlay.classList.add('hidden');
     startNewGame();
     showToast('New run started');
+  });
+}
+
+if (btnPauseEndRun && pauseOverlay) {
+  btnPauseEndRun.addEventListener('click', () => {
+    controller.recordInput('tap');
+    if (endRunConfirmTimer !== null) {
+      // Second tap within 3 seconds
+      resetEndRunButton();
+      pauseOverlay.classList.add('hidden');
+      if (controller && !controller.isGameOver()) {
+        controller.endRun();
+        handleGameOver();
+      }
+    } else {
+      // First tap
+      btnPauseEndRun.textContent = 'Tap again to end';
+      endRunConfirmTimer = setTimeout(() => {
+        resetEndRunButton();
+      }, 3000);
+    }
   });
 }
 

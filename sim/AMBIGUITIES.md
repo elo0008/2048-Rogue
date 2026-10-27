@@ -98,3 +98,40 @@ This document details every rule interpretation made during the development of t
 - **Ambiguity**: The spec describes E1 as "baseline: no relics", E2 as "solo: for each relic, forced owned from move 0", E3 as "pairs: for each of the 28 relic pairs, both forced from move 0", and E4 as "random draft: normal draft flow with the random policy". Initially, the engine evaluated draft triggers unconditionally whenever thresholds [32, 64, ...] were reached, which caused E1 runs reaching 32+ to draft relics (such as `pressure_cooker`, leading to `score > moveCount`).
 - **Interpretation**: E1 is strictly "no relics", E2 is strictly "solo" (isolating that single relic), and E3 is strictly "pairs" (isolating that pair). Therefore, drafting is explicitly disabled (`enableDraft: false`) for E1, E2, and E3 so no extraneous relics are acquired during runs. Only E4 activates the milestone draft system (`enableDraft: true`).
 
+---
+
+### 14. Ascension (`ascensionAt`)
+- **Opt-in Rule & Trigger**: Configured via `config.ascensionAt` (default `null` = off; any positive integer power of two enables it). State tracks `ascensionLevel` (starts at 0) and `ascensions = []` (records `{ move, value, payout, destroyedTiles, destroyedStones }`).
+- **Trigger Condition**: During a valid swipe's slide phase or in a Diagonal ability merge, a merge CREATES a tile with value `v >= ascensionAt` AND `v > state.ascensionLevel`. Pre-existing tiles never trigger ascension; Eraser removals never trigger ascension. Creating the same threshold value again does not retrigger; only strictly higher created thresholds retrigger (`v > state.ascensionLevel`).
+- **Survivor Rule**:
+  1. Destroys every stone (`STONE` / `'S'`) on the board.
+  2. Destroys every number tile with value `< ascensionAt`.
+  3. Tiles with value `>= ascensionAt` survive in place (for example, a lone newly formed 2048 or previously formed higher tiles stay exactly where they were).
+- **Points & Accounting**:
+  - `points += sum of face values of destroyed number tiles` (raw face values, unmultiplied; destroyed stones award 0).
+  - Payout does NOT alter `moveCount` or `score`.
+- **Stone Clock**:
+  - `movesSinceLastStone = 0`. The hazard interval counter is reset, meaning a new stone will spawn exactly `interval` moves later.
+- **Rewind Stack**:
+  - `state.rewindStack = []`. The entire rewind stack is wiped, making it impossible to undo across an ascension event.
+- **Turn Order**:
+  - Swipe: Slide with relic modifications -> Post-slide effects (including Shatter, Fault Line) -> Scoring -> **ASCENSION** -> `moveCount += 1` -> Draft checks -> Tile spawn -> Stone spawn -> Game-over check.
+  - Ability (Diagonal): Ascension applies immediately after the diagonal merge; free action semantics remain unchanged.
+- **RNG Determinism & SpawnQueue**:
+  - Ascension performs zero PRNG draws and does NOT mutate or advance `spawnQueue`. PRNG states across all streams (`tileRng`, `stoneRng`, `draftRng`) remain bit-identical before and after the wipe.
+- **State Flags**:
+  - Recomputes `stuckNeedsAbility` and `gameOver`. An ascension out of a stuck state clears `stuckNeedsAbility = false` and `gameOver = false` when valid moves now exist on the cleared board.
+
+---
+
+### 15. End Run (`endRun`)
+- **Action**: Engine function `endRun(state)`. Sets `state.gameOver = true`, `state.endedByPlayer = true`, `state.moveNumberAtDeath = state.moveCount`, and clears `stuckNeedsAbility = false` and `pendingDecision = null`.
+- **Preconditions**: Throws `Error('Cannot end run: game is already over')` if `state.gameOver` is already true.
+- **Post-Game Over Behavior**: Exactly mirrors standard game over:
+  - `step(state, dir)` and `stepInteractive(state, dir)` return `{ valid: false, ... }` (no-op).
+  - `useAbility(state, relicId, target)` throws `Error('Cannot use ability: game is over')`.
+  - `resolve(choice)` on pending decisions throws `Error('Cannot resolve decision: game is over')`.
+- **Controller & Events**:
+  - `GameController.endRun()` invokes engine `endRun(state)`, records `x:end` in `this.events`, and finalizes the run.
+  - Verifier treats `x:end` as a valid terminal run event; any events appearing after `x:end` cause `REJECT`.
+

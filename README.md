@@ -87,6 +87,9 @@ The `dist/` directory produced by `npm run build` is completely self-contained w
   - Measures elapsed gameplay time in `mm:ss` (or `h:mm:ss`) via `performance.now()` deltas.
   - Excludes pause overlay, Best Runs overlay, pre-start screen, and inactive/hidden tabs.
   - Displayed on the Pause overlay ("Time played") and Game Over summary grid ("TIME"), and stored in run logs.
+- **End Run (Pause Overlay):**
+  - Voluntary run termination via the "End run" button in the Pause menu.
+  - Features two-step confirmation: first tap changes the label to "Tap again to end" (reverting after 3 seconds); second tap immediately ends the run with `endedByPlayer: true`, records terminal event `x:end`, and displays the Game Over screen.
 
 ---
 
@@ -115,6 +118,7 @@ Customize rules, test specific relic interactions, or replay seeds using query p
 | `?shatter=N` | `?shatter=64` | Minimum merge tile value required for Shatter to destroy adjacent stones (default: 64). |
 | `?siphon=N` | `?siphon=16` | Minimum merge tile value required for Siphon to skip tile spawn (default: 16). |
 | `?laststand=N` | `?laststand=16` | Maximum tile value destroyed by Last Stand on game over (default: 16). |
+| `?ascension=N` | `?ascension=64` | Sets Ascension threshold to N (positive integer enables; testing parameter, UI default is off). `?ascension=0` or absent = off. |
 | `?ramp=v2` | `?ramp=v2` | Uses ramp v2 hazard intervals. |
 | `?hints=0` | `?hints=0` | Disables the status bar tutorial hints. |
 | `?debug=1` | `?debug=1` | Shows the on-screen debug inspector (seed, move number, RNG draw counts, relic activations). |
@@ -135,11 +139,15 @@ Customize rules, test specific relic interactions, or replay seeds using query p
 
 - Each finished run generates a structured JSON log containing:
   - Anonymous Player ID & Run ID
-  - `rulesVersion`: SHA-256 hash of the simulation engine rules (`sim/engine.js`)
-  - Seed & active configuration
+  - `rulesVersion`: Frozen SHA-256 hash of the simulation engine rules (`sim/engine.js`): `7EE89200FAB78AE2B5F333244CA2E59B9D7DEC261E6A9DF4FDFB28CDD734569B`
+  - `replayVersion`: SHA-256 over LF-normalized source of replay files
+  - Seed & active configuration (including `ascensionAt`)
   - Total moves survived & move at death
   - Active play duration in milliseconds (`activeMs`)
   - Final board state (stone count & tile values)
+  - `ascensionLevel`: Highest ascension threshold achieved
+  - `ascensions`: Array of ascension records (`{ move, value, payout, destroyedTiles, destroyedStones }`)
+  - `endedByPlayer`: Boolean indicating voluntary exit via End run
   - Drafts seen, offered relics, selected relics, and decision time in ms
   - Per-relic activation counters and Last Stand trigger flag
   - `events`: Ordered array of compact input event strings across the entire run:
@@ -147,6 +155,7 @@ Customize rules, test specific relic interactions, or replay seeds using query p
     - `a:<relicId>:<target>`: Ability activations with target payload (or `-` for Rewind)
     - `d:<relicId>`: Relic draft picks
     - `m:<cell>`: Mason stone replacement candidate picks
+    - `x:end`: Voluntary run termination by player
   - `errorCount`: Total uncapped error counter for the run session
   - `errors`: Run-scoped errors strictly within `[startTimestamp, endTimestamp]` (each with first 300 characters of stack trace); device-wide error history preserved under `diagnostics.recentErrors`
 - The last 20 runs are stored locally in `localStorage`.
@@ -160,12 +169,23 @@ Customize rules, test specific relic interactions, or replay seeds using query p
 Run authenticity and reproducibility can be independently verified by replaying the run from its seed, config, and `events` stream using the deterministic rules engine:
 
 ```bash
-# Verify a single exported run log:
+# Verify a single exported run log (defaults to --mode daily):
 node verify/cli.js path/to/run_log.json
+
+# Verify with custom mode and date:
+node verify/cli.js path/to/run_log.json --mode daily --day 2026-10-19
+node verify/cli.js path/to/run_log.json --mode any
 
 # Verify a directory corpus of run logs:
 node verify/cli.js --corpus scripts/out/corpus --out scripts/out/verify_corpus.txt
 ```
+
+Accepts both bare run log files and the Copy Run Log JSON wrapper `{ currentRun, history, errors }` (verifying each run entry).
+
+### Verification Modes
+- `daily` (default): Verifies that the run was executed under the canonical configuration (`CANONICAL_CONFIG`) and that the seed matches the deterministic daily seed (`dailySeed(dayUTC)`).
+- `challenge`: Requires exact canonical configuration but allows custom link seeds.
+- `any`: Replays arbitrary seeds and configs (development / regression testing only).
 
 ### Event Semantics
 The `events` array records input actions in exact chronological submission order:
@@ -173,6 +193,8 @@ The `events` array records input actions in exact chronological submission order
 - `a:<relicId>:<target>`: Player ability activation with serialized target payload (or `-` for Rewind).
 - `d:<relicId>`: Relic draft selection resolving an offered draft decision.
 - `m:<cell>`: Mason stone candidate placement resolving a Mason decision.
+- `x:end`: Terminal run termination action via End Run. No events are permitted after `x:end`.
 
-Replay ordering is strictly the array order (move numbers are never used for ordering). The pure verifier function `verifyRun(runLog, expectedRulesVersion)` re-simulates the game and asserts that `rulesVersion`, final board state, total moves at death, points score, max tile, relics owned, draft picks, and Last Stand activations match the claimed values.
+Replay ordering is strictly the array order (move numbers are never used for ordering). The pure verifier function `verifyRun(runLog, options)` re-simulates the game and asserts that `rulesVersion`, `replayVersion`, final board state, total moves at death, points score, max tile, relics owned, draft picks, `ascensions`, `endedByPlayer`, and Last Stand activations match the claimed values.
+
 

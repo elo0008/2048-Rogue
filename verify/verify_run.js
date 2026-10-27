@@ -1,7 +1,7 @@
 /**
  * verify/verify_run.js
  *
- * Pure function verifyRun(runLog, expectedRulesVersion) that replays a run
+ * Pure function verifyRun(runLog, options) that replays a run
  * from its seed, config, and `events` array to decide whether the claimed
  * result is reproducible and authentic.
  *
@@ -21,26 +21,22 @@
  */
 
 import { GameController } from '../game/controller.js';
+import {
+  CANONICAL_CONFIG,
+  dailySeed,
+  normalizeConfig,
+  checkCanonicalConfig,
+} from './profile.js';
+
+export {
+  CANONICAL_CONFIG,
+  dailySeed,
+  normalizeConfig,
+  checkCanonicalConfig,
+};
 
 const MAX_EVENTS_LIMIT = 20000;
 const MAX_EVENT_STRING_LENGTH = 128;
-
-/**
- * Recursively deserializes config objects, restoring "Infinity" and "-Infinity"
- * strings to their numeric Infinity values as produced by serializeSafe in the UI.
- */
-function deserializeConfig(cfg) {
-  if (!cfg || typeof cfg !== 'object') return {};
-  try {
-    return JSON.parse(JSON.stringify(cfg), (k, v) => {
-      if (v === 'Infinity') return Infinity;
-      if (v === '-Infinity') return -Infinity;
-      return v;
-    });
-  } catch {
-    return { ...cfg };
-  }
-}
 
 /**
  * Extracts normalized claimed values from the run log.
@@ -53,6 +49,13 @@ function extractClaimed(runLog) {
     maxTile: runLog.maxTile ?? 0,
     relicsOwned: Array.isArray(runLog.relicsOwned) ? [...runLog.relicsOwned] : [],
     gameOver: true,
+    capped: Boolean(runLog.capped),
+    endedByPlayer: 'endedByPlayer' in runLog ? Boolean(runLog.endedByPlayer) : false,
+    ascensions: Array.isArray(runLog.ascensions) ? runLog.ascensions.map(a => ({
+      move: a.move,
+      value: a.value,
+      payout: a.payout,
+    })) : [],
   };
 }
 
@@ -62,19 +65,31 @@ function extractClaimed(runLog) {
 function extractReplay(ctrl) {
   if (!ctrl || !ctrl.state) {
     return {
+      seed: 0,
       points: 0,
       moves: 0,
       maxTile: 0,
       relicsOwned: [],
       gameOver: false,
+      capped: false,
+      endedByPlayer: false,
+      ascensions: [],
     };
   }
   return {
+    seed: ctrl.seed,
     points: ctrl.state.points ?? ctrl.state.score ?? 0,
     moves: ctrl.state.moveCount ?? 0,
     maxTile: ctrl.state.highestTile ?? 0,
     relicsOwned: Array.from(ctrl.state.relics || []),
     gameOver: Boolean(ctrl.state.gameOver),
+    capped: Boolean(ctrl.state.capped),
+    endedByPlayer: Boolean(ctrl.state.endedByPlayer),
+    ascensions: Array.isArray(ctrl.state.ascensions) ? ctrl.state.ascensions.map(a => ({
+      move: a.move,
+      value: a.value,
+      payout: a.payout,
+    })) : [],
   };
 }
 
@@ -82,17 +97,54 @@ function extractReplay(ctrl) {
  * Verifies a single run log by full re-simulation.
  *
  * @param {object} runLog - Deserialized JSON run log
- * @param {string|null} expectedRulesVersion - Expected SHA-256 hash of sim/engine.js
- * @returns {object} { ok, status, reason, replay, claimed, ms }
+ * @param {object|string|null} options - Verification options or expectedRulesVersion string:
+ *   - expectedRulesVersion {string|null}
+ *   - expectedReplayVersion {string|null}
+ *   - mode {'daily'|'challenge'|'any'} Default: 'daily'
+ *   - dayUTC {string|null} 'YYYY-MM-DD'
+ * @returns {object} { ok, status, reason, flags, replay, claimed, ms }
  */
-export function verifyRun(runLog, expectedRulesVersion = null) {
+export function verifyRun(runLog, options = {}) {
   const startTime = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
   const getElapsed = () => {
     const end = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
     return Math.round((end - startTime) * 100) / 100;
   };
 
+  let expectedRulesVersion = null;
+  let expectedReplayVersion = null;
+  let mode = 'daily';
+  let dayUTC = null;
+
+  if (typeof options === 'string') {
+    expectedRulesVersion = options;
+    mode = 'any';
+  } else if (options && typeof options === 'object') {
+    expectedRulesVersion = options.expectedRulesVersion ?? null;
+    expectedReplayVersion = options.expectedReplayVersion ?? null;
+    mode = options.mode ?? 'daily';
+    dayUTC = options.dayUTC ?? null;
+  }
+
   const claimed = extractClaimed(runLog);
+
+  // Z5: Plausibility flags (no rejection)
+  const flags = [];
+  if (runLog && typeof runLog === 'object') {
+    if (runLog.activeMs === undefined || runLog.activeMs === null) {
+      flags.push('ACTIVE_MS_MISSING');
+    } else if (typeof runLog.activeMs === 'number' && Array.isArray(runLog.events)) {
+      const swipeEvents = runLog.events.filter(e => typeof e === 'string' && e.startsWith('s:')).length;
+      if (swipeEvents > 0) {
+        const msPerSwipe = runLog.activeMs / swipeEvents;
+        if (msPerSwipe < 150) {
+          flags.push('FAST_INPUT');
+        } else if (msPerSwipe > 30000) {
+          flags.push('SLOW_RUN');
+        }
+      }
+    }
+  }
 
   // Check 6: Event count limit and per-event length limit, checked first.
   if (!runLog || typeof runLog !== 'object') {
@@ -100,6 +152,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
       ok: false,
       status: 'REJECT',
       reason: 'Invalid runLog: expected a non-null object',
+      flags,
       replay: null,
       claimed: null,
       ms: getElapsed(),
@@ -112,6 +165,20 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
       ok: false,
       status: 'UNVERIFIABLE_LEGACY',
       reason: 'Legacy log missing events array',
+      flags,
+      replay: null,
+      claimed,
+      ms: getElapsed(),
+    };
+  }
+
+  // Z4: Legacy logs without replayVersion return status UNVERIFIABLE_LEGACY, never ok.
+  if (!('replayVersion' in runLog) || !runLog.replayVersion) {
+    return {
+      ok: false,
+      status: 'UNVERIFIABLE_LEGACY',
+      reason: 'Legacy log missing replayVersion',
+      flags,
       replay: null,
       claimed,
       ms: getElapsed(),
@@ -123,6 +190,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
       ok: false,
       status: 'REJECT',
       reason: `Event count (${runLog.events.length}) exceeds maximum limit of ${MAX_EVENTS_LIMIT}`,
+      flags,
       replay: null,
       claimed,
       ms: getElapsed(),
@@ -136,6 +204,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
         ok: false,
         status: 'REJECT',
         reason: `Event at index ${i} is not a string`,
+        flags,
         replay: null,
         claimed,
         ms: getElapsed(),
@@ -146,6 +215,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
         ok: false,
         status: 'REJECT',
         reason: `Event at index ${i} exceeds maximum length limit of ${MAX_EVENT_STRING_LENGTH}`,
+        flags,
         replay: null,
         claimed,
         ms: getElapsed(),
@@ -155,11 +225,27 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
 
   // Check 1: rulesVersion equals expected SHA256
   if (expectedRulesVersion !== null && expectedRulesVersion !== undefined) {
-    if (runLog.rulesVersion !== expectedRulesVersion) {
+    if (String(runLog.rulesVersion).toUpperCase() !== String(expectedRulesVersion).toUpperCase()) {
       return {
         ok: false,
         status: 'REJECT',
         reason: `Rules version mismatch: claimed "${runLog.rulesVersion}", expected "${expectedRulesVersion}"`,
+        flags,
+        replay: null,
+        claimed,
+        ms: getElapsed(),
+      };
+    }
+  }
+
+  // Z4: replayVersion check
+  if (expectedReplayVersion !== null && expectedReplayVersion !== undefined) {
+    if (String(runLog.replayVersion).toUpperCase() !== String(expectedReplayVersion).toUpperCase()) {
+      return {
+        ok: false,
+        status: 'REJECT',
+        reason: 'REPLAY_VERSION_MISMATCH',
+        flags,
         replay: null,
         claimed,
         ms: getElapsed(),
@@ -173,21 +259,96 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
       ok: false,
       status: 'REJECT',
       reason: `Invalid or missing seed: ${runLog.seed}`,
+      flags,
       replay: null,
       claimed,
       ms: getElapsed(),
     };
   }
 
-  const config = deserializeConfig(runLog.config);
+  const normalizedLogConfig = normalizeConfig(runLog.config);
+
+  // Z1: Modes 'daily', 'challenge', 'any'
+  if (mode === 'daily') {
+    let resolvedDayUTC = dayUTC;
+    if (!resolvedDayUTC) {
+      if (typeof runLog.startTimestamp === 'number') {
+        resolvedDayUTC = new Date(runLog.startTimestamp).toISOString().slice(0, 10);
+      }
+    }
+    if (!resolvedDayUTC) {
+      return {
+        ok: false,
+        status: 'REJECT',
+        reason: 'DAY_UTC_MISSING: daily mode requires dayUTC option or runLog.startTimestamp',
+        flags,
+        replay: null,
+        claimed,
+        ms: getElapsed(),
+      };
+    }
+
+    const expectedDailySeed = dailySeed(resolvedDayUTC);
+    if (runLog.seed !== expectedDailySeed) {
+      return {
+        ok: false,
+        status: 'REJECT',
+        reason: 'SEED_NOT_DAILY',
+        flags,
+        replay: null,
+        claimed,
+        ms: getElapsed(),
+      };
+    }
+
+    const configVerdict = checkCanonicalConfig(normalizedLogConfig);
+    if (!configVerdict.ok) {
+      return {
+        ok: false,
+        status: 'REJECT',
+        reason: configVerdict.reason,
+        flags,
+        replay: null,
+        claimed,
+        ms: getElapsed(),
+      };
+    }
+  } else if (mode === 'challenge') {
+    const configVerdict = checkCanonicalConfig(normalizedLogConfig);
+    if (!configVerdict.ok) {
+      return {
+        ok: false,
+        status: 'REJECT',
+        reason: configVerdict.reason,
+        flags,
+        replay: null,
+        claimed,
+        ms: getElapsed(),
+      };
+    }
+  } else if (mode === 'any') {
+    // Arbitrary config and seed accepted
+  } else {
+    return {
+      ok: false,
+      status: 'REJECT',
+      reason: `Unknown verification mode: "${mode}"`,
+      flags,
+      replay: null,
+      claimed,
+      ms: getElapsed(),
+    };
+  }
+
   let ctrl;
   try {
-    ctrl = new GameController(runLog.seed, config);
+    ctrl = new GameController(runLog.seed, normalizedLogConfig);
   } catch (err) {
     return {
       ok: false,
       status: 'REJECT',
       reason: `Engine error during game initialization: ${err.message}`,
+      flags,
       replay: null,
       claimed,
       ms: getElapsed(),
@@ -207,6 +368,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
         ok: false,
         status: 'REJECT',
         reason: `Event at index ${i} ('${ev}') occurred after gameOver was reached at event index ${gameOverIndex}`,
+        flags,
         replay: extractReplay(ctrl),
         claimed,
         ms: getElapsed(),
@@ -220,6 +382,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
           ok: false,
           status: 'REJECT',
           reason: `Illegal swipe direction '${dir}' at event index ${i}`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
@@ -230,6 +393,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
           ok: false,
           status: 'REJECT',
           reason: `Swipe event at index ${i} submitted while decision '${ctrl.getPendingDecision().type}' is pending`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
@@ -244,36 +408,26 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
           ok: false,
           status: 'REJECT',
           reason: `Engine throw on swipe '${dir}' at event index ${i}: ${err.message}`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
         };
       }
 
-      // Blocked swipe (no-op) is legal per Y1 and leaves state unchanged
-      if (!res.success && res.reason !== 'invalid_move') {
-        return {
-          ok: false,
-          status: 'REJECT',
-          reason: `Swipe rejected by controller (${res.reason}) at event index ${i}`,
-          replay: extractReplay(ctrl),
-          claimed,
-          ms: getElapsed(),
-        };
-      }
-
+      // Check if gameOver reached
       if (ctrl.isGameOver()) {
         gameOverEncountered = true;
         gameOverIndex = i;
       }
     } else if (ev.startsWith('a:')) {
-      // a:<relicId>:<target>
       const parts = ev.split(':');
       if (parts.length < 3) {
         return {
           ok: false,
           status: 'REJECT',
           reason: `Malformed ability event '${ev}' at index ${i}`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
@@ -289,6 +443,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
           ok: false,
           status: 'REJECT',
           reason: `Unknown ability relic '${relicId}' at event index ${i}`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
@@ -300,6 +455,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
           ok: false,
           status: 'REJECT',
           reason: `Ability event at index ${i} used while decision '${ctrl.getPendingDecision().type}' is pending`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
@@ -308,6 +464,17 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
 
       let target = null;
       if (relicId === 'rewind') {
+        if (targetPayload !== '-') {
+          return {
+            ok: false,
+            status: 'REJECT',
+            reason: `Rewind ability event at index ${i} target must be '-' but got '${targetPayload}'`,
+            flags,
+            replay: extractReplay(ctrl),
+            claimed,
+            ms: getElapsed(),
+          };
+        }
         target = null;
       } else {
         try {
@@ -329,6 +496,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
               ok: false,
               status: 'REJECT',
               reason: `Failed to parse target payload '${targetPayload}' for ability '${relicId}' at event index ${i}`,
+              flags,
               replay: extractReplay(ctrl),
               claimed,
               ms: getElapsed(),
@@ -345,6 +513,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
           ok: false,
           status: 'REJECT',
           reason: `Engine throw on ability '${relicId}' at event index ${i}: ${err.message}`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
@@ -356,6 +525,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
           ok: false,
           status: 'REJECT',
           reason: `Illegal ability activation '${relicId}' (${res.error || res.reason}) at event index ${i}`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
@@ -367,12 +537,13 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
         gameOverIndex = i;
       }
     } else if (ev.startsWith('d:')) {
-      const pick = ev.slice(2);
+      const pickRelicId = ev.slice(2);
       if (!ctrl.hasPendingDecision()) {
         return {
           ok: false,
           status: 'REJECT',
-          reason: `Draft decision event '${ev}' at index ${i} with no pending decision`,
+          reason: `Draft pick event 'd:${pickRelicId}' at index ${i} with no pending decision`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
@@ -383,42 +554,44 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
         return {
           ok: false,
           status: 'REJECT',
-          reason: `Draft event at index ${i} when pending decision is of type '${dec.type}'`,
+          reason: `Draft pick event at index ${i} but pending decision is of type '${dec.type}'`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
         };
       }
-      if (!dec.offers || !dec.offers.includes(pick)) {
+      if (!Array.isArray(dec.offers) || !dec.offers.includes(pickRelicId)) {
         return {
           ok: false,
           status: 'REJECT',
-          reason: `Draft pick '${pick}' at event index ${i} not among offered relics [${(dec.offers || []).join(', ')}]`,
+          reason: `Draft pick '${pickRelicId}' at index ${i} is not among offered relics: [${(dec.offers || []).join(', ')}]`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
         };
       }
 
-      let res;
       try {
-        res = ctrl.resolveDecision(pick);
+        const res = ctrl.resolveDecision(pickRelicId);
+        if (!res.success) {
+          return {
+            ok: false,
+            status: 'REJECT',
+            reason: `Failed resolving draft decision with '${pickRelicId}' at index ${i}`,
+            flags,
+            replay: extractReplay(ctrl),
+            claimed,
+            ms: getElapsed(),
+          };
+        }
       } catch (err) {
         return {
           ok: false,
           status: 'REJECT',
-          reason: `Engine throw resolving draft decision at event index ${i}: ${err.message}`,
-          replay: extractReplay(ctrl),
-          claimed,
-          ms: getElapsed(),
-        };
-      }
-
-      if (!res.success) {
-        return {
-          ok: false,
-          status: 'REJECT',
-          reason: `Failed to resolve draft decision at event index ${i}: ${res.reason}`,
+          reason: `Engine throw resolving draft with '${pickRelicId}' at event index ${i}: ${err.message}`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
@@ -430,12 +603,13 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
         gameOverIndex = i;
       }
     } else if (ev.startsWith('m:')) {
-      const cell = parseInt(ev.slice(2), 10);
+      const cell = Number(ev.slice(2));
       if (!ctrl.hasPendingDecision()) {
         return {
           ok: false,
           status: 'REJECT',
-          reason: `Mason decision event '${ev}' at index ${i} with no pending decision`,
+          reason: `Mason pick event 'm:${cell}' at index ${i} with no pending decision`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
@@ -446,42 +620,44 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
         return {
           ok: false,
           status: 'REJECT',
-          reason: `Mason event at index ${i} when pending decision is of type '${dec.type}'`,
+          reason: `Mason pick event at index ${i} but pending decision is of type '${dec.type}'`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
         };
       }
-      if (!dec.candidates || !dec.candidates.includes(cell)) {
+      if (!Array.isArray(dec.candidates) || !dec.candidates.includes(cell)) {
         return {
           ok: false,
           status: 'REJECT',
-          reason: `Mason choice cell ${cell} at event index ${i} not among candidate cells [${(dec.candidates || []).join(', ')}]`,
+          reason: `Mason pick cell ${cell} at index ${i} is not among candidates: [${(dec.candidates || []).join(', ')}]`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
         };
       }
 
-      let res;
       try {
-        res = ctrl.resolveDecision(cell);
+        const res = ctrl.resolveDecision(cell);
+        if (!res.success) {
+          return {
+            ok: false,
+            status: 'REJECT',
+            reason: `Failed resolving Mason decision with cell ${cell} at index ${i}`,
+            flags,
+            replay: extractReplay(ctrl),
+            claimed,
+            ms: getElapsed(),
+          };
+        }
       } catch (err) {
         return {
           ok: false,
           status: 'REJECT',
-          reason: `Engine throw resolving Mason decision at event index ${i}: ${err.message}`,
-          replay: extractReplay(ctrl),
-          claimed,
-          ms: getElapsed(),
-        };
-      }
-
-      if (!res.success) {
-        return {
-          ok: false,
-          status: 'REJECT',
-          reason: `Failed to resolve Mason decision at event index ${i}: ${res.reason}`,
+          reason: `Engine throw resolving Mason with cell ${cell} at index ${i}: ${err.message}`,
+          flags,
           replay: extractReplay(ctrl),
           claimed,
           ms: getElapsed(),
@@ -492,11 +668,28 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
         gameOverEncountered = true;
         gameOverIndex = i;
       }
+    } else if (ev === 'x:end') {
+      try {
+        ctrl.endRun();
+      } catch (err) {
+        return {
+          ok: false,
+          status: 'REJECT',
+          reason: `Engine throw resolving endRun ('x:end') at index ${i}: ${err.message}`,
+          flags,
+          replay: extractReplay(ctrl),
+          claimed,
+          ms: getElapsed(),
+        };
+      }
+      gameOverEncountered = true;
+      gameOverIndex = i;
     } else {
       return {
         ok: false,
         status: 'REJECT',
-        reason: `Unrecognized event prefix '${ev}' at event index ${i}`,
+        reason: `Unknown event prefix in '${ev}' at event index ${i}`,
+        flags,
         replay: extractReplay(ctrl),
         claimed,
         ms: getElapsed(),
@@ -504,39 +697,55 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
     }
   }
 
-  const replay = extractReplay(ctrl);
-
   // Check 4: The run must END in gameOver (status INCOMPLETE otherwise)
+  const replay = extractReplay(ctrl);
   if (!replay.gameOver) {
     return {
       ok: false,
       status: 'INCOMPLETE',
-      reason: 'Run did not reach game over state',
+      reason: `Run did not end in gameOver (moves replayed: ${replay.moves}, gameOver: false)`,
+      flags,
       replay,
       claimed,
       ms: getElapsed(),
     };
   }
 
-  if (ctrl.hasPendingDecision()) {
-    return {
-      ok: false,
-      status: 'INCOMPLETE',
-      reason: `Run finished with unresolved pending decision '${ctrl.getPendingDecision().type}'`,
-      replay,
-      claimed,
-      ms: getElapsed(),
-    };
+  // Check 5: Replayed final board, points, moveNumberAtDeath, maxTile, relicsOwned, drafts, lastStandFired
+  if (Array.isArray(runLog.finalBoard)) {
+    if (runLog.finalBoard.length !== 16) {
+      return {
+        ok: false,
+        status: 'REJECT',
+        reason: `Claimed finalBoard length is ${runLog.finalBoard.length}, expected 16`,
+        flags,
+        replay,
+        claimed,
+        ms: getElapsed(),
+      };
+    }
+    for (let c = 0; c < 16; c++) {
+      if (ctrl.state.board[c] !== runLog.finalBoard[c]) {
+        return {
+          ok: false,
+          status: 'REJECT',
+          reason: `Final board mismatch at cell ${c}: replayed ${ctrl.state.board[c]}, claimed ${runLog.finalBoard[c]}`,
+          flags,
+          replay,
+          claimed,
+          ms: getElapsed(),
+        };
+      }
+    }
   }
 
-  // Check 5: Replayed final board, points, moveNumberAtDeath, maxTile,
-  // relicsOwned (as a set), drafts picks, lastStandFired must equal claimed values.
   const claimedPoints = runLog.points ?? runLog.score ?? 0;
   if (replay.points !== claimedPoints) {
     return {
       ok: false,
       status: 'REJECT',
       reason: `Points mismatch: replayed ${replay.points}, claimed ${claimedPoints}`,
+      flags,
       replay,
       claimed,
       ms: getElapsed(),
@@ -548,7 +757,8 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
     return {
       ok: false,
       status: 'REJECT',
-      reason: `Moves mismatch: replayed ${replay.moves}, claimed ${claimedMoves}`,
+      reason: `Move count at death mismatch: replayed ${replay.moves}, claimed ${claimedMoves}`,
+      flags,
       replay,
       claimed,
       ms: getElapsed(),
@@ -561,47 +771,22 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
       ok: false,
       status: 'REJECT',
       reason: `Max tile mismatch: replayed ${replay.maxTile}, claimed ${claimedMaxTile}`,
+      flags,
       replay,
       claimed,
       ms: getElapsed(),
     };
   }
 
-  // Board check
-  if (Array.isArray(runLog.finalBoard)) {
-    const replayedBoard = ctrl.getBoard();
-    if (replayedBoard.length !== runLog.finalBoard.length) {
-      return {
-        ok: false,
-        status: 'REJECT',
-        reason: `Final board length mismatch: replayed ${replayedBoard.length}, claimed ${runLog.finalBoard.length}`,
-        replay,
-        claimed,
-        ms: getElapsed(),
-      };
-    }
-    for (let c = 0; c < replayedBoard.length; c++) {
-      if (replayedBoard[c] !== runLog.finalBoard[c]) {
-        return {
-          ok: false,
-          status: 'REJECT',
-          reason: `Final board mismatch at cell ${c}: replayed ${replayedBoard[c]}, claimed ${runLog.finalBoard[c]}`,
-          replay,
-          claimed,
-          ms: getElapsed(),
-        };
-      }
-    }
-  }
-
-  // Relics owned check (as a set)
+  // Relics owned set equality check
   const replayedRelicsSet = new Set(replay.relicsOwned);
-  const claimedRelicsSet = new Set(runLog.relicsOwned || []);
+  const claimedRelicsSet = new Set(claimed.relicsOwned || []);
   if (replayedRelicsSet.size !== claimedRelicsSet.size) {
     return {
       ok: false,
       status: 'REJECT',
       reason: `Relics owned count mismatch: replayed [${Array.from(replayedRelicsSet).join(', ')}], claimed [${Array.from(claimedRelicsSet).join(', ')}]`,
+      flags,
       replay,
       claimed,
       ms: getElapsed(),
@@ -613,6 +798,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
         ok: false,
         status: 'REJECT',
         reason: `Relics owned mismatch: claimed relic '${r}' missing from replayed set`,
+        flags,
         replay,
         claimed,
         ms: getElapsed(),
@@ -629,6 +815,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
         ok: false,
         status: 'REJECT',
         reason: `Drafts count mismatch: replayed ${replayedPicks.length}, claimed ${claimedPicks.length}`,
+        flags,
         replay,
         claimed,
         ms: getElapsed(),
@@ -640,6 +827,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
           ok: false,
           status: 'REJECT',
           reason: `Draft pick mismatch at draft #${d + 1}: replayed '${replayedPicks[d]}', claimed '${claimedPicks[d]}'`,
+          flags,
           replay,
           claimed,
           ms: getElapsed(),
@@ -655,6 +843,7 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
         ok: false,
         status: 'REJECT',
         reason: `Ability uses count mismatch: replayed ${ctrl.abilityUses.length}, claimed ${runLog.abilityUses.length}`,
+        flags,
         replay,
         claimed,
         ms: getElapsed(),
@@ -670,18 +859,113 @@ export function verifyRun(runLog, expectedRulesVersion = null) {
       ok: false,
       status: 'REJECT',
       reason: `Last stand fired mismatch: replayed ${replayedLastStand}, claimed ${claimedLastStand}`,
+      flags,
       replay,
       claimed,
       ms: getElapsed(),
     };
   }
 
+  // Capped status check
+  if ('capped' in runLog) {
+    const replayedCapped = Boolean(ctrl.state.capped);
+    const claimedCapped = Boolean(runLog.capped);
+    if (replayedCapped !== claimedCapped) {
+      return {
+        ok: false,
+        status: 'REJECT',
+        reason: `Capped status mismatch: replayed ${replayedCapped}, claimed ${claimedCapped}`,
+        flags,
+        replay,
+        claimed,
+        ms: getElapsed(),
+      };
+    }
+  }
+
+  // endedByPlayer check
+  const replayedEndedByPlayer = Boolean(replay.endedByPlayer);
+  const claimedEndedByPlayer = 'endedByPlayer' in runLog ? Boolean(runLog.endedByPlayer) : false;
+  if (replayedEndedByPlayer !== claimedEndedByPlayer) {
+    return {
+      ok: false,
+      status: 'REJECT',
+      reason: `endedByPlayer mismatch: replayed ${replayedEndedByPlayer}, claimed ${claimedEndedByPlayer}`,
+      flags,
+      replay,
+      claimed,
+      ms: getElapsed(),
+    };
+  }
+
+  // Ascensions check (count and each entry's move/value/payout)
+  const replayedAscensions = replay.ascensions || [];
+  const claimedAscensions = Array.isArray(runLog.ascensions) ? runLog.ascensions : [];
+  if (replayedAscensions.length !== claimedAscensions.length) {
+    return {
+      ok: false,
+      status: 'REJECT',
+      reason: `Ascensions count mismatch: replayed ${replayedAscensions.length}, claimed ${claimedAscensions.length}`,
+      flags,
+      replay,
+      claimed,
+      ms: getElapsed(),
+    };
+  }
+  for (let a = 0; a < replayedAscensions.length; a++) {
+    const rA = replayedAscensions[a];
+    const cA = claimedAscensions[a];
+    if (!cA || rA.move !== cA.move || rA.value !== cA.value || rA.payout !== cA.payout) {
+      return {
+        ok: false,
+        status: 'REJECT',
+        reason: `Ascension entry ${a} mismatch: replayed {move:${rA.move}, value:${rA.value}, payout:${rA.payout}}, claimed ${cA ? `{move:${cA.move}, value:${cA.value}, payout:${cA.payout}}` : 'undefined'}`,
+        flags,
+        replay,
+        claimed,
+        ms: getElapsed(),
+      };
+    }
+  }
+
   return {
     ok: true,
     status: 'OK',
     reason: null,
+    flags,
     replay,
     claimed,
     ms: getElapsed(),
+  };
+}
+
+/**
+ * Server-trust contract (Z3):
+ * Returns { seed, points, moves, maxTile, relicsOwned, replayVersion, eventsHash }
+ * computed ONLY from the replay (never from claimed fields), or null if verdict.ok is false.
+ *
+ * @param {object} runLog - Raw deserialized run log
+ * @param {object} verdict - Output of verifyRun
+ * @returns {Promise<object|null>}
+ */
+export async function extractSubmission(runLog, verdict) {
+  if (!verdict || !verdict.ok || !verdict.replay || !runLog || !Array.isArray(runLog.events)) {
+    return null;
+  }
+
+  const enc = new TextEncoder();
+  const data = enc.encode(runLog.events.join('\n'));
+  const digestBuffer = await globalThis.crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(digestBuffer));
+  const eventsHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return {
+    seed: verdict.replay.seed ?? runLog.seed,
+    points: verdict.replay.points,
+    moves: verdict.replay.moves,
+    maxTile: verdict.replay.maxTile,
+    relicsOwned: Array.isArray(verdict.replay.relicsOwned) ? [...verdict.replay.relicsOwned] : [],
+    replayVersion: runLog.replayVersion,
+    eventsHash,
   };
 }

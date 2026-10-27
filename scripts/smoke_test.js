@@ -1479,6 +1479,163 @@ async function runSmokeTest() {
     assert.strictEqual(v5Res.errorsCaptured, 0, 'V5: 0 controller errors during Shatter stone break');
     console.log('[Smoke Test] ✔ V5 verified: Shatter stone-break animated and fallback paths completed with 0 errors.');
 
+    // C2: End run smoke assertion (button exists, two-step works, run log has endedByPlayer true and events end with x:end, Best Runs entry saved once)
+    console.log('[Smoke Test] Testing C2: Pause overlay "End run" button two-step confirm...');
+    const c2Res = await cdp.eval(`
+      (async () => {
+        const bestRunsBefore = JSON.parse(localStorage.getItem('2048_rogue_top_runs') || '[]');
+        // Start a clean active game
+        window.startNewGame(9999);
+        await new Promise(r => setTimeout(r, 100));
+
+        const endBtn = document.getElementById('btn-pause-end-run');
+        const pauseMenuBtn = document.getElementById('btn-pause-menu');
+        const pauseEl = document.getElementById('pause-overlay');
+        const endEl = document.getElementById('end-overlay');
+
+        if (!endBtn) return { error: 'End run button not found' };
+
+        // Open pause menu
+        pauseMenuBtn.click();
+        const initialLabel = endBtn.textContent.trim();
+
+        // First tap
+        endBtn.click();
+        const firstTapLabel = endBtn.textContent.trim();
+
+        // Second tap
+        endBtn.click();
+        await new Promise(r => setTimeout(r, 150));
+
+        const pauseHidden = pauseEl.classList.contains('hidden');
+        const endVisible = !endEl.classList.contains('hidden');
+        const gameOver = controller.isGameOver();
+        const runLog = controller.getRunLog();
+        const lastEvent = runLog.events && runLog.events.length > 0 ? runLog.events[runLog.events.length - 1] : null;
+
+        const bestRunsAfter = JSON.parse(localStorage.getItem('2048_rogue_top_runs') || '[]');
+        const runOccurrences = bestRunsAfter.filter(r => r.runId === runLog.runId).length;
+
+        return {
+          buttonExists: Boolean(endBtn),
+          initialLabel,
+          firstTapLabel,
+          pauseHidden,
+          endVisible,
+          gameOver,
+          endedByPlayer: Boolean(runLog.endedByPlayer),
+          lastEvent,
+          bestRunsSavedOnce: runOccurrences === 1,
+        };
+      })()
+    `);
+    assert.strictEqual(c2Res.buttonExists, true, 'C2: End run button exists');
+    assert.strictEqual(c2Res.initialLabel, 'End run', 'C2: Initial label is "End run"');
+    assert.strictEqual(c2Res.firstTapLabel, 'Tap again to end', 'C2: First tap changes label to "Tap again to end"');
+    assert.strictEqual(c2Res.pauseHidden, true, 'C2: Pause overlay hidden after end run');
+    assert.strictEqual(c2Res.endVisible, true, 'C2: Game over screen visible after end run');
+    assert.strictEqual(c2Res.gameOver, true, 'C2: Controller game over is true');
+    assert.strictEqual(c2Res.endedByPlayer, true, 'C2: Run log endedByPlayer is true');
+    assert.strictEqual(c2Res.lastEvent, 'x:end', 'C2: Events end with x:end');
+    assert.strictEqual(c2Res.bestRunsSavedOnce, true, 'C2: Best Runs entry saved once');
+    console.log('[Smoke Test] ✔ C2 verified: End run button exists, two-step works, endedByPlayer true, events end with x:end, Best Runs saved once.');
+
+    // C3: Ascension with ?ascension=64 through real UI touch swipe (assert 0 errors and matching board)
+    console.log('[Smoke Test] Testing C3: Ascension via touch swipe with ?ascension=64...');
+    const c3Res = await cdp.eval(`
+      (async () => {
+        // Start game with ascensionAt: 64
+        window.startNewGame(5555);
+        controller.config.ascensionAt = 64;
+        controller.state.config.ascensionAt = 64;
+
+        const STONE = 'S';
+        // Setup board: 32+32 -> 64 merge on row 0, stone on row 1, small tiles 4, 8, 16
+        controller.state.board = [
+          32, 32, 0,  0,
+          STONE, 4,  8, 16,
+          0,  0,  0,  0,
+          0,  0,  0,  0
+        ];
+        window.syncBoard(controller.getBoard(), 'ascension-setup');
+
+        // Dispatch real touch swipe left on #game-board
+        const boardEl = document.getElementById('game-board');
+        const touch1 = new Touch({
+          identifier: 1,
+          target: boardEl,
+          clientX: 200,
+          clientY: 200
+        });
+        const touch2 = new Touch({
+          identifier: 1,
+          target: boardEl,
+          clientX: 50,
+          clientY: 200
+        });
+
+        boardEl.dispatchEvent(new TouchEvent('touchstart', {
+          touches: [touch1],
+          targetTouches: [touch1],
+          changedTouches: [touch1],
+          bubbles: true,
+          cancelable: true
+        }));
+        boardEl.dispatchEvent(new TouchEvent('touchend', {
+          touches: [],
+          targetTouches: [],
+          changedTouches: [touch2],
+          bubbles: true,
+          cancelable: true
+        }));
+
+        await new Promise(r => setTimeout(r, 250));
+
+        const errorsCaptured = (window.controller?.runErrors || []).length;
+        const engineBoard = controller.getBoard();
+        const ascLevel = controller.state.ascensionLevel;
+        const ascCount = (controller.state.ascensions || []).length;
+
+        // Check DOM tiles against engine board
+        const tilesLayer = document.getElementById('tiles-layer');
+        const domTiles = Array.from(tilesLayer.querySelectorAll('.tile'));
+        let domMatchesEngine = true;
+        for (const t of domTiles) {
+          const idx = parseInt(t.getAttribute('data-index'), 10);
+          const val = parseInt(t.getAttribute('data-val'), 10);
+          if (engineBoard[idx] !== val) {
+            domMatchesEngine = false;
+            break;
+          }
+        }
+        // Verify no stones exist on board
+        const hasStones = engineBoard.includes('S');
+        const numberTiles = engineBoard.filter(c => typeof c === 'number' && c > 0);
+        // Pre-existing tiles 4, 8, 16 are destroyed; exactly 2 number tiles remain: merged 64 and 1 new post-ascension spawn
+        const expectedTilesRemaining = numberTiles.length === 2 && numberTiles.includes(64);
+        const lastAsc = (controller.state.ascensions || [])[0];
+        const correctAscRecord = lastAsc && lastAsc.value === 64 && lastAsc.destroyedStones === 1 && lastAsc.destroyedTiles === 3 && lastAsc.payout === 28;
+
+        return {
+          errorsCaptured,
+          ascLevel,
+          ascCount,
+          hasStones,
+          expectedTilesRemaining,
+          correctAscRecord: Boolean(correctAscRecord),
+          domMatchesEngine
+        };
+      })()
+    `);
+    assert.strictEqual(c3Res.errorsCaptured, 0, 'C3: 0 controller errors during ascension swipe');
+    assert.strictEqual(c3Res.ascLevel, 64, 'C3: Ascension level is 64');
+    assert.strictEqual(c3Res.ascCount, 1, 'C3: Exactly 1 ascension recorded');
+    assert.strictEqual(c3Res.hasStones, false, 'C3: Zero stones remain after ascension');
+    assert.strictEqual(c3Res.expectedTilesRemaining, true, 'C3: Pre-existing small tiles destroyed, merged 64 survives and exactly 1 new tile spawned');
+    assert.strictEqual(c3Res.correctAscRecord, true, 'C3: Ascension record destroyed 1 stone, 3 small tiles with payout 28');
+    assert.strictEqual(c3Res.domMatchesEngine, true, 'C3: UI board matches engine board');
+    console.log('[Smoke Test] ✔ C3 verified: Ascension triggered via real touch swipe with ?ascension=64, 0 errors, board matches engine.');
+
     // Dist scan for forbidden strings
     console.log('[Smoke Test] Scanning dist/ for forbidden strings (tailwind, googleapis, fredoka)...');
     const distFiles = fs.readdirSync(distDir, { recursive: true }).filter(f => {

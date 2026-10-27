@@ -18,6 +18,7 @@ import {
   hasLegalAbility,
   getLegalTargets,
   ABILITY_RELIC_IDS,
+  endRun,
 } from '../sim/engine.js';
 import { RELIC_IDS, RELICS } from '../sim/relics.js';
 
@@ -32,9 +33,12 @@ export {
   hasLegalAbility,
   getLegalTargets,
   ABILITY_RELIC_IDS,
+  endRun,
 };
 
 export class GameController {
+  static defaultReplayVersion = '__REPLAY_VERSION__';
+
   constructor(seed = null, configOverrides = {}, playerId = null) {
     this.playerId = playerId || this._generatePlayerId();
     this.newRun(seed, configOverrides);
@@ -89,6 +93,8 @@ export class GameController {
     if (type === 'swipe') {
       const dir = detail || this.lastValidSwipeDir || this.lastSubmittedDir || 'L';
       this.events.push(`s:${dir}`);
+    } else if (type === 'end' || type === 'x:end') {
+      this.events.push('x:end');
     }
   }
 
@@ -334,6 +340,14 @@ export class GameController {
     return Boolean(this.state.gameOver || this.state.capped);
   }
 
+  endRun() {
+    endRun(this.state);
+    if (!this.events) this.events = [];
+    this.recordInput('end');
+    this._finalizeRun();
+    return { success: true, state: this.state };
+  }
+
   getState() {
     return this.state;
   }
@@ -408,7 +422,8 @@ export class GameController {
     return {
       playerId: this.playerId,
       runId: this.runId,
-      rulesVersion: '6E237F71F0F71B30FCAFF1C5A511DFCCF2BE8641E449B1A6291E75A710B8AAE9',
+      rulesVersion: '7EE89200FAB78AE2B5F333244CA2E59B9D7DEC261E6A9DF4FDFB28CDD734569B',
+      replayVersion: metadata.replayVersion || GameController.defaultReplayVersion || '__REPLAY_VERSION__',
       seed: this.seed,
       config: serializeSafe(resolvedConfig),
       startTimestamp: this.startTimestamp,
@@ -429,6 +444,9 @@ export class GameController {
       lastStandFired: Boolean(this.lastStandFired || this.state.lastStandUsed),
       capped: Boolean(this.state.capped),
       stuckNeedsAbility: Boolean(this.state.stuckNeedsAbility),
+      ascensionLevel: this.state.ascensionLevel || 0,
+      ascensions: this.state.ascensions ? this.state.ascensions.map(a => ({ ...a })) : [],
+      endedByPlayer: Boolean(this.state.endedByPlayer),
       abilityUses: [...(this.abilityUses || [])],
       events: [...(this.events || [])],
       errorCount: this.errorCount || 0,
