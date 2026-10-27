@@ -90,6 +90,15 @@ The `dist/` directory produced by `npm run build` is completely self-contained w
 - **End Run (Pause Overlay):**
   - Voluntary run termination via the "End run" button in the Pause menu.
   - Features two-step confirmation: first tap changes the label to "Tap again to end" (reverting after 3 seconds); second tap immediately ends the run with `endedByPlayer: true`, records terminal event `x:end`, and displays the Game Over screen.
+- **Clean Slate (Ascension at 2048 by default):**
+  - Achieving a 2048 tile triggers the Clean Slate milestone sequence (or configured threshold via `?ascension=N`):
+    - Synthesized Web Audio fanfare: 3-chord harmonic crescendo ending in a crisp crystal shatter.
+    - Expanding circular shockwave ring centered on the surviving ascended tile.
+    - Concentric disintegration of outer tiles and hazard stones into particle dust.
+    - Milestone payout points awarded with a floating score popup (`+PAYOUT`).
+    - Centered milestone banner: `"2048 CLEAN SLATE"`.
+    - Zero layout shift: board dimensions, header height, and survivor tile position remain strictly locked throughout the 1500ms sequence (1200ms when `prefers-reduced-motion` is active).
+    - Queued input handling: Swipes during the sequence buffer cleanly; Pause or Play Again cancels or interrupts safely without state desynchronization.
 
 ---
 
@@ -117,8 +126,7 @@ Customize rules, test specific relic interactions, or replay seeds using query p
 | `?cap=N` | `?cap=2` | Stone-group relic draft cap (`0` or `off` = off, prototype default: 2). |
 | `?shatter=N` | `?shatter=64` | Minimum merge tile value required for Shatter to destroy adjacent stones (default: 64). |
 | `?siphon=N` | `?siphon=16` | Minimum merge tile value required for Siphon to skip tile spawn (default: 16). |
-| `?laststand=N` | `?laststand=16` | Maximum tile value destroyed by Last Stand on game over (default: 16). |
-| `?ascension=N` | `?ascension=64` | Sets Ascension threshold to N (positive integer enables; testing parameter, UI default is off). `?ascension=0` or absent = off. |
+| `?ascension=N` | `?ascension=2048` or `?ascension=64` | Sets Clean Slate (Ascension) threshold to N (UI default is 2048). `?ascension=0` or `?ascension=off` disables Clean Slate. |
 | `?ramp=v2` | `?ramp=v2` | Uses ramp v2 hazard intervals. |
 | `?hints=0` | `?hints=0` | Disables the status bar tutorial hints. |
 | `?debug=1` | `?debug=1` | Shows the on-screen debug inspector (seed, move number, RNG draw counts, relic activations). |

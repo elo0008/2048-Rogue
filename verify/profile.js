@@ -27,6 +27,7 @@ export const DEFAULT_UI_CONFIG_OVERRIDES = {
   forcedRelics: [],
   forceAtMove: 0,
   rewindEvery: 10,
+  ascensionAt: 2048,
 };
 
 /**

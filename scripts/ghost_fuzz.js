@@ -537,6 +537,7 @@ const WAIT_IDLE_SCRIPT = `
 `;
 
 async function runScenario(cdp, name, urlParams, runner, setupFn = null) {
+
   console.log(`\n=================== SCENARIO ${name} (${ACTIONS_PER_SCENARIO} actions) ===================`);
   await cdp.send('Page.navigate', { url: `http://localhost:${PORT}/?${urlParams}` });
   await sleep(400);
@@ -1457,6 +1458,238 @@ async function runFuzz() {
     const allPassivesFired = mFired.fault_line > 0 && mFired.siphon > 0 && mFired.shatter > 0 && mFired.mason > 0 && mFired.last_stand > 0;
     if (!allPassivesFired || mSlideFallbacks > 0) {
       console.error(`❌ FAILURE in Scenario M: not all passives fired (fault_line: ${mFired.fault_line}, siphon: ${mFired.siphon}, shatter: ${mFired.shatter}, mason: ${mFired.mason}, last_stand: ${mFired.last_stand}) or slideFallbacks (${mSlideFallbacks}) > 0!`);
+      results[results.length - 1].pass = false;
+    }
+
+    // Scenario N: Ascension / Clean Slate (ascension=64): triggers via slide and via Diagonal, plus (a) swipe during sequence, (b) pause during sequence, (c) visibilitychange during sequence, (d) Play Again during sequence.
+    let nSlideAscensions = 0;
+    let nDiagAscensions = 0;
+    let nInterruptedSwipes = 0;
+    let nInterruptedPauses = 0;
+    let nInterruptedVis = 0;
+    let nInterruptedPlayAgains = 0;
+    let nSlideFallbacks = 0;
+
+    results.push(await runScenario(cdp, 'N (ascension 64 slide, diag & interrupts)', 'ascension=64&start=diagonal_charge&seed=2048&debug=1', async (c, i) => {
+      const mode = i % 6;
+      let desc = '';
+      if (mode === 0) {
+        // 1. Clean slate trigger via slide (32 + 32 -> 64)
+        const res = await c.eval(`
+          new Promise((resolve) => {
+            window.controller.state.ascensionLevel = 0;
+            window.controller.state.board = [
+              32, 32, 0, 0,
+              'S', 2, 4, 8,
+              0, 0, 0, 0,
+              0, 0, 0, 0
+            ];
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
+            const ascBefore = (window.controller.getState().ascensions || []).length;
+            const fbBefore = window.__slideFallbackCount || 0;
+            const start = performance.now();
+            window.handleMove('L', 'swipe');
+            function check() {
+              if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
+                const ascAfter = (window.controller.getState().ascensions || []).length;
+                const fbAfter = window.__slideFallbackCount || 0;
+                resolve({ fired: ascAfter > ascBefore, fallbacks: fbAfter - fbBefore });
+              } else {
+                requestAnimationFrame(check);
+              }
+            }
+            requestAnimationFrame(check);
+          })
+        `);
+        if (res.fired) nSlideAscensions++;
+        if (res.fallbacks > 0) nSlideFallbacks += res.fallbacks;
+        desc = `Clean slate slide (fired: ${res.fired}, fallbacks: ${res.fallbacks})`;
+      } else if (mode === 1) {
+        // 2. Clean slate trigger via Diagonal (32 at 0 + 32 at 5 -> 64 at 5)
+        const res = await c.eval(`
+          new Promise((resolve) => {
+            window.controller.state.over = false;
+            window.controller.state.ascensionLevel = 0;
+            window.controller.state.board = [
+              32, 0, 0, 0,
+              0, 32, 'S', 4,
+              0, 0, 0, 0,
+              0, 0, 0, 0
+            ];
+            window.controller.state.abilities.diagonal_charge = { charges: 3, counter: 0, swipesAtMax: 0, maxCharges: 3, swipesPerCharge: 10 };
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
+            const ascBefore = (window.controller.getState().ascensions || []).length;
+            const start = performance.now();
+            window.executeAbility('diagonal_charge', { from: 0, to: 5 });
+            function check() {
+              if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
+                const ascAfter = (window.controller.getState().ascensions || []).length;
+                resolve({ fired: ascAfter > ascBefore });
+              } else {
+                requestAnimationFrame(check);
+              }
+            }
+            requestAnimationFrame(check);
+          })
+        `);
+        if (res.fired) nDiagAscensions++;
+        desc = `Clean slate diagonal (fired: ${res.fired})`;
+        return { desc, diagonal: 1 };
+      } else if (mode === 2) {
+        // 3. (a) Swipe during clean slate sequence (finishes immediately, executes second swipe)
+        const res = await c.eval(`
+          new Promise((resolve) => {
+            window.controller.state.ascensionLevel = 0;
+            window.controller.state.board = [
+              32, 32, 0, 0,
+              4, 8, 0, 0,
+              0, 0, 0, 0,
+              0, 0, 0, 0
+            ];
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
+            const ascBefore = (window.controller.getState().ascensions || []).length;
+            const fbBefore = window.__slideFallbackCount || 0;
+            const start = performance.now();
+            window.handleMove('L', 'swipe');
+            setTimeout(() => {
+              window.handleMove('D', 'swipe');
+              function check() {
+                if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
+                  const ascAfter = (window.controller.getState().ascensions || []).length;
+                  const fbAfter = window.__slideFallbackCount || 0;
+                  resolve({ fired: ascAfter > ascBefore, fallbacks: fbAfter - fbBefore });
+                } else {
+                  requestAnimationFrame(check);
+                }
+              }
+              requestAnimationFrame(check);
+            }, 280);
+          })
+        `);
+        if (res.fired) nInterruptedSwipes++;
+        if (res.fallbacks > 0) nSlideFallbacks += res.fallbacks;
+        desc = `Clean slate interrupted by swipe (fired: ${res.fired}, fallbacks: ${res.fallbacks})`;
+      } else if (mode === 3) {
+        // 4. (b) Pause during clean slate sequence
+        const res = await c.eval(`
+          new Promise((resolve) => {
+            window.controller.state.ascensionLevel = 0;
+            window.controller.state.board = [
+              32, 32, 0, 0,
+              4, 8, 0, 0,
+              0, 0, 0, 0,
+              0, 0, 0, 0
+            ];
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
+            const ascBefore = (window.controller.getState().ascensions || []).length;
+            const start = performance.now();
+            window.handleMove('L', 'swipe');
+            setTimeout(() => {
+              const btnPause = document.getElementById('btn-pause-menu');
+              if (btnPause) btnPause.click();
+              setTimeout(() => {
+                const btnResume = document.getElementById('btn-resume');
+                if (btnResume) btnResume.click();
+                function check() {
+                  if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
+                    const ascAfter = (window.controller.getState().ascensions || []).length;
+                    resolve({ fired: ascAfter > ascBefore });
+                  } else {
+                    requestAnimationFrame(check);
+                  }
+                }
+                requestAnimationFrame(check);
+              }, 150);
+            }, 280);
+          })
+        `);
+        if (res.fired) nInterruptedPauses++;
+        desc = `Clean slate interrupted by pause (fired: ${res.fired})`;
+      } else if (mode === 4) {
+        // 5. (c) visibilitychange during clean slate sequence
+        const res = await c.eval(`
+          new Promise((resolve) => {
+            window.controller.state.ascensionLevel = 0;
+            window.controller.state.board = [
+              32, 32, 0, 0,
+              4, 8, 0, 0,
+              0, 0, 0, 0,
+              0, 0, 0, 0
+            ];
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
+            const ascBefore = (window.controller.getState().ascensions || []).length;
+            const start = performance.now();
+            window.handleMove('L', 'swipe');
+            setTimeout(() => {
+              document.dispatchEvent(new Event('visibilitychange'));
+              function check() {
+                if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
+                  const ascAfter = (window.controller.getState().ascensions || []).length;
+                  resolve({ fired: ascAfter > ascBefore });
+                } else {
+                  requestAnimationFrame(check);
+                }
+              }
+              requestAnimationFrame(check);
+            }, 280);
+          })
+        `);
+        if (res.fired) nInterruptedVis++;
+        desc = `Clean slate interrupted by visibilitychange (fired: ${res.fired})`;
+      } else if (mode === 5) {
+        // 6. (d) Play Again during clean slate sequence
+        const res = await c.eval(`
+          new Promise((resolve) => {
+            window.controller.state.ascensionLevel = 0;
+            window.controller.state.board = [
+              32, 32, 0, 0,
+              4, 8, 0, 0,
+              0, 0, 0, 0,
+              0, 0, 0, 0
+            ];
+            window.beginInjection();
+            window.syncBoard(window.controller.getBoard(), 'inj');
+            window.endInjection();
+            const start = performance.now();
+            window.handleMove('L', 'swipe');
+            setTimeout(() => {
+              if (typeof window.startNewGame === 'function') {
+                window.startNewGame();
+              }
+              function check() {
+                if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
+                  const b = window.controller.getBoard();
+                  const tiles = b.filter(x => typeof x === 'number' && x > 0).length;
+                  resolve({ resetOk: tiles >= 2 });
+                } else {
+                  requestAnimationFrame(check);
+                }
+              }
+              requestAnimationFrame(check);
+            }, 280);
+          })
+        `);
+        if (res.resetOk) nInterruptedPlayAgains++;
+        desc = `Clean slate interrupted by Play Again (resetOk: ${res.resetOk})`;
+      }
+      return { desc };
+    }));
+
+
+    console.log(`[Scenario N Clean Slate Stats]: slide: ${nSlideAscensions}, diag: ${nDiagAscensions}, swipeInt: ${nInterruptedSwipes}, pauseInt: ${nInterruptedPauses}, visInt: ${nInterruptedVis}, playAgainInt: ${nInterruptedPlayAgains}, slideFallbacks: ${nSlideFallbacks}`);
+    const allAscensionsTriggered = nSlideAscensions > 0 && nDiagAscensions > 0 && nInterruptedSwipes > 0 && nInterruptedPauses > 0 && nInterruptedVis > 0 && nInterruptedPlayAgains > 0;
+    if (!allAscensionsTriggered || nSlideFallbacks > 0) {
+      console.error(`❌ FAILURE in Scenario N: not all ascension scenarios triggered or slideFallbacks (${nSlideFallbacks}) > 0!`);
       results[results.length - 1].pass = false;
     }
 

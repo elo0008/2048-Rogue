@@ -147,6 +147,14 @@ export function generateTrustCases(rootDir = process.cwd()) {
       run: playRunToOver(TRUST_DAILY_SEED, { ...DEFAULT_UI_CONFIG_OVERRIDES, ascensionAt: 64 }, replayVer),
     },
     {
+      id: 'ascension_at_null',
+      name: 'ascensionAt null (off) in daily mode',
+      expectedStatus: 'REJECT',
+      expectedKey: 'ascensionAt',
+      expectedReasonPrefix: 'CONFIG_NOT_CANONICAL: key "ascensionAt"',
+      run: playRunToOver(TRUST_DAILY_SEED, { ...DEFAULT_UI_CONFIG_OVERRIDES, ascensionAt: null }, replayVer),
+    },
+    {
       id: 'untouched_default',
       name: 'untouched default-config run',
       expectedStatus: 'OK',

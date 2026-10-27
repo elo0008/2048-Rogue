@@ -1,6 +1,6 @@
 {
-  "playerId": "anon_1gzcyfzk",
-  "runId": "run_mvq8pdgb_b0qya",
+  "playerId": "anon_wyemq7co",
+  "runId": "run_mvqd9esg_e1i3n",
   "rulesVersion": "7EE89200FAB78AE2B5F333244CA2E59B9D7DEC261E6A9DF4FDFB28CDD734569B",
   "replayVersion": "3C7C88F57E5B29A1DFA196A55C054F40D748CF948101C50E4E834FBFAD33EE98",
   "seed": 54321,
@@ -53,7 +53,7 @@
       "shatter"
     ],
     "stoneGroupCap": 2,
-    "ascensionAt": null,
+    "ascensionAt": 2048,
     "draftPool": [
       "diagonal_charge",
       "eraser",
@@ -65,8 +65,8 @@
       "last_stand"
     ]
   },
-  "startTimestamp": 1793078603867,
-  "endTimestamp": 1793078603868,
+  "startTimestamp": 1793086257184,
+  "endTimestamp": 1793086257185,
   "totalMoves": 30,
   "moveNumberAtDeath": 30,
   "maxTile": 32,

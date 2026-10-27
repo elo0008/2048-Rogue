@@ -136,6 +136,16 @@
       </div>
     </div>
 
+    <!-- Clean Slate Full Screen Banner -->
+    <div id="clean-slate-banner" class="stand clean-slate-banner hidden" aria-live="assertive">
+      <div class="stand-center-wrapper">
+        <div class="stand-copy stand-stamp">
+          <h2 id="clean-slate-title" class="clean-slate-title">2048</h2>
+          <p class="stand-subtitle">CLEAN SLATE</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Start Screen Overlay -->
     <div id="start-overlay" class="overlay modal-overlay" role="dialog" aria-modal="true">
       <div class="modal start-card">
@@ -242,7 +252,10 @@
     <!-- Game Over Screen Overlay -->
     <div id="end-overlay" class="overlay modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="end-title">
       <div class="modal end-card">
-        <div class="eyebrow">Run complete · score</div>
+        <div class="end-header-row" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+          <div class="eyebrow" style="margin:0">Run complete · score</div>
+          <span id="end-clean-slate-chip" class="clean-slate-chip hidden">CLEAN SLATE x 1</span>
+        </div>
         <div id="end-score" class="final end-score-val">0</div>
         <div style="text-align:center"><span id="end-new-best-badge" class="newbest badge-new-best hidden">✦ NEW BEST</span></div>
         <div id="end-mini-board" class="mini"></div>

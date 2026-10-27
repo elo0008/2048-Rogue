@@ -684,6 +684,68 @@ export function playStuckThud(quieter = false) {
   }
 }
 
+/**
+ * 15. Clean Slate (Ascension): low thud plus a short rising shimmer
+ */
+export function playCleanSlate() {
+  if (!canPlay('cleanSlate', 100)) return;
+  try {
+    const t = audioCtx.currentTime;
+
+    // 1. Low Thud (sub bass pulse ~75 Hz -> ~35 Hz over 0.28s)
+    const thudDur = 0.28;
+    const thudOsc = audioCtx.createOscillator();
+    thudOsc.type = 'sine';
+    thudOsc.frequency.setValueAtTime(jitter(75), t);
+    thudOsc.frequency.exponentialRampToValueAtTime(35, t + thudDur);
+
+    const thudGain = audioCtx.createGain();
+    thudGain.gain.setValueAtTime(0.0001, t);
+    thudGain.gain.linearRampToValueAtTime(0.24, t + 0.006);
+    thudGain.gain.exponentialRampToValueAtTime(0.0001, t + thudDur);
+
+    thudOsc.connect(thudGain);
+    thudGain.connect(masterFilter);
+
+    thudOsc.start(t);
+    thudOsc.stop(t + thudDur);
+
+    // 2. Rising Shimmer (ethereal upward harmonics over ~0.42s)
+    const shimmerDur = 0.42;
+    const freqs = [
+      { start: 440, end: 880, type: 'sine', peak: 0.08 },
+      { start: 660, end: 1320, type: 'triangle', peak: 0.06 },
+      { start: 880, end: 1760, type: 'sine', peak: 0.04 },
+    ];
+
+    freqs.forEach(h => {
+      const sOsc = audioCtx.createOscillator();
+      sOsc.type = h.type;
+      const fStart = jitter(h.start);
+      const fEnd = jitter(h.end);
+      sOsc.frequency.setValueAtTime(fStart, t + 0.04);
+      sOsc.frequency.exponentialRampToValueAtTime(fEnd, t + shimmerDur);
+
+      const sGain = audioCtx.createGain();
+      sGain.gain.setValueAtTime(0.0001, t + 0.04);
+      sGain.gain.linearRampToValueAtTime(h.peak, t + 0.12);
+      sGain.gain.exponentialRampToValueAtTime(0.0001, t + shimmerDur);
+
+      sOsc.connect(sGain);
+      sGain.connect(masterFilter);
+
+      sOsc.start(t + 0.04);
+      sOsc.stop(t + shimmerDur);
+    });
+
+    trackVoice(shimmerDur * 1000);
+  } catch (err) {
+    console.warn('playCleanSlate error:', err);
+  }
+}
+
+export const playAscension = playCleanSlate;
+
 export function getAudioState() {
   return audioCtx ? audioCtx.state : 'none';
 }

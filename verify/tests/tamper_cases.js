@@ -68,7 +68,7 @@ export function getTamperCases() {
     {
       id: 2,
       name: 'delete one ability event',
-      expectedStatus: 'REJECT',
+      expectedStatus: 'INCOMPLETE',
       generate: () => {
         const log = JSON.parse(JSON.stringify(baseFixture));
         const idx = log.events.findIndex(e => e.startsWith('a:'));

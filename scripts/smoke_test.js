@@ -1589,7 +1589,10 @@ async function runSmokeTest() {
           cancelable: true
         }));
 
-        await new Promise(r => setTimeout(r, 250));
+        while (window.isAnimating) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+        await new Promise(r => setTimeout(r, 100));
 
         const errorsCaptured = (window.controller?.runErrors || []).length;
         const engineBoard = controller.getBoard();
