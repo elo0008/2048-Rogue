@@ -1639,6 +1639,183 @@ async function runSmokeTest() {
     assert.strictEqual(c3Res.domMatchesEngine, true, 'C3: UI board matches engine board');
     console.log('[Smoke Test] ✔ C3 verified: Ascension triggered via real touch swipe with ?ascension=64, 0 errors, board matches engine.');
 
+    // C4: Rewind after Clean Slate (Q2)
+    console.log('[Smoke Test] Testing C4: Rewind after Clean Slate (cases a, b, c, d)...');
+    await cdp.send('Page.navigate', { url: makeUrl('?start=rewind&ascension=64&debug=1') });
+    await sleep(400);
+    await cdp.eval(`(() => {
+      const btn = document.getElementById('btn-play-start');
+      if (btn && !btn.closest('.hidden')) btn.click();
+    })()`);
+    await sleep(200);
+
+    const c4Res = await cdp.eval(`
+      (async () => {
+        // (a) Trigger Clean Slate via swipe
+        window.controller.state.board = [
+          32, 32, 'S', 2,
+          4, 8, 16, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0
+        ];
+        if (typeof window.beginInjection === 'function') window.beginInjection();
+        window.syncBoard(window.controller.getBoard(), 'inj');
+        if (typeof window.endInjection === 'function') window.endInjection();
+
+        const ascCountBefore = (window.controller.state.ascensions || []).length;
+        const boardEl = document.getElementById('game-board');
+        const touch1 = new Touch({ identifier: 10, target: boardEl, clientX: 250, clientY: 200 });
+        const touch2 = new Touch({ identifier: 10, target: boardEl, clientX: 50, clientY: 200 });
+
+        boardEl.dispatchEvent(new TouchEvent('touchstart', { touches: [touch1], targetTouches: [touch1], changedTouches: [touch1], bubbles: true, cancelable: true }));
+        boardEl.dispatchEvent(new TouchEvent('touchend', { touches: [], targetTouches: [], changedTouches: [touch2], bubbles: true, cancelable: true }));
+
+        while (window.isAnimating || window.cleanSlateSequenceState) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+        await new Promise(r => setTimeout(r, 100));
+
+        const ascCountAfter = (window.controller.state.ascensions || []).length;
+        const caseAPass = ascCountAfter === ascCountBefore + 1;
+        const logLenAfterWipe = typeof window.getUiMoveLogLength === 'function' ? window.getUiMoveLogLength() : -1;
+
+        // (b) Immediate Rewind: disabled or shows Nothing to undo, 0 errors, DOM equals engine
+        const abilityBar = document.getElementById('ability-bar');
+        const rewindBtn = abilityBar ? abilityBar.querySelector('.ability-btn[data-relic="rewind"]') : null;
+        const isDisabledB = rewindBtn ? rewindBtn.disabled : false;
+        const cdTextB = rewindBtn ? (rewindBtn.querySelector('.ability-btn-cooldown, .refill')?.textContent.trim() || '') : '';
+        const errorsBeforeB = (window.controller?.runErrors || []).length;
+        if (rewindBtn) rewindBtn.click();
+        let directCallThrew = false;
+        try { if (typeof window.executeRewind === 'function') window.executeRewind(); } catch (e) { directCallThrew = true; }
+        await new Promise(r => setTimeout(r, 100));
+        const errorsAfterB = (window.controller?.runErrors || []).length;
+        const engineBoardB = window.controller.getBoard();
+        const tilesLayerB = document.getElementById('tiles-layer');
+        const domTilesB = Array.from(tilesLayerB.querySelectorAll('.tile, .stone')).map(t => ({
+          idx: parseInt(t.getAttribute('data-index'), 10),
+          val: t.getAttribute('data-val')
+        }));
+        const domMatchesB = domTilesB.length === engineBoardB.filter(x => x !== 0).length &&
+          domTilesB.every(t => engineBoardB[t.idx] == t.val);
+        const caseBPass = (isDisabledB || cdTextB === 'Nothing to undo') && (errorsAfterB === errorsBeforeB && !directCallThrew) && domMatchesB && logLenAfterWipe === 0;
+
+        // (c) Swipe once more then Rewind once: undos only that swipe
+        const boardBeforeSwipeC = [...window.controller.getBoard()];
+        const moveCountBeforeC = window.controller.state.moveCount;
+        const touchC1 = new Touch({ identifier: 11, target: boardEl, clientX: 50, clientY: 200 });
+        const touchC2 = new Touch({ identifier: 11, target: boardEl, clientX: 250, clientY: 200 });
+        boardEl.dispatchEvent(new TouchEvent('touchstart', { touches: [touchC1], targetTouches: [touchC1], changedTouches: [touchC1], bubbles: true, cancelable: true }));
+        boardEl.dispatchEvent(new TouchEvent('touchend', { touches: [], targetTouches: [], changedTouches: [touchC2], bubbles: true, cancelable: true }));
+
+        while (window.isAnimating) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+        await new Promise(r => setTimeout(r, 100));
+
+        const moveCountAfterSwipeC = window.controller.state.moveCount;
+        const freshRewindBtn = document.querySelector('#ability-bar .ability-btn[data-relic="rewind"]');
+        if (freshRewindBtn && !freshRewindBtn.disabled) freshRewindBtn.click();
+        else if (typeof window.executeRewind === 'function') window.executeRewind();
+
+        while (window.isAnimating) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+        await new Promise(r => setTimeout(r, 100));
+
+        const boardAfterRewindC = window.controller.getBoard();
+        const moveCountAfterRewindC = window.controller.state.moveCount;
+        const logLenAfterRewindC = typeof window.getUiMoveLogLength === 'function' ? window.getUiMoveLogLength() : -1;
+        const boardRestoredC = boardAfterRewindC.every((val, idx) => val === boardBeforeSwipeC[idx]);
+        const caseCPass = moveCountAfterRewindC === moveCountBeforeC && boardRestoredC && logLenAfterRewindC === 0;
+
+        return {
+          caseAPass,
+          caseBPass,
+          caseCPass,
+          logLenAfterWipe,
+          cdTextB,
+          isDisabledB,
+          boardRestoredC,
+          moveCountBeforeC,
+          moveCountAfterSwipeC,
+          moveCountAfterRewindC,
+          logLenAfterRewindC
+        };
+      })()
+    `);
+
+    console.log('[Smoke Test Debug] c4Res:', c4Res);
+    assert.strictEqual(c4Res.caseAPass, true, 'C4 (a): Clean slate triggers and uiMoveLogLength is 0');
+    assert.strictEqual(c4Res.caseBPass, true, 'C4 (b): Immediate Rewind shows Nothing to undo / disabled, 0 errors, DOM matches');
+    assert.strictEqual(c4Res.caseCPass, true, 'C4 (c): Swipe once then Rewind undos only that swipe');
+
+    // (d) Diagonal Clean slate then repeat (b)
+    await cdp.send('Page.navigate', { url: makeUrl('?start=rewind,diagonal_charge&ascension=64&debug=1') });
+    await sleep(400);
+    await cdp.eval(`(() => {
+      const btn = document.getElementById('btn-play-start');
+      if (btn && !btn.closest('.hidden')) btn.click();
+    })()`);
+    await sleep(200);
+
+    const c4dRes = await cdp.eval(`
+      (async () => {
+        window.controller.state.board = [
+          32, 0, 0, 0,
+          0, 32, 'S', 2,
+          4, 8, 16, 0,
+          0, 0, 0, 0
+        ];
+        if (typeof window.beginInjection === 'function') window.beginInjection();
+        window.syncBoard(window.controller.getBoard(), 'inj');
+        if (typeof window.endInjection === 'function') window.endInjection();
+
+        const ascBefore = (window.controller.state.ascensions || []).length;
+        window.executeAbility('diagonal_charge', { from: 0, to: 5 });
+
+        while (window.isAnimating || window.cleanSlateSequenceState) {
+          await new Promise(r => setTimeout(r, 50));
+        }
+        await new Promise(r => setTimeout(r, 100));
+
+        const ascAfter = (window.controller.state.ascensions || []).length;
+        const logLenAfterWipe = typeof window.getUiMoveLogLength === 'function' ? window.getUiMoveLogLength() : -1;
+        const abilityBar = document.getElementById('ability-bar');
+        const rewindBtn = abilityBar ? abilityBar.querySelector('.ability-btn[data-relic="rewind"]') : null;
+        const isDisabled = rewindBtn ? rewindBtn.disabled : false;
+        const cdText = rewindBtn ? (rewindBtn.querySelector('.ability-btn-cooldown, .refill')?.textContent.trim() || '') : '';
+
+        if (rewindBtn) rewindBtn.click();
+        let directCallThrew = false;
+        try { if (typeof window.executeRewind === 'function') window.executeRewind(); } catch (e) { directCallThrew = true; }
+
+        await new Promise(r => setTimeout(r, 100));
+        const engineBoard = window.controller.getBoard();
+        const tilesLayer = document.getElementById('tiles-layer');
+        const domTiles = Array.from(tilesLayer.querySelectorAll('.tile, .stone')).map(t => ({
+          idx: parseInt(t.getAttribute('data-index'), 10),
+          val: t.getAttribute('data-val')
+        }));
+        const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+          domTiles.every(t => engineBoard[t.idx] == t.val);
+
+        const caseDPass = (ascAfter === ascBefore + 1) && (isDisabled || cdText === 'Nothing to undo') &&
+          logLenAfterWipe === 0 && !directCallThrew && domMatches;
+
+        return {
+          caseDPass,
+          diagAsc: ascAfter === ascBefore + 1,
+          logLenAfterWipe,
+          isDisabled,
+          cdText
+        };
+      })()
+    `);
+
+    assert.strictEqual(c4dRes.caseDPass, true, 'C4 (d): Diagonal merge triggers Clean slate and Rewind shows Nothing to undo / disabled');
+    console.log('[Smoke Test] ✔ C4 verified: Rewind after Clean Slate passes all 4 cases (a, b, c, d).');
+
     // Dist scan for forbidden strings
     console.log('[Smoke Test] Scanning dist/ for forbidden strings (tailwind, googleapis, fredoka)...');
     const distFiles = fs.readdirSync(distDir, { recursive: true }).filter(f => {

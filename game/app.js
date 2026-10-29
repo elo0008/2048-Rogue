@@ -3614,6 +3614,7 @@ function startNewGame(seed = null) {
   window.formatPlayTime = formatPlayTime;
   window.getCurrentRunLog = () => currentRunLog;
   window.getDiagnosticMetadata = getDiagnosticMetadata;
+  window.getUiMoveLogLength = () => uiMoveLog.length;
   Object.defineProperty(window, 'activeTargeting', {
     get: () => activeTargeting,
     set: (v) => { activeTargeting = v; },

@@ -25,6 +25,7 @@ test('Tamper Tests: all 13 tampered cases must be rejected with stated reason cl
       });
 
       assert.equal(res.ok, false, `Tampered case '${tc.name}' must not pass (ok must be false)`);
+      assert.notEqual(res.status, 'OK', `Tampered case '${tc.name}' must not have status OK`);
       assert.equal(res.status, tc.expectedStatus, `Tampered case '${tc.name}' expected status ${tc.expectedStatus}, got ${res.status}`);
       assert.ok(res.reason && res.reason.length > 0, `Tampered case '${tc.name}' must provide rejection reason`);
       if (tc.expectedReasonSubstring) {

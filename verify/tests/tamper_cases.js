@@ -51,6 +51,16 @@ export function getTamperCases() {
     replayVersion: expectedReplayHash,
   } : null;
 
+  const lastStandFixturePath = path.join(fixturesDir, 'fixture_last_stand.json');
+  const rawLastStandFixture = fs.existsSync(lastStandFixturePath)
+    ? JSON.parse(fs.readFileSync(lastStandFixturePath, 'utf-8'))
+    : null;
+  const lastStandFixture = rawLastStandFixture ? {
+    ...rawLastStandFixture,
+    rulesVersion: expectedHash,
+    replayVersion: expectedReplayHash,
+  } : null;
+
   const cases = [
     {
       id: 1,
@@ -72,6 +82,19 @@ export function getTamperCases() {
       generate: () => {
         const log = JSON.parse(JSON.stringify(baseFixture));
         const idx = log.events.findIndex(e => e.startsWith('a:'));
+        if (idx !== -1) {
+          log.events.splice(idx, 1);
+        }
+        return log;
+      },
+    },
+    {
+      id: '2b',
+      name: 'delete one ability event with gameOver (REJECT)',
+      expectedStatus: 'REJECT',
+      generate: () => {
+        const log = JSON.parse(JSON.stringify(lastStandFixture || baseFixture));
+        const idx = log.events.findIndex(e => e === 'a:rewind:-');
         if (idx !== -1) {
           log.events.splice(idx, 1);
         }
