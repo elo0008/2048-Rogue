@@ -2547,17 +2547,27 @@ button:focus-visible {
  * Clean Slate (Ascension) Sequence Visuals
  * Transform / Opacity / Box-shadow only - zero layout changes.
  * ------------------------------------------------------------- */
-.tile-clean-slate-survivor {
+.clean-slate-banner:not(.hidden) .clean-slate-title {
+  animation: standExitRight 0.38s cubic-bezier(0.6, 0, 0.8, 0.25) 1.47s forwards;
+  will-change: transform;
+}
+
+.clean-slate-banner:not(.hidden) .stand-subtitle {
+  animation: standExitLeft 0.38s cubic-bezier(0.6, 0, 0.8, 0.25) 1.47s forwards;
+  will-change: transform;
+}
+
+.tile-clean-slate-charge {
   z-index: 20 !important;
-  box-shadow: 0 0 24px rgba(242, 199, 126, 0.85), 0 0 45px rgba(242, 199, 126, 0.5) !important;
-  transition: box-shadow 0.25s ease-out;
+  box-shadow: 0 0 16px rgba(242, 199, 126, 0.58) !important;
+  transition: box-shadow 0.45s ease-in-out;
 }
 
 .clean-slate-ring {
   position: absolute;
   border-radius: 50%;
-  border: 3px solid var(--accent, #f2c77e);
-  box-shadow: 0 0 25px rgba(242, 199, 126, 0.85), inset 0 0 15px rgba(242, 199, 126, 0.35);
+  border: 3.5px solid var(--accent, #f2c77e);
+  box-shadow: 0 0 20px rgba(242, 199, 126, 0.65), inset 0 0 12px rgba(242, 199, 126, 0.3);
   pointer-events: none;
   z-index: 15;
   will-change: transform, opacity;
@@ -2635,6 +2645,15 @@ button:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .clean-slate-banner:not(.hidden) .clean-slate-title,
+  .clean-slate-banner:not(.hidden) .stand-subtitle {
+    animation: none !important;
+    transform: none !important;
+  }
+  .tile-clean-slate-charge {
+    animation: none !important;
+    box-shadow: none !important;
+  }
   .clean-slate-ring {
     display: none !important;
   }

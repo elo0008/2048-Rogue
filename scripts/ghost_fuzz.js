@@ -1461,22 +1461,28 @@ async function runFuzz() {
       results[results.length - 1].pass = false;
     }
 
-    // Scenario N: Ascension / Clean Slate (ascension=64): triggers via slide and via Diagonal, plus (a) swipe during sequence, (b) pause during sequence, (c) visibilitychange during sequence, (d) Play Again during sequence.
+    // Scenario N: Ascension / Clean Slate (ascension=64): triggers via slide and via Diagonal,
+    // plus pause, visibilitychange, Play Again and ignored swipes during EACH phase (B, C, D, E, F).
     let nSlideAscensions = 0;
     let nDiagAscensions = 0;
-    let nInterruptedSwipes = 0;
+    let nIgnoredSwipes = 0;
     let nInterruptedPauses = 0;
     let nInterruptedVis = 0;
     let nInterruptedPlayAgains = 0;
     let nSlideFallbacks = 0;
+    let nDomMatches = 0;
 
-    results.push(await runScenario(cdp, 'N (ascension 64 slide, diag & interrupts)', 'ascension=64&start=diagonal_charge&seed=2048&debug=1', async (c, i) => {
-      const mode = i % 6;
+    results.push(await runScenario(cdp, 'N (clean slate all phases B-F interrupts & ignored swipes)', 'ascension=64&start=diagonal_charge&seed=2048&debug=1', async (c, i) => {
+      const mode = i % 22;
       let desc = '';
+      const phases = ['B', 'C', 'D', 'E', 'F'];
+      const phaseDelays = { B: 500, C: 2150, D: 2500, E: 2750, F: 2950 };
+
       if (mode === 0) {
         // 1. Clean slate trigger via slide (32 + 32 -> 64)
         const res = await c.eval(`
           new Promise((resolve) => {
+            window.controller.state.over = false;
             window.controller.state.ascensionLevel = 0;
             window.controller.state.board = [
               32, 32, 0, 0,
@@ -1495,7 +1501,15 @@ async function runFuzz() {
               if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
                 const ascAfter = (window.controller.getState().ascensions || []).length;
                 const fbAfter = window.__slideFallbackCount || 0;
-                resolve({ fired: ascAfter > ascBefore, fallbacks: fbAfter - fbBefore });
+                const engineBoard = window.controller.getBoard();
+                const tilesLayer = document.getElementById('tiles-layer');
+                const domTiles = Array.from(tilesLayer.querySelectorAll('.tile, .stone')).map(t => ({
+                  idx: parseInt(t.getAttribute('data-index'), 10),
+                  val: t.getAttribute('data-val')
+                }));
+                const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                  domTiles.every(t => engineBoard[t.idx] == t.val);
+                resolve({ fired: ascAfter > ascBefore, fallbacks: fbAfter - fbBefore, domMatches });
               } else {
                 requestAnimationFrame(check);
               }
@@ -1505,7 +1519,8 @@ async function runFuzz() {
         `);
         if (res.fired) nSlideAscensions++;
         if (res.fallbacks > 0) nSlideFallbacks += res.fallbacks;
-        desc = `Clean slate slide (fired: ${res.fired}, fallbacks: ${res.fallbacks})`;
+        if (res.domMatches) nDomMatches++;
+        desc = `Clean slate slide (fired: ${res.fired}, domMatches: ${res.domMatches})`;
       } else if (mode === 1) {
         // 2. Clean slate trigger via Diagonal (32 at 0 + 32 at 5 -> 64 at 5)
         const res = await c.eval(`
@@ -1528,7 +1543,15 @@ async function runFuzz() {
             function check() {
               if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
                 const ascAfter = (window.controller.getState().ascensions || []).length;
-                resolve({ fired: ascAfter > ascBefore });
+                const engineBoard = window.controller.getBoard();
+                const tilesLayer = document.getElementById('tiles-layer');
+                const domTiles = Array.from(tilesLayer.querySelectorAll('.tile, .stone')).map(t => ({
+                  idx: parseInt(t.getAttribute('data-index'), 10),
+                  val: t.getAttribute('data-val')
+                }));
+                const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                  domTiles.every(t => engineBoard[t.idx] == t.val);
+                resolve({ fired: ascAfter > ascBefore, domMatches });
               } else {
                 requestAnimationFrame(check);
               }
@@ -1537,16 +1560,20 @@ async function runFuzz() {
           })
         `);
         if (res.fired) nDiagAscensions++;
-        desc = `Clean slate diagonal (fired: ${res.fired})`;
+        if (res.domMatches) nDomMatches++;
+        desc = `Clean slate diagonal (fired: ${res.fired}, domMatches: ${res.domMatches})`;
         return { desc, diagonal: 1 };
-      } else if (mode === 2) {
-        // 3. (a) Swipe during clean slate sequence (finishes immediately, executes second swipe)
+      } else if (mode >= 2 && mode <= 6) {
+        // 3. Ignored swipe during Phase B, C, D, E, F
+        const pName = phases[mode - 2];
+        const delay = phaseDelays[pName];
         const res = await c.eval(`
           new Promise((resolve) => {
+            window.controller.state.over = false;
             window.controller.state.ascensionLevel = 0;
             window.controller.state.board = [
               32, 32, 0, 0,
-              4, 8, 0, 0,
+              4, 8, 'S', 2,
               0, 0, 0, 0,
               0, 0, 0, 0
             ];
@@ -1554,35 +1581,54 @@ async function runFuzz() {
             window.syncBoard(window.controller.getBoard(), 'inj');
             window.endInjection();
             const ascBefore = (window.controller.getState().ascensions || []).length;
-            const fbBefore = window.__slideFallbackCount || 0;
+            const evLenBefore = (window.controller.getState().events || []).length;
             const start = performance.now();
             window.handleMove('L', 'swipe');
             setTimeout(() => {
+              const curPhase = window.cleanSlateSequenceState?.phase;
               window.handleMove('D', 'swipe');
+              const ignored = (window.cleanSlateSequenceState?.ignoredSwipeCount || 0) > 0;
               function check() {
                 if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
                   const ascAfter = (window.controller.getState().ascensions || []).length;
-                  const fbAfter = window.__slideFallbackCount || 0;
-                  resolve({ fired: ascAfter > ascBefore, fallbacks: fbAfter - fbBefore });
+                  const evLenAfter = (window.controller.getState().events || []).length;
+                  const engineBoard = window.controller.getBoard();
+                  const tilesLayer = document.getElementById('tiles-layer');
+                  const domTiles = Array.from(tilesLayer.querySelectorAll('.tile, .stone')).map(t => ({
+                    idx: parseInt(t.getAttribute('data-index'), 10),
+                    val: t.getAttribute('data-val')
+                  }));
+                  const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                    domTiles.every(t => engineBoard[t.idx] == t.val);
+                  resolve({
+                    fired: ascAfter > ascBefore,
+                    curPhase,
+                    ignored,
+                    eventsUnchanged: evLenAfter === evLenBefore,
+                    domMatches
+                  });
                 } else {
                   requestAnimationFrame(check);
                 }
               }
               requestAnimationFrame(check);
-            }, 280);
+            }, ${delay});
           })
         `);
-        if (res.fired) nInterruptedSwipes++;
-        if (res.fallbacks > 0) nSlideFallbacks += res.fallbacks;
-        desc = `Clean slate interrupted by swipe (fired: ${res.fired}, fallbacks: ${res.fallbacks})`;
-      } else if (mode === 3) {
-        // 4. (b) Pause during clean slate sequence
+        if (res.fired) nIgnoredSwipes++;
+        if (res.domMatches) nDomMatches++;
+        desc = `Clean slate swipe ignored during Phase ${pName} (phase: ${res.curPhase}, ignored: ${res.ignored}, domMatches: ${res.domMatches})`;
+      } else if (mode >= 7 && mode <= 11) {
+        // 4. Pause during Phase B, C, D, E, F
+        const pName = phases[mode - 7];
+        const delay = phaseDelays[pName];
         const res = await c.eval(`
           new Promise((resolve) => {
+            window.controller.state.over = false;
             window.controller.state.ascensionLevel = 0;
             window.controller.state.board = [
               32, 32, 0, 0,
-              4, 8, 0, 0,
+              4, 8, 'S', 2,
               0, 0, 0, 0,
               0, 0, 0, 0
             ];
@@ -1593,6 +1639,7 @@ async function runFuzz() {
             const start = performance.now();
             window.handleMove('L', 'swipe');
             setTimeout(() => {
+              const curPhase = window.cleanSlateSequenceState?.phase;
               const btnPause = document.getElementById('btn-pause-menu');
               if (btnPause) btnPause.click();
               setTimeout(() => {
@@ -1601,26 +1648,38 @@ async function runFuzz() {
                 function check() {
                   if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
                     const ascAfter = (window.controller.getState().ascensions || []).length;
-                    resolve({ fired: ascAfter > ascBefore });
+                    const engineBoard = window.controller.getBoard();
+                    const tilesLayer = document.getElementById('tiles-layer');
+                    const domTiles = Array.from(tilesLayer.querySelectorAll('.tile, .stone')).map(t => ({
+                      idx: parseInt(t.getAttribute('data-index'), 10),
+                      val: t.getAttribute('data-val')
+                    }));
+                    const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                      domTiles.every(t => engineBoard[t.idx] == t.val);
+                    resolve({ fired: ascAfter > ascBefore, curPhase, domMatches });
                   } else {
                     requestAnimationFrame(check);
                   }
                 }
                 requestAnimationFrame(check);
-              }, 150);
-            }, 280);
+              }, 120);
+            }, ${delay});
           })
         `);
         if (res.fired) nInterruptedPauses++;
-        desc = `Clean slate interrupted by pause (fired: ${res.fired})`;
-      } else if (mode === 4) {
-        // 5. (c) visibilitychange during clean slate sequence
+        if (res.domMatches) nDomMatches++;
+        desc = `Clean slate pause during Phase ${pName} (phase: ${res.curPhase}, domMatches: ${res.domMatches})`;
+      } else if (mode >= 12 && mode <= 16) {
+        // 5. visibilitychange during Phase B, C, D, E, F
+        const pName = phases[mode - 12];
+        const delay = phaseDelays[pName];
         const res = await c.eval(`
           new Promise((resolve) => {
+            window.controller.state.over = false;
             window.controller.state.ascensionLevel = 0;
             window.controller.state.board = [
               32, 32, 0, 0,
-              4, 8, 0, 0,
+              4, 8, 'S', 2,
               0, 0, 0, 0,
               0, 0, 0, 0
             ];
@@ -1631,29 +1690,42 @@ async function runFuzz() {
             const start = performance.now();
             window.handleMove('L', 'swipe');
             setTimeout(() => {
+              const curPhase = window.cleanSlateSequenceState?.phase;
               document.dispatchEvent(new Event('visibilitychange'));
               function check() {
                 if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
                   const ascAfter = (window.controller.getState().ascensions || []).length;
-                  resolve({ fired: ascAfter > ascBefore });
+                  const engineBoard = window.controller.getBoard();
+                  const tilesLayer = document.getElementById('tiles-layer');
+                  const domTiles = Array.from(tilesLayer.querySelectorAll('.tile, .stone')).map(t => ({
+                    idx: parseInt(t.getAttribute('data-index'), 10),
+                    val: t.getAttribute('data-val')
+                  }));
+                  const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                    domTiles.every(t => engineBoard[t.idx] == t.val);
+                  resolve({ fired: ascAfter > ascBefore, curPhase, domMatches });
                 } else {
                   requestAnimationFrame(check);
                 }
               }
               requestAnimationFrame(check);
-            }, 280);
+            }, ${delay});
           })
         `);
         if (res.fired) nInterruptedVis++;
-        desc = `Clean slate interrupted by visibilitychange (fired: ${res.fired})`;
-      } else if (mode === 5) {
-        // 6. (d) Play Again during clean slate sequence
+        if (res.domMatches) nDomMatches++;
+        desc = `Clean slate visibilitychange during Phase ${pName} (phase: ${res.curPhase}, domMatches: ${res.domMatches})`;
+      } else if (mode >= 17 && mode <= 21) {
+        // 6. Play Again during Phase B, C, D, E, F
+        const pName = phases[mode - 17];
+        const delay = phaseDelays[pName];
         const res = await c.eval(`
           new Promise((resolve) => {
+            window.controller.state.over = false;
             window.controller.state.ascensionLevel = 0;
             window.controller.state.board = [
               32, 32, 0, 0,
-              4, 8, 0, 0,
+              4, 8, 'S', 2,
               0, 0, 0, 0,
               0, 0, 0, 0
             ];
@@ -1663,33 +1735,41 @@ async function runFuzz() {
             const start = performance.now();
             window.handleMove('L', 'swipe');
             setTimeout(() => {
+              const curPhase = window.cleanSlateSequenceState?.phase;
               if (typeof window.startNewGame === 'function') {
                 window.startNewGame();
               }
               function check() {
                 if (performance.now() - start > 100 && !window.isAnimating && !window.cleanSlateSequenceState) {
-                  const b = window.controller.getBoard();
-                  const tiles = b.filter(x => typeof x === 'number' && x > 0).length;
-                  resolve({ resetOk: tiles >= 2 });
+                  const engineBoard = window.controller.getBoard();
+                  const tiles = engineBoard.filter(x => typeof x === 'number' && x > 0).length;
+                  const tilesLayer = document.getElementById('tiles-layer');
+                  const domTiles = Array.from(tilesLayer.querySelectorAll('.tile, .stone')).map(t => ({
+                    idx: parseInt(t.getAttribute('data-index'), 10),
+                    val: t.getAttribute('data-val')
+                  }));
+                  const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                    domTiles.every(t => engineBoard[t.idx] == t.val);
+                  resolve({ resetOk: tiles >= 2, curPhase, domMatches });
                 } else {
                   requestAnimationFrame(check);
                 }
               }
               requestAnimationFrame(check);
-            }, 280);
+            }, ${delay});
           })
         `);
         if (res.resetOk) nInterruptedPlayAgains++;
-        desc = `Clean slate interrupted by Play Again (resetOk: ${res.resetOk})`;
+        if (res.domMatches) nDomMatches++;
+        desc = `Clean slate Play Again during Phase ${pName} (phase: ${res.curPhase}, domMatches: ${res.domMatches})`;
       }
       return { desc };
     }));
 
-
-    console.log(`[Scenario N Clean Slate Stats]: slide: ${nSlideAscensions}, diag: ${nDiagAscensions}, swipeInt: ${nInterruptedSwipes}, pauseInt: ${nInterruptedPauses}, visInt: ${nInterruptedVis}, playAgainInt: ${nInterruptedPlayAgains}, slideFallbacks: ${nSlideFallbacks}`);
-    const allAscensionsTriggered = nSlideAscensions > 0 && nDiagAscensions > 0 && nInterruptedSwipes > 0 && nInterruptedPauses > 0 && nInterruptedVis > 0 && nInterruptedPlayAgains > 0;
+    console.log(`[Scenario N Clean Slate Stats]: slide: ${nSlideAscensions}, diag: ${nDiagAscensions}, ignoredSwipes: ${nIgnoredSwipes}, pauseInt: ${nInterruptedPauses}, visInt: ${nInterruptedVis}, playAgainInt: ${nInterruptedPlayAgains}, domMatches: ${nDomMatches}, slideFallbacks: ${nSlideFallbacks}`);
+    const allAscensionsTriggered = nSlideAscensions > 0 && nDiagAscensions > 0 && nIgnoredSwipes > 0 && nInterruptedPauses > 0 && nInterruptedVis > 0 && nInterruptedPlayAgains > 0 && nDomMatches === 32;
     if (!allAscensionsTriggered || nSlideFallbacks > 0) {
-      console.error(`❌ FAILURE in Scenario N: not all ascension scenarios triggered or slideFallbacks (${nSlideFallbacks}) > 0!`);
+      console.error(`❌ FAILURE in Scenario N: not all ascension scenarios triggered or slideFallbacks (${nSlideFallbacks}) > 0 or domMatches != 32!`);
       results[results.length - 1].pass = false;
     }
 

@@ -685,14 +685,12 @@ export function playStuckThud(quieter = false) {
 }
 
 /**
- * 15. Clean Slate (Ascension): low thud plus a short rising shimmer
+ * 15. Clean Slate (Ascension): low thud and rising shimmer
  */
-export function playCleanSlate() {
-  if (!canPlay('cleanSlate', 100)) return;
+export function playCleanSlateThud() {
+  if (!canPlay('cleanSlateThud', 80)) return;
   try {
     const t = audioCtx.currentTime;
-
-    // 1. Low Thud (sub bass pulse ~75 Hz -> ~35 Hz over 0.28s)
     const thudDur = 0.28;
     const thudOsc = audioCtx.createOscillator();
     thudOsc.type = 'sine';
@@ -709,8 +707,16 @@ export function playCleanSlate() {
 
     thudOsc.start(t);
     thudOsc.stop(t + thudDur);
+    trackVoice(thudDur * 1000);
+  } catch (err) {
+    console.warn('playCleanSlateThud error:', err);
+  }
+}
 
-    // 2. Rising Shimmer (ethereal upward harmonics over ~0.42s)
+export function playCleanSlateShimmer() {
+  if (!canPlay('cleanSlateShimmer', 80)) return;
+  try {
+    const t = audioCtx.currentTime;
     const shimmerDur = 0.42;
     const freqs = [
       { start: 440, end: 880, type: 'sine', peak: 0.08 },
@@ -740,8 +746,13 @@ export function playCleanSlate() {
 
     trackVoice(shimmerDur * 1000);
   } catch (err) {
-    console.warn('playCleanSlate error:', err);
+    console.warn('playCleanSlateShimmer error:', err);
   }
+}
+
+export function playCleanSlate() {
+  playCleanSlateThud();
+  playCleanSlateShimmer();
 }
 
 export const playAscension = playCleanSlate;

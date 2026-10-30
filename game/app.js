@@ -28,6 +28,8 @@ import {
   playGameOver,
   playClick,
   playCleanSlate,
+  playCleanSlateThud,
+  playCleanSlateShimmer,
   isSoundEnabled,
   toggleSound,
   getAudioState,
@@ -961,6 +963,102 @@ function showLastStandMoment() {
 
 let cleanSlateSequenceState = null;
 
+function spawnShardBurst(centerX, centerY, count = 7, anims = null, timers = null) {
+  if (!tilesLayer || count <= 0) return [];
+  const shards = [];
+  for (let s = 0; s < count; s++) {
+    const shard = document.createElement('div');
+    shard.className = 'shatter-shard';
+    shard.style.left = (centerX - 7) + 'px';
+    shard.style.top = (centerY - 7) + 'px';
+    tilesLayer.appendChild(shard);
+    shards.push(shard);
+
+    const angle = (s / count) * 2 * Math.PI + (Math.random() * 0.4 - 0.2);
+    const dist = 20 + Math.random() * 20;
+    const rot = Math.random() * 240 - 120;
+    const tx = Math.cos(angle) * dist;
+    const ty = Math.sin(angle) * dist;
+
+    const anim = shard.animate([
+      { transform: 'translate(0px, 0px) rotate(0deg)', opacity: 1 },
+      { transform: `translate(${tx}px, ${ty}px) rotate(${rot}deg)`, opacity: 0 }
+    ], {
+      duration: 320,
+      easing: 'cubic-bezier(.15, .85, .3, 1)',
+      fill: 'forwards'
+    });
+    if (anims) anims.push(anim);
+
+    const t = setTimeout(() => { if (shard.parentNode) shard.remove(); }, 350);
+    if (timers) timers.push(t);
+  }
+  return shards;
+}
+
+function triggerStoneShatterEffect(stoneCell, mergeDest = null, shardCount = 7, anims = null, timers = null) {
+  if (!tilesLayer) return;
+  const metrics = getGridMetrics();
+  const stonePos = getCellCenter(stoneCell, metrics);
+  const destPos = mergeDest !== null && mergeDest !== undefined ? getCellCenter(mergeDest, metrics) : stonePos;
+  const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Flash overlay at destroyed stone's cell centre
+  const flashEl = document.createElement('div');
+  flashEl.className = 'shatter-flash';
+  flashEl.style.left = (stonePos.cx - stonePos.width / 2) + 'px';
+  flashEl.style.top = (stonePos.cy - stonePos.height / 2) + 'px';
+  flashEl.style.width = stonePos.width + 'px';
+  flashEl.style.height = stonePos.height + 'px';
+  tilesLayer.appendChild(flashEl);
+  const tFlash = setTimeout(() => { if (flashEl.parentNode) flashEl.remove(); }, 120);
+  if (timers) timers.push(tFlash);
+
+  let stoneEl = tilesLayer.querySelector(`.stone[data-index="${stoneCell}"], .tile.stone[data-index="${stoneCell}"]`);
+  if (stoneEl) {
+    stoneEl.classList.add('shattering-stone');
+  }
+
+  // Short ring pulse at merged tile destination centre if provided
+  if (!prefersReduced && mergeDest !== null && mergeDest !== undefined) {
+    const pulse = document.createElement('div');
+    pulse.className = 'shatter-pulse';
+    pulse.style.left = (destPos.cx - destPos.width / 2) + 'px';
+    pulse.style.top = (destPos.cy - destPos.height / 2) + 'px';
+    pulse.style.width = destPos.width + 'px';
+    pulse.style.height = destPos.height + 'px';
+    tilesLayer.appendChild(pulse);
+    const tPulse = setTimeout(() => { if (pulse.parentNode) pulse.remove(); }, 300);
+    if (timers) timers.push(tPulse);
+  }
+
+  const centerX = stonePos.cx;
+  const centerY = stonePos.cy;
+
+  const tStone = setTimeout(() => {
+    if (stoneEl && stoneEl.parentNode) stoneEl.remove();
+    if (!prefersReduced && shardCount > 0) {
+      spawnShardBurst(centerX, centerY, shardCount, anims, timers);
+    }
+  }, 60);
+  if (timers) timers.push(tStone);
+}
+
+let breakSoundCount = 0;
+let lastBreakSoundTime = -9999;
+function playThrottledBreakSound(isStone) {
+  if (breakSoundCount >= 6) return;
+  const now = performance.now();
+  if (now - lastBreakSoundTime < 60) return;
+  lastBreakSoundTime = now;
+  breakSoundCount++;
+  if (isStone) {
+    playShatterCrack();
+  } else {
+    playEraser();
+  }
+}
+
 function finishCleanSlateImmediately() {
   if (!cleanSlateSequenceState) return;
   const state = cleanSlateSequenceState;
@@ -987,13 +1085,20 @@ function finishCleanSlateImmediately() {
   }
   if (cleanSlateBanner) {
     cleanSlateBanner.classList.add('hidden');
+    const boardwrap = document.querySelector('.boardwrap');
+    if (boardwrap) boardwrap.classList.remove('board-shake');
+    const wrapper = cleanSlateBanner.querySelector('.stand-center-wrapper');
+    if (wrapper) {
+      const dustRing = wrapper.querySelector('.stand-dust-ring');
+      if (dustRing) dustRing.remove();
+    }
   }
   if (tilesLayer) {
-    for (const el of tilesLayer.querySelectorAll('.tile-clean-slate-survivor')) {
-      el.classList.remove('tile-clean-slate-survivor');
+    for (const el of tilesLayer.querySelectorAll('.tile-clean-slate-survivor, .tile-clean-slate-charge')) {
+      el.classList.remove('tile-clean-slate-survivor', 'tile-clean-slate-charge');
     }
     for (const child of Array.from(tilesLayer.children)) {
-      if (child.classList.contains('clean-slate-ring') || child.classList.contains('clean-slate-dust') || child.classList.contains('clean-slate-popup') || child.classList.contains('shatter-shard') || child.classList.contains('shatter-flash')) {
+      if (child.classList.contains('clean-slate-ring') || child.classList.contains('clean-slate-dust') || child.classList.contains('clean-slate-popup') || child.classList.contains('shatter-shard') || child.classList.contains('shatter-flash') || child.classList.contains('stand-dust-ring')) {
         child.remove();
       }
     }
@@ -1008,11 +1113,10 @@ function finishCleanSlateImmediately() {
   updateHeader();
   renderAbilityBar();
 
-  if (controller.isGameOver()) {
-    handleGameOver();
-  }
   if (typeof state.onComplete === 'function') {
     state.onComplete();
+  } else if (controller.isGameOver()) {
+    handleGameOver();
   }
 }
 
@@ -1021,9 +1125,14 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
   const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   isAnimating = true;
+  breakSoundCount = 0;
+  lastBreakSoundTime = -9999;
+
   const timers = [];
   const anims = [];
   const dustEls = [];
+
+  const stateBeforePayoutScore = controller ? Math.max(0, (controller.getState().points !== undefined ? controller.getState().points : controller.getState().score) - payout) : null;
 
   const state = {
     timers,
@@ -1034,6 +1143,11 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
     triggerSite,
     onComplete,
     startTime: performance.now(),
+    phase: 'B',
+    inputLocked: true,
+    prePayoutScore: stateBeforePayoutScore,
+    ignoredSwipeCount: 0,
+    ignoredAbilityCount: 0,
   };
   cleanSlateSequenceState = state;
   currentAnimationState = {
@@ -1041,36 +1155,12 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
     cancelAnimation: finishCleanSlateImmediately,
   };
 
-  // 7) New procedural sound in game/audio.js (low thud plus a short rising shimmer), respecting sound toggle
-  playCleanSlate();
+  // Immediate header sync to show pre-payout score while other HUD values update
+  updateHeader();
 
-  // 2) Hold ~250 ms with a soft gold pulse on surviving max tile(s)
   const survivorIdx = survivorIndices.length > 0 ? survivorIndices[0] : 0;
   const survivorPos = getCellCenter(survivorIdx, metrics);
-  for (const sIdx of survivorIndices) {
-    const el = tilesLayer ? tilesLayer.querySelector(`.tile[data-index="${sIdx}"]`) : null;
-    if (el) {
-      el.classList.add('tile-clean-slate-survivor');
-    }
-  }
 
-  // 5) One "+N" popup for the payout near the surviving tile
-  if (payout > 0 && tilesLayer) {
-    const popup = document.createElement('div');
-    popup.className = 'clean-slate-popup';
-    popup.textContent = `+${payout.toLocaleString('en-US')}`;
-    popup.style.left = survivorPos.cx + 'px';
-    popup.style.top = (survivorPos.cy - metrics.cellH * 0.35) + 'px';
-    tilesLayer.appendChild(popup);
-    state.popupEl = popup;
-    timers.push(setTimeout(() => {
-      if (popup.parentNode) popup.remove();
-      if (state.popupEl === popup) state.popupEl = null;
-    }, 1250));
-  }
-
-  // 3) Shockwave: one expanding ring from the tile's real cell centre (use getCellCenter),
-  //    ~700 ms ease-out, reaching the farthest corner; ONE pulse only (no flashing)
   const boardElOrWrap = boardEl || document.getElementById('game-board');
   const bW = boardElOrWrap ? boardElOrWrap.offsetWidth : (metrics.stepX * 3 + metrics.cellW);
   const bH = boardElOrWrap ? boardElOrWrap.offsetHeight : (metrics.stepY * 3 + metrics.cellH);
@@ -1081,46 +1171,12 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
     Math.hypot(bW - survivorPos.cx, bH - survivorPos.cy)
   );
 
-  if (!prefersReduced && tilesLayer) {
-    const ringTimer = setTimeout(() => {
-      const ring = document.createElement('div');
-      ring.className = 'clean-slate-ring';
-      ring.id = 'clean-slate-ring';
-      ring.style.left = survivorPos.cx + 'px';
-      ring.style.top = survivorPos.cy + 'px';
-      ring.style.width = (maxCornerDist * 2) + 'px';
-      ring.style.height = (maxCornerDist * 2) + 'px';
-      ring.style.marginLeft = (-maxCornerDist) + 'px';
-      ring.style.marginTop = (-maxCornerDist) + 'px';
-      tilesLayer.appendChild(ring);
-      state.ringEl = ring;
-
-      const ringAnim = ring.animate([
-        { transform: 'scale(0)', opacity: 0.95 },
-        { transform: 'scale(0.55)', opacity: 0.75, offset: 0.55 },
-        { transform: 'scale(1)', opacity: 0 }
-      ], {
-        duration: 700,
-        easing: 'ease-out',
-        fill: 'forwards',
-      });
-      anims.push(ringAnim);
-
-      timers.push(setTimeout(() => {
-        if (ring.parentNode) ring.remove();
-        if (state.ringEl === ring) state.ringEl = null;
-      }, 720));
-    }, 250);
-    timers.push(ringTimer);
-  }
-
-  // 4) Every destroyed stone and number tile breaks in order of its distance from the ring origin
-  //    (stagger ~55 ms per cell of distance, max total ~900 ms)
+  // Identify elements to destroy
   const ascThreshold = controller?.config?.ascensionAt || 2048;
   const elementsToDestroy = [];
   if (tilesLayer) {
     for (const child of Array.from(tilesLayer.children)) {
-      if (child.classList.contains('clean-slate-ring') || child.classList.contains('clean-slate-popup')) continue;
+      if (child.classList.contains('clean-slate-ring') || child.classList.contains('clean-slate-popup') || child.classList.contains('shatter-shard') || child.classList.contains('shatter-flash') || child.classList.contains('stand-dust-ring')) continue;
       const idxAttr = child.getAttribute('data-index');
       if (idxAttr === null) continue;
       const idx = parseInt(idxAttr, 10);
@@ -1130,135 +1186,39 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
       const val = isStone ? STONE : parseInt(child.getAttribute('data-val'), 10);
       const isSurvivor = survivorIndices.includes(idx) || (typeof val === 'number' && val >= ascThreshold);
       if (!isSurvivor) {
-        const col = idx % 4;
-        const row = Math.floor(idx / 4);
-        const sCol = survivorIdx % 4;
-        const sRow = Math.floor(survivorIdx / 4);
-        const dist = Math.hypot(col - sCol, row - sRow);
+        const cellCenter = getCellCenter(idx, metrics);
+        const dist = Math.hypot(cellCenter.cx - survivorPos.cx, cellCenter.cy - survivorPos.cy);
         elementsToDestroy.push({
           el: child,
           index: idx,
           isStone,
           val,
           dist,
+          cx: cellCenter.cx,
+          cy: cellCenter.cy,
         });
       }
     }
   }
 
+  // Sort by distance from survivor
   elementsToDestroy.sort((a, b) => a.dist - b.dist);
 
-  for (const item of elementsToDestroy) {
-    const stagger = prefersReduced ? 0 : Math.round(item.dist * 55);
-    const breakDelay = (prefersReduced ? 0 : 250) + stagger;
-    const fadeDur = prefersReduced ? 120 : 180;
+  // Shared particle cap: total concurrent DOM particles <= 80
+  const shardsPerElement = Math.max(2, Math.min(7, Math.floor(80 / Math.max(1, elementsToDestroy.length))));
 
-    const timer = setTimeout(() => {
-      const cellCenter = getCellCenter(item.index, metrics);
-
-      if (item.isStone) {
-        // Reuse shatter effect at stone cell
-        playShatterCrack();
-
-        const flashEl = document.createElement('div');
-        flashEl.className = 'shatter-flash';
-        flashEl.style.left = (cellCenter.cx - cellCenter.width / 2) + 'px';
-        flashEl.style.top = (cellCenter.cy - cellCenter.height / 2) + 'px';
-        flashEl.style.width = cellCenter.width + 'px';
-        flashEl.style.height = cellCenter.height + 'px';
-        tilesLayer.appendChild(flashEl);
-        timers.push(setTimeout(() => { if (flashEl.parentNode) flashEl.remove(); }, 120));
-
-        if (!prefersReduced) {
-          for (let s = 0; s < 7; s++) {
-            const shard = document.createElement('div');
-            shard.className = 'shatter-shard';
-            shard.style.left = (cellCenter.cx - 7) + 'px';
-            shard.style.top = (cellCenter.cy - 7) + 'px';
-            tilesLayer.appendChild(shard);
-
-            const angle = (s / 7) * 2 * Math.PI + (Math.random() * 0.4 - 0.2);
-            const distPx = 20 + Math.random() * 20;
-            const rot = Math.random() * 240 - 120;
-            const tx = Math.cos(angle) * distPx;
-            const ty = Math.sin(angle) * distPx;
-
-            const shAnim = shard.animate([
-              { transform: 'translate(0px, 0px) rotate(0deg)', opacity: 1 },
-              { transform: `translate(${tx}px, ${ty}px) rotate(${rot}deg)`, opacity: 0 }
-            ], {
-              duration: 320,
-              easing: 'cubic-bezier(.15, .85, .3, 1)',
-              fill: 'forwards'
-            });
-            anims.push(shAnim);
-            timers.push(setTimeout(() => { if (shard.parentNode) shard.remove(); }, 350));
-          }
-        }
-
-        const stoneAnim = item.el.animate([
-          { opacity: 1, transform: `${item.el.style.transform} scale(1)` },
-          { opacity: 0, transform: `${item.el.style.transform} scale(0.6)` }
-        ], {
-          duration: fadeDur,
-          easing: 'ease-out',
-          fill: 'forwards'
-        });
-        anims.push(stoneAnim);
-        timers.push(setTimeout(() => { if (item.el.parentNode) item.el.remove(); }, fadeDur));
-      } else {
-        // Number tile: scale to 0.6 and fade over ~180 ms with dust specks
-        const fadeAnim = item.el.animate([
-          { transform: `${item.el.style.transform} scale(1)`, opacity: 1 },
-          { transform: `${item.el.style.transform} scale(0.6)`, opacity: 0 }
-        ], {
-          duration: fadeDur,
-          easing: 'ease-out',
-          fill: 'forwards',
-        });
-        anims.push(fadeAnim);
-
-        if (!prefersReduced) {
-          for (let d = 0; d < 4; d++) {
-            const dust = document.createElement('div');
-            dust.className = 'clean-slate-dust';
-            dust.style.left = cellCenter.cx + 'px';
-            dust.style.top = cellCenter.cy + 'px';
-            tilesLayer.appendChild(dust);
-            dustEls.push(dust);
-
-            const angle = (d / 4) * 2 * Math.PI + Math.random() * 0.5;
-            const dDist = 12 + Math.random() * 10;
-            const dx = Math.cos(angle) * dDist;
-            const dy = Math.sin(angle) * dDist;
-
-            const dAnim = dust.animate([
-              { transform: 'translate(0, 0)', opacity: 0.9 },
-              { transform: `translate(${dx}px, ${dy}px)`, opacity: 0 }
-            ], {
-              duration: fadeDur,
-              easing: 'ease-out',
-              fill: 'forwards'
-            });
-            anims.push(dAnim);
-            timers.push(setTimeout(() => { if (dust.parentNode) dust.remove(); }, fadeDur + 20));
-          }
-        }
-
-        timers.push(setTimeout(() => {
-          if (item.el.parentNode) item.el.remove();
-        }, fadeDur));
-      }
-    }, breakDelay);
-    timers.push(timer);
-  }
-
-  // 6) Banner stamp using existing Last Stand stamp mechanics:
-  //    Big text with triggering value ("2048") and small line "CLEAN SLATE"; held ~1.2 s, then out
-  const bannerTimer = setTimeout(() => {
+  // =========================================================================
+  // REDUCED MOTION CEREMONY (S3)
+  // =========================================================================
+  if (prefersReduced) {
     if (cleanSlateBanner) {
       const bannerTitle = document.getElementById('clean-slate-title');
       if (bannerTitle) bannerTitle.textContent = String(triggerValue);
+      const subtitleEl = cleanSlateBanner.querySelector('.stand-subtitle') || document.getElementById('clean-slate-subtitle');
+      let tagline = 'Clean Slate';
+      if (triggerValue === 2048) tagline = 'We Won';
+      else if (triggerValue >= 4096) tagline = 'Touch Grass';
+      if (subtitleEl) subtitleEl.textContent = tagline;
 
       const wrapper = cleanSlateBanner.querySelector('.stand-center-wrapper');
       const board = boardEl || document.getElementById('game-board');
@@ -1272,42 +1232,262 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
       }
       cleanSlateBanner.classList.remove('hidden');
 
-      const bannerHoldMs = prefersReduced ? 900 : 950;
+      // Static banner for ~1.4 s
       timers.push(setTimeout(() => {
         cleanSlateBanner.classList.add('hidden');
-      }, bannerHoldMs));
-    }
-  }, prefersReduced ? 0 : 250);
-  timers.push(bannerTimer);
 
-  // Total sequence <= ~1.8 s (completes at ~1250 ms)
-  const totalSeqDuration = prefersReduced ? 950 : 1250;
+        // Fade elements out simultaneously in <= 150 ms (120 ms)
+        for (const item of elementsToDestroy) {
+          const fadeAnim = item.el.animate([
+            { opacity: 1 },
+            { opacity: 0 }
+          ], { duration: 120, fill: 'forwards' });
+          anims.push(fadeAnim);
+          timers.push(setTimeout(() => {
+            if (item.el.parentNode) item.el.remove();
+          }, 120));
+        }
+
+        // Payout popup and HUD update right after elements fade
+        timers.push(setTimeout(() => {
+          state.phase = 'F';
+          state.inputLocked = false;
+          state.prePayoutScore = null;
+          updateHeader();
+
+          if (payout > 0 && tilesLayer) {
+            const popup = document.createElement('div');
+            popup.className = 'clean-slate-popup';
+            popup.textContent = `+${payout.toLocaleString('en-US')}`;
+            popup.style.left = survivorPos.cx + 'px';
+            popup.style.top = (survivorPos.cy - metrics.cellH * 0.35) + 'px';
+            tilesLayer.appendChild(popup);
+            state.popupEl = popup;
+            timers.push(setTimeout(() => {
+              if (popup.parentNode) popup.remove();
+              if (state.popupEl === popup) state.popupEl = null;
+            }, 800));
+          }
+        }, 130));
+
+        // Finish ceremony naturally in <= 1.8 s total
+        timers.push(setTimeout(() => {
+          finishCleanSlateNaturally();
+        }, 160));
+
+      }, 1350));
+    }
+    return;
+  }
+
+  // =========================================================================
+  // NORMAL CEREMONY (S1 Phases B, C, D, E, F)
+  // =========================================================================
+
+  // --- Phase B: BANNER STAMP (T = 0 to 1850 ms) ---
+  state.phase = 'B';
+  if (cleanSlateBanner) {
+    const bannerTitle = document.getElementById('clean-slate-title');
+    if (bannerTitle) bannerTitle.textContent = String(triggerValue);
+    const subtitleEl = cleanSlateBanner.querySelector('.stand-subtitle') || document.getElementById('clean-slate-subtitle');
+    let tagline = 'Clean Slate';
+    if (triggerValue === 2048) tagline = 'We Won';
+    else if (triggerValue >= 4096) tagline = 'Touch Grass';
+    if (subtitleEl) subtitleEl.textContent = tagline;
+
+    const wrapper = cleanSlateBanner.querySelector('.stand-center-wrapper');
+    const board = boardEl || document.getElementById('game-board');
+    if (board && wrapper) {
+      const bRect = board.getBoundingClientRect();
+      const bannerRect = cleanSlateBanner.getBoundingClientRect();
+      wrapper.style.left = `${bRect.left - bannerRect.left}px`;
+      wrapper.style.top = `${bRect.top - bannerRect.top}px`;
+      wrapper.style.width = `${bRect.width}px`;
+      wrapper.style.height = `${bRect.height}px`;
+    }
+    cleanSlateBanner.classList.remove('hidden');
+
+    // Impact hits at ~150 ms (same as Last Stand stamp)
+    timers.push(setTimeout(() => {
+      playLastStandThud();
+      const boardwrap = document.querySelector('.boardwrap');
+      if (boardwrap) {
+        boardwrap.classList.add('board-shake');
+        timers.push(setTimeout(() => boardwrap.classList.remove('board-shake'), 140));
+      }
+      if (wrapper) {
+        const dustRing = document.createElement('div');
+        dustRing.className = 'stand-dust-ring';
+        wrapper.appendChild(dustRing);
+        timers.push(setTimeout(() => { if (dustRing.parentNode) dustRing.remove(); }, 350));
+      }
+    }, 150));
+
+    // Exit at 1850 ms (IN 240 + HOLD 1230 + OUT 380)
+    timers.push(setTimeout(() => {
+      cleanSlateBanner.classList.add('hidden');
+    }, 1850));
+  }
+
+  // --- Phase C: CHARGE-UP (~450 ms, starts ~150 ms after banner has fully exited: T = 2000 to 2450 ms) ---
   timers.push(setTimeout(() => {
+    state.phase = 'C';
+    for (const sIdx of survivorIndices) {
+      const el = tilesLayer ? tilesLayer.querySelector(`.tile[data-index="${sIdx}"]`) : null;
+      if (el) el.classList.add('tile-clean-slate-charge');
+    }
+    playCleanSlateShimmer();
+  }, 2000));
+
+  // --- Phase D & E: SHOCKWAVE RING & RING-DRIVEN BREAKS (starts at T = 2450 ms) ---
+  timers.push(setTimeout(() => {
+    state.phase = 'D';
+
+    // Glow ends the moment ring starts
     if (tilesLayer) {
-      for (const el of tilesLayer.querySelectorAll('.tile-clean-slate-survivor')) {
-        el.classList.remove('tile-clean-slate-survivor');
+      for (const el of tilesLayer.querySelectorAll('.tile-clean-slate-charge')) {
+        el.classList.remove('tile-clean-slate-charge');
+      }
+    }
+
+    playCleanSlateThud();
+
+    // D) Shockwave Ring: ~700 ms ease-out, gold, peak opacity >= 0.7, border >= 3px
+    if (tilesLayer) {
+      const ring = document.createElement('div');
+      ring.className = 'clean-slate-ring';
+      ring.id = 'clean-slate-ring';
+      ring.style.left = survivorPos.cx + 'px';
+      ring.style.top = survivorPos.cy + 'px';
+      ring.style.width = (maxCornerDist * 2) + 'px';
+      ring.style.height = (maxCornerDist * 2) + 'px';
+      ring.style.marginLeft = (-maxCornerDist) + 'px';
+      ring.style.marginTop = (-maxCornerDist) + 'px';
+      tilesLayer.appendChild(ring);
+      state.ringEl = ring;
+
+      const ringKeyframes = [];
+      for (let k = 0; k <= 35; k++) {
+        const u = k / 35;
+        const scale = 1 - Math.pow(1 - u, 2);
+        const opacity = u < 0.65 ? (0.88 - u * 0.15) : Math.max(0, (1 - u) * 2.0);
+        ringKeyframes.push({ transform: `scale(${scale})`, opacity, offset: u });
+      }
+      const ringAnim = ring.animate(ringKeyframes, {
+        duration: 700,
+        fill: 'forwards',
+      });
+      anims.push(ringAnim);
+
+      timers.push(setTimeout(() => {
+        if (ring.parentNode) ring.remove();
+        if (state.ringEl === ring) state.ringEl = null;
+      }, 710));
+    }
+  }, 2450));
+
+  // E) Ring-Driven Breaks: every element breaks when ring front reaches its centre
+  // Easing inversion: u = 1 - sqrt(1 - r / Rmax), t_break = 2450 + 700 * u
+  let lastBreakStartTime = 2450;
+
+  for (const item of elementsToDestroy) {
+    const normDist = Math.min(1, Math.max(0, item.dist / maxCornerDist));
+    const u = 1 - Math.sqrt(1 - normDist);
+    const delayFromRing = Math.round(700 * u);
+    const breakTime = 2450 + delayFromRing;
+    if (breakTime > lastBreakStartTime) {
+      lastBreakStartTime = breakTime;
+    }
+
+    timers.push(setTimeout(() => {
+      state.phase = 'E';
+      playThrottledBreakSound(item.isStone);
+
+      if (item.isStone) {
+        triggerStoneShatterEffect(item.index, null, shardsPerElement, anims, timers);
+      } else {
+        flashCellVanish(item.index);
+        const fadeAnim = item.el.animate([
+          { opacity: 1, transform: `${item.el.style.transform} scale(1)` },
+          { opacity: 0, transform: `${item.el.style.transform} scale(0.6)` }
+        ], {
+          duration: 180,
+          easing: 'ease-out',
+          fill: 'forwards'
+        });
+        anims.push(fadeAnim);
+        spawnShardBurst(item.cx, item.cy, shardsPerElement, anims, timers);
+        timers.push(setTimeout(() => {
+          if (item.el.parentNode) item.el.remove();
+        }, 180));
+      }
+    }, breakTime));
+  }
+
+  // --- Phase F: PAYOUT (+N popup and HUD score update right after last break starts) ---
+  const payoutTime = Math.max(2450, lastBreakStartTime + 10);
+  timers.push(setTimeout(() => {
+    state.phase = 'F';
+    state.prePayoutScore = null;
+    updateHeader();
+
+    if (payout > 0 && tilesLayer) {
+      const popup = document.createElement('div');
+      popup.className = 'clean-slate-popup';
+      popup.textContent = `+${payout.toLocaleString('en-US')}`;
+      popup.style.left = survivorPos.cx + 'px';
+      popup.style.top = (survivorPos.cy - metrics.cellH * 0.35) + 'px';
+      tilesLayer.appendChild(popup);
+      state.popupEl = popup;
+      timers.push(setTimeout(() => {
+        if (popup.parentNode) popup.remove();
+        if (state.popupEl === popup) state.popupEl = null;
+      }, 1000));
+    }
+  }, payoutTime));
+
+  // Release input lock after last break finishes
+  const lastBreakFinishTime = Math.max(2450, lastBreakStartTime + 180);
+  timers.push(setTimeout(() => {
+    state.inputLocked = false;
+  }, lastBreakFinishTime));
+
+  // Complete ceremony naturally: total ceremony duration <= ~3.6s
+  const totalCeremonyDuration = Math.max(3200, Math.min(3550, lastBreakFinishTime + 80));
+  timers.push(setTimeout(() => {
+    finishCleanSlateNaturally();
+  }, totalCeremonyDuration));
+
+  function finishCleanSlateNaturally() {
+    if (!cleanSlateSequenceState) return;
+    cleanSlateSequenceState = null;
+    currentAnimationState = null;
+    isAnimating = false;
+
+    if (cleanSlateBanner) cleanSlateBanner.classList.add('hidden');
+    if (tilesLayer) {
+      for (const el of tilesLayer.querySelectorAll('.tile-clean-slate-survivor, .tile-clean-slate-charge')) {
+        el.classList.remove('tile-clean-slate-survivor', 'tile-clean-slate-charge');
       }
       for (const child of Array.from(tilesLayer.children)) {
-        if (child.classList.contains('clean-slate-ring') || child.classList.contains('clean-slate-dust') || child.classList.contains('clean-slate-popup') || child.classList.contains('shatter-shard') || child.classList.contains('shatter-flash')) {
+        if (child.classList.contains('clean-slate-ring') || child.classList.contains('clean-slate-dust') || child.classList.contains('clean-slate-popup') || child.classList.contains('shatter-shard') || child.classList.contains('shatter-flash') || child.classList.contains('stand-dust-ring')) {
           child.remove();
         }
       }
       const b = controller ? controller.getBoard() : [];
       alignDomToBoard(b, getGridMetrics());
     }
-    cleanSlateSequenceState = null;
-    currentAnimationState = null;
-    isAnimating = false;
 
     syncBoard(controller.getBoard(), triggerSite);
     updateHeader();
     renderAbilityBar();
 
-    if (controller.isGameOver()) {
+    if (typeof onComplete === 'function') {
+      onComplete();
+    } else if (controller.isGameOver()) {
       handleGameOver();
     }
-    if (typeof onComplete === 'function') onComplete();
-  }, totalSeqDuration));
+  }
 }
 
 function triggerStuckWave() {
@@ -1454,72 +1634,8 @@ function triggerShatterAnimation(mergeDestinations, boardBefore, boardAfter) {
 
   playShatterCrack();
 
-  const metrics = getGridMetrics();
-  const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
   for (const { stoneCell, mergeDest } of destroyedCells) {
-    const stonePos = getCellCenter(stoneCell, metrics);
-    const destPos = getCellCenter(mergeDest !== undefined ? mergeDest : stoneCell, metrics);
-
-    // Flash overlay at destroyed stone's cell centre
-    const flashEl = document.createElement('div');
-    flashEl.className = 'shatter-flash';
-    flashEl.style.left = (stonePos.cx - stonePos.width / 2) + 'px';
-    flashEl.style.top = (stonePos.cy - stonePos.height / 2) + 'px';
-    flashEl.style.width = stonePos.width + 'px';
-    flashEl.style.height = stonePos.height + 'px';
-    tilesLayer.appendChild(flashEl);
-    setTimeout(() => { if (flashEl.parentNode) flashEl.remove(); }, 120);
-
-    let stoneEl = tilesLayer.querySelector(`.stone[data-index="${stoneCell}"], .tile.stone[data-index="${stoneCell}"]`);
-    if (stoneEl) {
-      stoneEl.classList.add('shattering-stone');
-    }
-
-    // Short ring pulse at merged tile destination centre
-    const pulse = document.createElement('div');
-    pulse.className = 'shatter-pulse';
-    pulse.style.left = (destPos.cx - destPos.width / 2) + 'px';
-    pulse.style.top = (destPos.cy - destPos.height / 2) + 'px';
-    pulse.style.width = destPos.width + 'px';
-    pulse.style.height = destPos.height + 'px';
-    tilesLayer.appendChild(pulse);
-    setTimeout(() => { if (pulse.parentNode) pulse.remove(); }, 300);
-
-    const centerX = stonePos.cx;
-    const centerY = stonePos.cy;
-
-    setTimeout(() => {
-      if (stoneEl && stoneEl.parentNode) stoneEl.remove();
-
-      if (!prefersReduced) {
-        // 7 shards flying 20-40px outward with +-120deg rotation over 320ms from stone cell centre
-        for (let s = 0; s < 7; s++) {
-          const shard = document.createElement('div');
-          shard.className = 'shatter-shard';
-          shard.style.left = (centerX - 7) + 'px';
-          shard.style.top = (centerY - 7) + 'px';
-          tilesLayer.appendChild(shard);
-
-          const angle = (s / 7) * 2 * Math.PI + (Math.random() * 0.4 - 0.2);
-          const dist = 20 + Math.random() * 20;
-          const rot = Math.random() * 240 - 120;
-          const tx = Math.cos(angle) * dist;
-          const ty = Math.sin(angle) * dist;
-
-          shard.animate([
-            { transform: 'translate(0px, 0px) rotate(0deg)', opacity: 1 },
-            { transform: `translate(${tx}px, ${ty}px) rotate(${rot}deg)`, opacity: 0 }
-          ], {
-            duration: 320,
-            easing: 'cubic-bezier(.15, .85, .3, 1)',
-            fill: 'forwards'
-          });
-
-          setTimeout(() => { if (shard.parentNode) shard.remove(); }, 350);
-        }
-      }
-    }, 60);
+    triggerStoneShatterEffect(stoneCell, mergeDest, 7);
   }
 }
 
@@ -1941,7 +2057,10 @@ function getMovesToNextDraft() {
 function updateHeader() {
   const state = controller.getState();
   // Score headline = state.points (with fallback to score), MOVES = moves, MAX TILE
-  const scoreVal = state.points !== undefined ? state.points : state.score;
+  let scoreVal = state.points !== undefined ? state.points : state.score;
+  if (cleanSlateSequenceState && cleanSlateSequenceState.prePayoutScore !== null && cleanSlateSequenceState.prePayoutScore !== undefined) {
+    scoreVal = cleanSlateSequenceState.prePayoutScore;
+  }
   if (statScoreEl) statScoreEl.textContent = scoreVal.toLocaleString('en-US');
   if (statMovesEl) statMovesEl.textContent = String(state.moveCount).padStart(3, '0');
   if (statMaxTileEl) statMaxTileEl.textContent = (state.highestTile || 0).toLocaleString('en-US');
@@ -2262,6 +2381,11 @@ function renderAbilityBar() {
         didHold = false;
         return;
       }
+      if (cleanSlateSequenceState && cleanSlateSequenceState.inputLocked) {
+        cleanSlateSequenceState.ignoredAbilityCount = (cleanSlateSequenceState.ignoredAbilityCount || 0) + 1;
+        e.preventDefault();
+        return;
+      }
       hideRelicPopover();
       controller.recordInput('tap');
 
@@ -2285,6 +2409,7 @@ function renderAbilityBar() {
 }
 
 function startTargeting(relicId) {
+  if (cleanSlateSequenceState && cleanSlateSequenceState.inputLocked) return;
   if (controller.isGameOver() || controller.hasPendingDecision()) return;
   const legalTargets = controller.getLegalTargets(relicId);
   const abilityState = controller.getAbilityState()[relicId];
@@ -2609,6 +2734,11 @@ function executeRewind() {
 }
 
 function executeAbility(relicId, target) {
+  if (cleanSlateSequenceState && cleanSlateSequenceState.inputLocked) {
+    cleanSlateSequenceState.ignoredAbilityCount = (cleanSlateSequenceState.ignoredAbilityCount || 0) + 1;
+    return;
+  }
+
   if (isAnimating) {
     finishCurrentAnimationImmediately();
   }
@@ -2888,6 +3018,11 @@ function handleMove(direction, inputType = 'key') {
   if (controller.isGameOver()) return;
   if (controller.hasPendingDecision()) return;
 
+  if (cleanSlateSequenceState && cleanSlateSequenceState.inputLocked) {
+    cleanSlateSequenceState.ignoredSwipeCount = (cleanSlateSequenceState.ignoredSwipeCount || 0) + 1;
+    return;
+  }
+
   if (isAnimating) {
     finishCurrentAnimationImmediately();
   }
@@ -2973,10 +3108,12 @@ function handleMove(direction, inputType = 'key') {
   }
 
   // Diff cells for vanished stones (shatter / last_stand)
-  for (let i = 0; i < 16; i++) {
-    if (boardBefore[i] === STONE && boardAfter[i] !== STONE) {
-      if (!shatteredStoneSet.has(i)) {
-        flashCellVanish(i);
+  if (!cleanSlateTriggered) {
+    for (let i = 0; i < 16; i++) {
+      if (boardBefore[i] === STONE && boardAfter[i] !== STONE) {
+        if (!shatteredStoneSet.has(i)) {
+          flashCellVanish(i);
+        }
       }
     }
   }
@@ -3726,6 +3863,7 @@ boardEl.addEventListener('touchend', (e) => {
 
 // Board clicks: Mason & Targeting
 boardEl.addEventListener('click', (e) => {
+  if (cleanSlateSequenceState && cleanSlateSequenceState.inputLocked) return;
   // Mason placement
   if (masonCandidates && controller.hasPendingDecision()) {
     const cellEl = e.target.closest('.grid-cell') || e.target.closest('.cell');
@@ -3919,7 +4057,7 @@ function resetEndRunButton() {
 if (btnPauseMenu && pauseOverlay) {
   btnPauseMenu.addEventListener('click', () => {
     controller.recordInput('tap');
-    if (isAnimating) {
+    if (isAnimating || cleanSlateSequenceState) {
       finishCurrentAnimationImmediately();
     }
     tickPlayTimer();
@@ -3934,7 +4072,7 @@ if (btnPauseResume && pauseOverlay) {
     resetEndRunButton();
     pauseOverlay.classList.add('hidden');
     lastPerfTime = performance.now();
-    if (isAnimating) {
+    if (isAnimating || cleanSlateSequenceState) {
       finishCurrentAnimationImmediately();
     }
     if (controller) {
@@ -3949,7 +4087,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     lastPerfTime = performance.now();
   }
-  if (isAnimating) {
+  if (isAnimating || cleanSlateSequenceState) {
     finishCurrentAnimationImmediately();
   }
   if (controller) {

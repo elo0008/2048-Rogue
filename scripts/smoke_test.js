@@ -1816,6 +1816,105 @@ async function runSmokeTest() {
     assert.strictEqual(c4dRes.caseDPass, true, 'C4 (d): Diagonal merge triggers Clean slate and Rewind shows Nothing to undo / disabled');
     console.log('[Smoke Test] ✔ C4 verified: Rewind after Clean Slate passes all 4 cases (a, b, c, d).');
 
+    // E8: Clean Slate Banner Title and Tagline verification
+    console.log('[Smoke Test] Testing E8: Clean Slate banner title and tagline assertions...');
+    const e8Res = await cdp.eval(`
+      (async () => {
+        const results = [];
+
+        // Case 1: Default URL two 1024 tiles -> "2048" + "We Won"
+        window.startNewGame(1001);
+        controller.state.board = [
+          1024, 1024, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0
+        ];
+        window.syncBoard(controller.getBoard(), 'e8-1');
+        window.handleMove('L', 'swipe');
+        await new Promise(r => setTimeout(r, 350));
+        const banner1 = document.getElementById('clean-slate-banner');
+        const title1 = document.getElementById('clean-slate-title')?.textContent?.trim();
+        const sub1 = banner1?.querySelector('.stand-subtitle')?.textContent?.trim();
+        results.push({
+          case: '1024+1024',
+          title: title1,
+          tagline: sub1,
+          expectedTitle: '2048',
+          expectedTagline: 'We Won',
+          pass: title1 === '2048' && sub1 === 'We Won'
+        });
+
+        if (typeof window.finishCleanSlateImmediately === 'function') {
+          window.finishCleanSlateImmediately();
+        }
+
+        // Case 2: two 2048 tiles -> "4096" + "Touch Grass"
+        window.startNewGame(1002);
+        controller.config.ascensionAt = 4096;
+        controller.state.config.ascensionAt = 4096;
+        controller.state.board = [
+          2048, 2048, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0
+        ];
+        window.syncBoard(controller.getBoard(), 'e8-2');
+        window.handleMove('L', 'swipe');
+        await new Promise(r => setTimeout(r, 350));
+        const banner2 = document.getElementById('clean-slate-banner');
+        const title2 = document.getElementById('clean-slate-title')?.textContent?.trim();
+        const sub2 = banner2?.querySelector('.stand-subtitle')?.textContent?.trim();
+        results.push({
+          case: '2048+2048',
+          title: title2,
+          tagline: sub2,
+          expectedTitle: '4096',
+          expectedTagline: 'Touch Grass',
+          pass: title2 === '4096' && sub2 === 'Touch Grass'
+        });
+
+        if (typeof window.finishCleanSlateImmediately === 'function') {
+          window.finishCleanSlateImmediately();
+        }
+
+        // Case 3: ?ascension=64 two 32 tiles -> "64" + "Clean Slate"
+        window.startNewGame(1003);
+        controller.config.ascensionAt = 64;
+        controller.state.config.ascensionAt = 64;
+        controller.state.board = [
+          32, 32, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0,
+          0, 0, 0, 0
+        ];
+        window.syncBoard(controller.getBoard(), 'e8-3');
+        window.handleMove('L', 'swipe');
+        await new Promise(r => setTimeout(r, 350));
+        const banner3 = document.getElementById('clean-slate-banner');
+        const title3 = document.getElementById('clean-slate-title')?.textContent?.trim();
+        const sub3 = banner3?.querySelector('.stand-subtitle')?.textContent?.trim();
+        results.push({
+          case: '32+32 (ascension 64)',
+          title: title3,
+          tagline: sub3,
+          expectedTitle: '64',
+          expectedTagline: 'Clean Slate',
+          pass: title3 === '64' && sub3 === 'Clean Slate'
+        });
+
+        if (typeof window.finishCleanSlateImmediately === 'function') {
+          window.finishCleanSlateImmediately();
+        }
+
+        return results;
+      })()
+    `);
+    for (const r of e8Res) {
+      assert.strictEqual(r.pass, true, `E8 ${r.case}: expected "${r.expectedTitle}" + "${r.expectedTagline}", got "${r.title}" + "${r.tagline}"`);
+      console.log(`[Smoke Test] ✔ E8 verified: ${r.case} -> banner "${r.title}" + "${r.tagline}"`);
+    }
+
     // Dist scan for forbidden strings
     console.log('[Smoke Test] Scanning dist/ for forbidden strings (tailwind, googleapis, fredoka)...');
     const distFiles = fs.readdirSync(distDir, { recursive: true }).filter(f => {

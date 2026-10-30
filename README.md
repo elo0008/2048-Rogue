@@ -91,14 +91,15 @@ The `dist/` directory produced by `npm run build` is completely self-contained w
   - Voluntary run termination via the "End run" button in the Pause menu.
   - Features two-step confirmation: first tap changes the label to "Tap again to end" (reverting after 3 seconds); second tap immediately ends the run with `endedByPlayer: true`, records terminal event `x:end`, and displays the Game Over screen.
 - **Clean Slate (Ascension at 2048 by default):**
-  - Achieving a 2048 tile triggers the Clean Slate milestone sequence (or configured threshold via `?ascension=N`):
-    - Synthesized Web Audio fanfare: 3-chord harmonic crescendo ending in a crisp crystal shatter.
-    - Expanding circular shockwave ring centered on the surviving ascended tile.
-    - Concentric disintegration of outer tiles and hazard stones into particle dust.
-    - Milestone payout points awarded with a floating score popup (`+PAYOUT`).
-    - Centered milestone banner: `"2048 CLEAN SLATE"`.
-    - Zero layout shift: board dimensions, header height, and survivor tile position remain strictly locked throughout the 1500ms sequence (1200ms when `prefers-reduced-motion` is active).
-    - Queued input handling: Swipes during the sequence buffer cleanly; Pause or Play Again cancels or interrupts safely without state desynchronization.
+  - Achieving a 2048 tile (or configured threshold via `?ascension=N`) triggers the strictly sequential Clean Slate ceremony (total duration <= ~3.6 s; <= ~1.8 s in reduced motion):
+    - **Phase A (Triggering Slide):** The triggering swipe's slide and merge complete normally; the pre-wipe board (all tiles and stones) remains visible throughout Phases B and C.
+    - **Phase B (Banner Stamp, T=0 to ~1850 ms):** Reuses the Last Stand stamp component (IN 240 ms, HOLD 1230 ms, OUT 380 ms, board shake, centered impact wave, thud sound). Displays triggering tile value (e.g. "2048", "4096", "64") with dynamic uppercase tagline: `2048` -> `"We Won"`, `4096+` -> `"Touch Grass"`, any other threshold -> `"Clean Slate"`.
+    - **Phase C (Survivor Charge-Up, ~450 ms):** Starts ~150 ms after banner fully exits; surviving max tile glows with moderate gold halo (`box-shadow` alpha <= 0.6, blur <= 18px, zero scale or layout change) accompanied by a rising shimmer sound.
+    - **Phase D (Shockwave Ring, ~700 ms):** An expanding gold ring emanates from the survivor cell center with ease-out expansion reaching the farthest board corner (border >= 3px, peak opacity >= 0.7, soft glow, low thud sound).
+    - **Phase E (Ring-Driven Breaks):** Each destroyed element breaks exactly when the ring front crosses its center (computed via inverted easing: $u = 1 - \sqrt{1 - r/R_{\max}}$). Tiles break with eraser vanish and shard burst; stones break with stone-shatter effect. Concurrent DOM particle elements are strictly capped at <= 80 across all active breaks. Break audio is throttled to at most 1 sound per 60 ms and <= 6 in total.
+    - **Phase F (Payout):** The `+N` payout popup appears near the survivor right after the final break; the HUD SCORE holds the pre-payout score until this moment and reveals full score then.
+    - **Input Policy:** Swipes and ability-button taps during Phases B through E are strictly ignored (no buffering, no sound, no error, not recorded in `events` or `inputMethodCounts`). Pause, Play Again, or `visibilitychange` instantly resolves the ceremony to final state. Any pending draft decision is held until the ceremony completes.
+    - **Reduced Motion:** If `prefers-reduced-motion` is active, the banner remains static for ~1.4 s (same dynamic text), elements fade simultaneously in <= 150 ms, no ring or charge-up is spawned, and total ceremony completes in <= 1.8 s under the same input lock.
 
 ---
 
