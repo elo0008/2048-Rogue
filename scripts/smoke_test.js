@@ -1816,6 +1816,123 @@ async function runSmokeTest() {
     assert.strictEqual(c4dRes.caseDPass, true, 'C4 (d): Diagonal merge triggers Clean slate and Rewind shows Nothing to undo / disabled');
     console.log('[Smoke Test] ✔ C4 verified: Rewind after Clean Slate passes all 4 cases (a, b, c, d).');
 
+    // E9: 3D Rewind assertions: S1, S2, S4 (three offsets: 100ms, 250ms, 400ms), and S7
+    console.log('[Smoke Test] Testing E9: 3D Rewind assertions (S1, S2, S4 at 3 offsets, S7)...');
+    await cdp.send('Page.navigate', { url: makeUrl('?start=rewind&rewind=1&debug=1') });
+    await sleep(400);
+    await cdp.eval(`(() => {
+      const btn = document.getElementById('btn-play-start');
+      if (btn && !btn.closest('.hidden')) btn.click();
+    })()`);
+    await sleep(200);
+
+    const e9Res = await cdp.eval(`
+      (async () => {
+        const results = {};
+
+        // Helper to make N swipes
+        async function makeSwipes(n) {
+          for (let i = 0; i < n; i++) {
+            const vm = window.controller.getValidMoves();
+            if (vm.length > 0) window.handleMove(vm[0]);
+            await new Promise(r => setTimeout(r, 60));
+          }
+          let safety = 0;
+          while (window.isAnimating && safety++ < 50) await new Promise(r => setTimeout(r, 20));
+        }
+
+        // S1: Single rewind from idle
+        await makeSwipes(1);
+        const movesBeforeS1 = window.controller.getState().moveCount;
+        window.executeRewind();
+        let s1Safety = 0;
+        while ((window.rewindDirector.isActive() || window.isAnimating) && s1Safety++ < 120) {
+          await new Promise(r => setTimeout(r, 20));
+        }
+        const b1 = window.controller.getBoard();
+        const dom1 = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+          idx: parseInt(t.getAttribute('data-index'), 10),
+          val: t.getAttribute('data-val')
+        }));
+        results.s1Pass = dom1.length === b1.filter(x => x !== 0).length &&
+          dom1.every(t => b1[t.idx] == t.val) &&
+          (movesBeforeS1 - window.controller.getState().moveCount === 1);
+
+        // S2: Three Rewind taps 60ms apart
+        await makeSwipes(3);
+        const movesBeforeS2 = window.controller.getState().moveCount;
+        window.executeRewind();
+        setTimeout(() => window.executeRewind(), 60);
+        setTimeout(() => window.executeRewind(), 120);
+        let s2Safety = 0;
+        while ((window.rewindDirector.isActive() || window.isAnimating) && s2Safety++ < 120) {
+          await new Promise(r => setTimeout(r, 20));
+        }
+        const b2 = window.controller.getBoard();
+        const dom2 = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+          idx: parseInt(t.getAttribute('data-index'), 10),
+          val: t.getAttribute('data-val')
+        }));
+        results.s2Pass = dom2.length === b2.filter(x => x !== 0).length &&
+          dom2.every(t => b2[t.idx] == t.val) &&
+          (movesBeforeS2 - window.controller.getState().moveCount === 3);
+
+        // S4: Rewind during RISE at three offsets (100ms, 250ms, 400ms)
+        const s4Offsets = [100, 250, 400];
+        results.s4OffsetsPass = true;
+        for (const off of s4Offsets) {
+          await makeSwipes(2);
+          window.executeRewind();
+          let riseSafety = 0;
+          while (window.rewindDirector.getState() !== 'RISE' && riseSafety++ < 60) {
+            await new Promise(r => setTimeout(r, 20));
+          }
+          await new Promise(r => setTimeout(r, off));
+          if (window.rewindDirector.getState() === 'RISE') {
+            window.executeRewind();
+          }
+          let safety = 0;
+          while ((window.rewindDirector.isActive() || window.isAnimating) && safety++ < 120) {
+            await new Promise(r => setTimeout(r, 20));
+          }
+          const b4 = window.controller.getBoard();
+          const dom4 = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+            idx: parseInt(t.getAttribute('data-index'), 10),
+            val: t.getAttribute('data-val')
+          }));
+          const offMatch = dom4.length === b4.filter(x => x !== 0).length && dom4.every(t => b4[t.idx] == t.val);
+          if (!offMatch) results.s4OffsetsPass = false;
+        }
+
+        // S7: Swipe, Rewind, Swipe, Rewind 40ms apart
+        const vm7 = window.controller.getValidMoves();
+        const d7 = vm7.length > 0 ? vm7[0] : 'L';
+        window.handleMove(d7, 'swipe');
+        setTimeout(() => window.executeRewind(), 40);
+        setTimeout(() => window.handleMove(d7, 'swipe'), 80);
+        setTimeout(() => window.executeRewind(), 120);
+        let s7Safety = 0;
+        while ((window.rewindDirector.isActive() || window.isAnimating) && s7Safety++ < 120) {
+          await new Promise(r => setTimeout(r, 20));
+        }
+        const b7 = window.controller.getBoard();
+        const dom7 = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+          idx: parseInt(t.getAttribute('data-index'), 10),
+          val: t.getAttribute('data-val')
+        }));
+        results.s7Pass = dom7.length === b7.filter(x => x !== 0).length &&
+          dom7.every(t => b7[t.idx] == t.val);
+
+        return results;
+      })()
+    `);
+
+    assert.strictEqual(e9Res.s1Pass, true, 'E9: S1 single rewind passes with DOM match and 1 undo');
+    assert.strictEqual(e9Res.s2Pass, true, 'E9: S2 three rapid rewinds pass with DOM match and 3 undos');
+    assert.strictEqual(e9Res.s4OffsetsPass, true, 'E9: S4 rewind during RISE at 3 offsets (100, 250, 400ms) passes smoothly');
+    assert.strictEqual(e9Res.s7Pass, true, 'E9: S7 rapid swipe/rewind interleaving passes with DOM match');
+    console.log('[Smoke Test] ✔ E9 verified: 3D Rewind assertions passed (S1, S2, S4 at 3 offsets, S7).');
+
     // E8: Clean Slate Banner Title and Tagline verification
     console.log('[Smoke Test] Testing E8: Clean Slate banner title and tagline assertions...');
     const e8Res = await cdp.eval(`

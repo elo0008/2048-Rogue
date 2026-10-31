@@ -206,4 +206,62 @@ The `events` array records input actions in exact chronological submission order
 
 Replay ordering is strictly the array order (move numbers are never used for ordering). The pure verifier function `verifyRun(runLog, options)` re-simulates the game and asserts that `rulesVersion`, `replayVersion`, final board state, total moves at death, points score, max tile, relics owned, draft picks, `ascensions`, `endedByPlayer`, and Last Stand activations match the claimed values.
 
+---
+
+## 3D Rewind Architecture & Input Director
+
+The Rewind ability features a physical 3D "sink and resurface" animation orchestrator driven by the Web Animations API (WAAPI) and governed by a deterministic finite state machine (`RewindDirector`).
+
+### 1. Spatial Geometry & Math Formulation
+Each board cell tile and stone undergoes keyframed 3D kinematics projecting inward toward the board centre $C$:
+- **Vector & Distance**: $v = C - T$, $d = |v|$, $d_{\max} = p\sqrt{1.5^2 + 1.5^2}$, $r = d / d_{\max}$ ($r_{\min} = 1/3$ for middle tiles).
+- **Normalized Radius**: $\rho = (r - r_{\min}) / (1 - r_{\min}) \in [0, 1]$ ($0$ centre, $1$ corners).
+- **Inward Pitch/Roll**: $u = (T.x - C.x)/(1.5p)$, $w = (T.y - C.y)/(1.5p) \in [-1, 1]$.
+- **Tilt Angle & Depth**: $\theta = \text{lerp}(10^\circ, 25^\circ, r)$, $Z = 300 + 300 \cdot (0.4r + 0.6\xi)$ where $\xi$ is a deterministic pseudorandom value seeded from `hash(runId, moveCount)`.
+- **SINK Nadir Pose**: `translate3d(0.35*v.x, 0.35*v.y, -Z) rotateX(w*theta) rotateY(-u*theta) scale(0.85)`. Tiles tip their inner edges away from the viewer like a funnel wall.
+- **Timing & Delays**:
+  - Outer tiles sink first: delay $= 140(1 - \rho) + 60\xi_2 \in [0, 200\text{ ms}]$, duration $= 320 + 30\xi \in [320, 350\text{ ms}]$.
+  - Centre tiles rise first: delay $= 110\rho + 70\xi_2 \in [0, 180\text{ ms}]$, duration $= 400 + 20\xi \in [400, 420\text{ ms}]$.
+
+### 2. REWIND_FX Configuration Constants
+```javascript
+export const REWIND_FX = {
+  perspective: 1100,
+  alpha: 0.35,
+  zMin: 300,
+  zMax: 600,
+  tiltMin: 10,
+  tiltMax: 25,
+  sinkScale: 0.85,
+  sinkDelayMax: 200,
+  sinkDurationMin: 320,
+  sinkDurationMax: 350,
+  riseDelayMax: 180,
+  riseDurationMin: 400,
+  riseDurationMax: 420,
+  sinkEasing: 'cubic-bezier(0.4, 0, 1, 1)',
+  riseTransformEasing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+  rampMs: 140,
+  catchUpMs: 220,
+  maxRate: 6,
+  reverseRate: 1.5,
+  queueMax: 4
+};
+```
+
+### 3. Director State Machine & Rushed Input
+- **States**: `IDLE`, `WAIT_SLIDE`, `SINK`, `SWAP`, `RISE`, `RISE_REVERSE`.
+- **Rushed Rewind Taps**:
+  - During `IDLE`: Immediately applies undo, deducts charge pip, logs event, and enters `SINK`. If a slide is active, enters `WAIT_SLIDE` and waits for slide completion.
+  - During `SINK` (empty queue): Coalesces and applies engine undo immediately so the upcoming `SWAP` reveals the newest state.
+  - During `RISE` (empty queue): Enters `RISE_REVERSE` — ramps `playbackRate` to $-1.5$ over 140 ms using smoothstep $s(x) = x^2(3-2x)$ so tiles ease back down smoothly to the nadir without snapping, then swaps and rises forward.
+  - During non-empty queue: Enqueued in FIFO input queue (capped at `queueMax = 4`).
+- **Catch-Up Time Scaling**:
+  - When the queue is non-empty, the active group smoothly ramps its rate:
+    $$K = \text{clamp}\left(\frac{\max(endTime - currentTime)}{\text{catchUpMs}}, 1, \text{maxRate}\right)$$
+- **Swap Barrier (D2)**: All animations settle at nadir (`Promise.all(group.map(a => a.finished))`), finished animations are cancelled, and fresh tiles are built synchronously (`syncBoard(..., 'rewind-swap')`) with `opacity: 0` and nadir transform before rising.
+- **Authoritative Cleanup (D4)**: At the top of rise, resting poses are committed, will-change is removed, and authoritative syncBoard reconciliation runs with 0 corrections.
+- **Reduced Motion**: 150 ms linear opacity crossfade preserving full director queueing and catch-up rules.
+
+
 

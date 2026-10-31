@@ -444,6 +444,7 @@ const START_SLIDE_MONITOR_SCRIPT = `
     window.__slideMonitorInterval = setInterval(() => {
       const layer = document.getElementById('tiles-layer');
       if (!layer) return;
+      if (window.rewindDirector && window.rewindDirector.isActive()) return;
       const tiles = layer.querySelectorAll('.tile');
       for (const tile of tiles) {
         const anims = typeof tile.getAnimations === 'function' ? tile.getAnimations() : [];
@@ -561,6 +562,7 @@ async function runScenario(cdp, name, urlParams, runner, setupFn = null) {
         slideFinish: 0,
         interrupt: 0,
         rewind: 0,
+        'rewind-swap': 0,
         ability: 0,
         'decision-resolve': 0,
         'draft-resolve': 0,
@@ -1773,6 +1775,335 @@ async function runFuzz() {
       results[results.length - 1].pass = false;
     }
 
+    // Scenario O: Rewind 3D rush matrix (S2-S8, S10, S12)
+    let nO_S2 = 0, nO_S3 = 0, nO_S4 = 0, nO_S5 = 0, nO_S6 = 0, nO_S7 = 0, nO_S8 = 0, nO_S10_12 = 0;
+    results.push(await runScenario(cdp, 'O (rewind 3D rush matrix S2-S8, S10, S12)', 'start=rewind&rewind=1&debug=1', async (c, i) => {
+      const mode = i % 8;
+      let desc = '';
+      if (mode === 0) {
+        // S2: 3 rapid rewind taps 60ms apart
+        const res = await c.eval(`
+          new Promise(async (resolve) => {
+            for (let m = 0; m < 3; m++) {
+              const vm = window.controller.getValidMoves();
+              if (vm.length > 0) window.handleMove(vm[0], 'swipe');
+              await new Promise(r => setTimeout(r, 60));
+            }
+            while (window.isAnimating) await new Promise(r => setTimeout(r, 20));
+
+            const movesBefore = window.controller.getState().moveCount;
+            window.executeRewind();
+            setTimeout(() => window.executeRewind(), 60);
+            setTimeout(() => window.executeRewind(), 120);
+
+            let safety = 0;
+            function check() {
+              if ((!window.isAnimating && window.rewindDirector.getState() === 'IDLE') || safety++ > 150) {
+                const engineBoard = window.controller.getBoard();
+                const domTiles = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+                  idx: parseInt(t.getAttribute('data-index'), 10),
+                  val: t.getAttribute('data-val')
+                }));
+                const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                  domTiles.every(t => engineBoard[t.idx] == t.val);
+                resolve({ domMatches, undos: movesBefore - window.controller.getState().moveCount });
+              } else {
+                setTimeout(check, 20);
+              }
+            }
+            setTimeout(check, 180);
+          })
+        `);
+        if (res.domMatches) nO_S2++;
+        desc = `S2 3x rewind 60ms apart (undos: ${res.undos}, domMatches: ${res.domMatches})`;
+      } else if (mode === 1) {
+        // S3: Rewind tap during SINK
+        const res = await c.eval(`
+          new Promise(async (resolve) => {
+            for (let m = 0; m < 2; m++) {
+              const vm = window.controller.getValidMoves();
+              if (vm.length > 0) window.handleMove(vm[0], 'swipe');
+              await new Promise(r => setTimeout(r, 60));
+            }
+            while (window.isAnimating) await new Promise(r => setTimeout(r, 20));
+
+            window.executeRewind();
+            setTimeout(() => {
+              if (window.rewindDirector.getState() === 'SINK') {
+                window.executeRewind();
+              }
+            }, 100);
+
+            let safety = 0;
+            function check() {
+              if ((!window.isAnimating && window.rewindDirector.getState() === 'IDLE') || safety++ > 150) {
+                const engineBoard = window.controller.getBoard();
+                const domTiles = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+                  idx: parseInt(t.getAttribute('data-index'), 10),
+                  val: t.getAttribute('data-val')
+                }));
+                const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                  domTiles.every(t => engineBoard[t.idx] == t.val);
+                resolve({ domMatches });
+              } else {
+                setTimeout(check, 20);
+              }
+            }
+            setTimeout(check, 160);
+          })
+        `);
+        if (res.domMatches) nO_S3++;
+        desc = `S3 rewind during SINK (domMatches: ${res.domMatches})`;
+      } else if (mode === 2) {
+        // S4: Rewind tap during RISE (RISE_REVERSE)
+        const res = await c.eval(`
+          new Promise(async (resolve) => {
+            for (let m = 0; m < 2; m++) {
+              const vm = window.controller.getValidMoves();
+              if (vm.length > 0) window.handleMove(vm[0], 'swipe');
+              await new Promise(r => setTimeout(r, 60));
+            }
+            while (window.isAnimating) await new Promise(r => setTimeout(r, 20));
+
+            window.executeRewind();
+            let reversed = false;
+            let safetyR = 0;
+            function tryReverse() {
+              if (window.rewindDirector.getState() === 'RISE' && !reversed) {
+                reversed = true;
+                window.executeRewind();
+              }
+              if (!reversed && safetyR++ < 80) {
+                setTimeout(tryReverse, 15);
+              }
+            }
+            setTimeout(tryReverse, 100);
+
+            let safety = 0;
+            function check() {
+              if ((!window.isAnimating && window.rewindDirector.getState() === 'IDLE') || safety++ > 150) {
+                const engineBoard = window.controller.getBoard();
+                const domTiles = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+                  idx: parseInt(t.getAttribute('data-index'), 10),
+                  val: t.getAttribute('data-val')
+                }));
+                const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                  domTiles.every(t => engineBoard[t.idx] == t.val);
+                resolve({ reversed, domMatches });
+              } else {
+                setTimeout(check, 20);
+              }
+            }
+            setTimeout(check, 250);
+          })
+        `);
+        if (res.domMatches) nO_S4++;
+        desc = `S4 rewind during RISE (reversed: ${res.reversed}, domMatches: ${res.domMatches})`;
+      } else if (mode === 3) {
+        // S5: Swipes during SINK, swap, and RISE
+        const res = await c.eval(`
+          new Promise(async (resolve) => {
+            const vm = window.controller.getValidMoves();
+            if (vm.length > 0) window.handleMove(vm[0], 'swipe');
+            while (window.isAnimating) await new Promise(r => setTimeout(r, 20));
+
+            window.executeRewind();
+            setTimeout(() => window.handleMove('ArrowLeft', 'swipe'), 80);
+            setTimeout(() => window.handleMove('ArrowRight', 'swipe'), 350);
+
+            let safety = 0;
+            function check() {
+              if ((!window.isAnimating && window.rewindDirector.getState() === 'IDLE') || safety++ > 150) {
+                const engineBoard = window.controller.getBoard();
+                const domTiles = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+                  idx: parseInt(t.getAttribute('data-index'), 10),
+                  val: t.getAttribute('data-val')
+                }));
+                const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                  domTiles.every(t => engineBoard[t.idx] == t.val);
+                resolve({ domMatches });
+              } else {
+                setTimeout(check, 20);
+              }
+            }
+            setTimeout(check, 300);
+          })
+        `);
+        if (res.domMatches) nO_S5++;
+        desc = `S5 swipes during rewind (domMatches: ${res.domMatches})`;
+      } else if (mode === 4) {
+        // S6: Rewind during normal slide (WAIT_SLIDE)
+        const res = await c.eval(`
+          new Promise(async (resolve) => {
+            const vm = window.controller.getValidMoves();
+            if (vm.length > 0) {
+              window.handleMove(vm[0], 'swipe');
+              window.executeRewind();
+            }
+            let safety = 0;
+            function check() {
+              if ((!window.isAnimating && window.rewindDirector.getState() === 'IDLE') || safety++ > 150) {
+                const engineBoard = window.controller.getBoard();
+                const domTiles = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+                  idx: parseInt(t.getAttribute('data-index'), 10),
+                  val: t.getAttribute('data-val')
+                }));
+                const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                  domTiles.every(t => engineBoard[t.idx] == t.val);
+                resolve({ domMatches });
+              } else {
+                setTimeout(check, 20);
+              }
+            }
+            setTimeout(check, 200);
+          })
+        `);
+        if (res.domMatches) nO_S6++;
+        desc = `S6 rewind during slide (domMatches: ${res.domMatches})`;
+      } else if (mode === 5) {
+        // S7: Swipe, Rewind, Swipe, Rewind 40ms apart
+        const res = await c.eval(`
+          new Promise(async (resolve) => {
+            const vm = window.controller.getValidMoves();
+            const d = vm.length > 0 ? vm[0] : 'ArrowLeft';
+            window.handleMove(d, 'swipe');
+            setTimeout(() => window.executeRewind(), 40);
+            setTimeout(() => window.handleMove(d, 'swipe'), 80);
+            setTimeout(() => window.executeRewind(), 120);
+
+            let safety = 0;
+            function check() {
+              if ((!window.isAnimating && window.rewindDirector.getState() === 'IDLE') || safety++ > 150) {
+                const engineBoard = window.controller.getBoard();
+                const domTiles = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+                  idx: parseInt(t.getAttribute('data-index'), 10),
+                  val: t.getAttribute('data-val')
+                }));
+                const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                  domTiles.every(t => engineBoard[t.idx] == t.val);
+                resolve({ domMatches });
+              } else {
+                setTimeout(check, 20);
+              }
+            }
+            setTimeout(check, 250);
+          })
+        `);
+        if (res.domMatches) nO_S7++;
+        desc = `S7 rapid interleaved swipe & rewind 40ms apart (domMatches: ${res.domMatches})`;
+      } else if (mode === 6) {
+        // S8: 6 swipes in 300ms during SINK (queueMax 4)
+        const res = await c.eval(`
+          new Promise(async (resolve) => {
+            const vm = window.controller.getValidMoves();
+            if (vm.length > 0) window.handleMove(vm[0], 'swipe');
+            while (window.isAnimating) await new Promise(r => setTimeout(r, 20));
+
+            window.executeRewind();
+            for (let s = 0; s < 6; s++) {
+              setTimeout(() => window.handleMove('ArrowUp', 'swipe'), 30 + s * 45);
+            }
+
+            let safety = 0;
+            function check() {
+              if ((!window.isAnimating && window.rewindDirector.getState() === 'IDLE') || safety++ > 150) {
+                const engineBoard = window.controller.getBoard();
+                const domTiles = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+                  idx: parseInt(t.getAttribute('data-index'), 10),
+                  val: t.getAttribute('data-val')
+                }));
+                const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                  domTiles.every(t => engineBoard[t.idx] == t.val);
+                const ignored = window.rewindDirector.getIgnoredCount();
+                resolve({ domMatches, ignored });
+              } else {
+                setTimeout(check, 20);
+              }
+            }
+            setTimeout(check, 350);
+          })
+        `);
+        if (res.domMatches) nO_S8++;
+        desc = `S8 6 swipes during SINK (ignored: ${res.ignored}, domMatches: ${res.domMatches})`;
+      } else if (mode === 7) {
+        if (i % 16 < 8) {
+          // S10: Pause modal during rewind
+          const res = await c.eval(`
+            new Promise(async (resolve) => {
+              const vm = window.controller.getValidMoves();
+              if (vm.length > 0) window.handleMove(vm[0], 'swipe');
+              while (window.isAnimating) await new Promise(r => setTimeout(r, 20));
+
+              window.executeRewind();
+              setTimeout(() => {
+                const btnPause = document.getElementById('btn-pause-menu');
+                if (btnPause) btnPause.click();
+                setTimeout(() => {
+                  const btnResume = document.getElementById('btn-pause-resume');
+                  if (btnResume) btnResume.click();
+                }, 150);
+              }, 100);
+
+              let safety = 0;
+              function check() {
+                if ((!window.isAnimating && window.rewindDirector.getState() === 'IDLE') || safety++ > 150) {
+                  const engineBoard = window.controller.getBoard();
+                  const domTiles = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+                    idx: parseInt(t.getAttribute('data-index'), 10),
+                    val: t.getAttribute('data-val')
+                  }));
+                  const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                    domTiles.every(t => engineBoard[t.idx] == t.val);
+                  resolve({ domMatches });
+                } else {
+                  setTimeout(check, 20);
+                }
+              }
+              setTimeout(check, 250);
+            })
+          `);
+          if (res.domMatches) nO_S10_12++;
+          desc = `S10 pause modal during rewind (domMatches: ${res.domMatches})`;
+        } else {
+          // S12: Play Again during SINK
+          const res = await c.eval(`
+            new Promise(async (resolve) => {
+              const vm = window.controller.getValidMoves();
+              if (vm.length > 0) window.handleMove(vm[0], 'swipe');
+              while (window.isAnimating) await new Promise(r => setTimeout(r, 20));
+
+              window.executeRewind();
+              setTimeout(() => {
+                if (typeof window.startNewGame === 'function') window.startNewGame();
+              }, 80);
+
+              let safety = 0;
+              function check() {
+                if ((!window.isAnimating && window.rewindDirector.getState() === 'IDLE') || safety++ > 150) {
+                  const engineBoard = window.controller.getBoard();
+                  const domTiles = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+                    idx: parseInt(t.getAttribute('data-index'), 10),
+                    val: t.getAttribute('data-val')
+                  }));
+                  const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
+                    domTiles.every(t => engineBoard[t.idx] == t.val);
+                  resolve({ domMatches });
+                } else {
+                  setTimeout(check, 20);
+                }
+              }
+              setTimeout(check, 200);
+            })
+          `);
+          if (res.domMatches) nO_S10_12++;
+          desc = `S12 Play Again during SINK (domMatches: ${res.domMatches})`;
+        }
+      }
+      return { desc };
+    }));
+
+    console.log(`[Scenario O Rewind Matrix Stats]: S2: ${nO_S2}, S3: ${nO_S3}, S4: ${nO_S4}, S5: ${nO_S5}, S6: ${nO_S6}, S7: ${nO_S7}, S8: ${nO_S8}, S10/12: ${nO_S10_12}`);
+
     cdp.close();
 
     const failedScenarios = results.filter(r => !r.pass);
@@ -1812,7 +2143,7 @@ async function runFuzz() {
 
     for (const r of results) {
       const sf = r.callSites?.slideFinish || 0;
-      const rw = r.callSites?.rewind || 0;
+      const rw = (r.callSites?.rewind || 0) + (r.callSites?.['rewind-swap'] || 0);
       const ab = r.callSites?.ability || 0;
       const dec = r.callSites?.['decision-resolve'] || 0;
       const drf = r.callSites?.['draft-resolve'] || 0;

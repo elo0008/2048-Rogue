@@ -524,6 +524,8 @@ button:focus-visible {
   position: relative;
   flex: none;
   margin: 0 auto;
+  perspective: 1100px;
+  perspective-origin: 50% 50%;
 }
 
 .board, .game-board {
@@ -664,6 +666,7 @@ button:focus-visible {
   overflow: visible;
   display: block;
   z-index: 10;
+  transform-style: preserve-3d;
 }
 
 @media (max-width: 359px) {
@@ -684,11 +687,11 @@ button:focus-visible {
   left: 0;
   top: 0;
   box-sizing: border-box;
-  will-change: transform;
   pointer-events: auto;
   border-radius: 8px;
   user-select: none;
   -webkit-user-select: none;
+  backface-visibility: hidden;
 }
 
 .tile-face {

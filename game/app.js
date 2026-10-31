@@ -1668,6 +1668,7 @@ window.__correctionsByCallSite = {
   slideFinish: 0,
   interrupt: 0,
   rewind: 0,
+  'rewind-swap': 0,
   ability: 0,
   'decision-resolve': 0,
   'draft-resolve': 0,
@@ -2529,208 +2530,708 @@ function clearTargetingHighlights() {
   }
 }
 
-function playReverseSlideAnimation(entry, restoredBoard, res) {
-  isAnimating = true;
-  const metrics = getGridMetrics();
 
-  // (1) Newly spawned tiles/stones shrink/fade out
-  const spawnedIndices = [];
-  for (let i = 0; i < 16; i++) {
-    if (entry.boardAfter[i] !== 0 && entry.boardAfterSlide[i] === 0) {
-      spawnedIndices.push(i);
-    }
-  }
 
-  const spawnedEls = [];
-  for (const idx of spawnedIndices) {
-    const el = tilesLayer.querySelector(`.tile[data-index="${idx}"], .stone[data-index="${idx}"]`);
-    if (el) {
-      spawnedEls.push(el);
-      const isStone = el.classList.contains('stone');
-      const face = el.querySelector('.tile-face') || el;
-      if (isStone) {
-        face.animate([
-          { transform: 'scale(1.0)', opacity: 1 },
-          { transform: 'scale(1.45)', opacity: 0 }
-        ], { duration: 80, easing: 'ease-in', fill: 'forwards' });
-      } else {
-        face.animate([
-          { transform: 'scale(1.0)', opacity: 1 },
-          { transform: 'scale(0.2)', opacity: 0 }
-        ], { duration: 60, easing: 'ease-in', fill: 'forwards' });
-      }
-      setTimeout(() => {
-        if (el.parentNode) el.remove();
-      }, 85);
-    }
-  }
+/* -------------------------------------------------------------
+ * 3D Rewind FX & Input Director
+ * ------------------------------------------------------------- */
+export const REWIND_FX = {
+  perspective: 1100,
+  alpha: 0.35,
+  zMin: 300,
+  zMax: 600,
+  tiltMin: 10,
+  tiltMax: 25,
+  sinkScale: 0.85,
+  sinkDelayMax: 200,
+  sinkDurationMin: 320,
+  sinkDurationMax: 350,
+  riseDelayMax: 180,
+  riseDurationMin: 400,
+  riseDurationMax: 420,
+  sinkEasing: 'cubic-bezier(0.4, 0, 1, 1)',
+  riseTransformEasing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+  rampMs: 140,
+  catchUpMs: 220,
+  maxRate: 6,
+  reverseRate: 1.5,
+  queueMax: 4,
+};
+if (typeof window !== 'undefined') {
+  window.REWIND_FX = REWIND_FX;
+}
 
-  // (2) Merged survivor splits and unmerged tiles slide back following reversed overshoot
-  const moves = entry.moves || [];
-  const swipeDir = entry.dir;
-  const overshootDx = swipeDir === 'L' ? -4 : (swipeDir === 'R' ? 4 : 0);
-  const overshootDy = swipeDir === 'U' ? -4 : (swipeDir === 'D' ? 4 : 0);
-
-  const byDest = new Map();
-  for (const m of moves) {
-    if (!byDest.has(m.toIndex)) byDest.set(m.toIndex, []);
-    byDest.get(m.toIndex).push(m);
-  }
-
-  const animPromises = [];
-
-  for (const [dest, destMoves] of byDest.entries()) {
-    const destTrans = getTileTranslate(dest, metrics);
-
-    if (destMoves.length === 2 && destMoves[0].isMerge) {
-      const m1 = destMoves[0];
-      const m2 = destMoves[1];
-      const val = m1.value;
-
-      let survivor = tilesLayer.querySelector(`.tile[data-index="${dest}"]:not(.duplicate)`);
-      if (!survivor) {
-        survivor = createTileElement(dest, m1.resultValue, false, metrics);
-        tilesLayer.appendChild(survivor);
-      }
-      survivor.className = `tile ${getTileClasses(val)}`;
-      survivor.setAttribute('data-val', String(val));
-      const sFace = survivor.querySelector('.tile-face');
-      if (sFace) {
-        sFace.className = `tile-face ${getTileClasses(val)}`;
-        sFace.textContent = val;
-        sFace.animate([
-          { transform: 'scale(1.15)', offset: 0 },
-          { transform: 'scale(1.0)', offset: 1 }
-        ], { duration: 90, easing: 'ease-out' });
-      }
-
-      const duplicate = createTileElement(dest, val, false, metrics);
-      duplicate.classList.add('duplicate');
-      tilesLayer.appendChild(duplicate);
-
-      const delay = (3 - m1.lineIndex) * 15;
-      const t1 = getTileTranslate(m1.fromIndex, metrics);
-      const t2 = getTileTranslate(m2.fromIndex, metrics);
-
-      survivor.setAttribute('data-index', String(m1.fromIndex));
-      duplicate.setAttribute('data-index', String(m2.fromIndex));
-
-      const a1 = survivor.animate([
-        { transform: `translate3d(${destTrans.x}px, ${destTrans.y}px, 0)` },
-        { transform: `translate3d(${t1.x}px, ${t1.y}px, 0)` }
-      ], {
-        duration: 140,
-        delay,
-        easing: 'cubic-bezier(.15, .85, .3, 1)',
-        fill: 'forwards'
-      });
-      animPromises.push(a1.finished);
-
-      const a2 = duplicate.animate([
-        { transform: `translate3d(${destTrans.x}px, ${destTrans.y}px, 0)` },
-        { transform: `translate3d(${t2.x}px, ${t2.y}px, 0)` }
-      ], {
-        duration: 140,
-        delay,
-        easing: 'cubic-bezier(.15, .85, .3, 1)',
-        fill: 'forwards'
-      });
-      animPromises.push(a2.finished);
-
-    } else if (destMoves.length === 1) {
-      const m = destMoves[0];
-      const el = tilesLayer.querySelector(`.tile[data-index="${dest}"]`);
-      if (el) {
-        const fromTrans = getTileTranslate(m.fromIndex, metrics);
-        el.setAttribute('data-index', String(m.fromIndex));
-        const delay = (3 - m.lineIndex) * 15;
-
-        const startX = destTrans.x + overshootDx;
-        const startY = destTrans.y + overshootDy;
-
-        const a = el.animate([
-          { transform: `translate3d(${startX}px, ${startY}px, 0)`, offset: 0 },
-          { transform: `translate3d(${fromTrans.x}px, ${fromTrans.y}px, 0)`, offset: 1 }
-        ], {
-          duration: 140,
-          delay,
-          easing: 'cubic-bezier(.15, .85, .3, 1)',
-          fill: 'forwards'
-        });
-        animPromises.push(a.finished);
-      }
-    }
-  }
-
-  let finished = false;
-  function finishReverseAnimation() {
-    if (finished) return;
-    finished = true;
-    for (const el of spawnedEls) {
-      if (el && el.parentNode) el.remove();
-    }
-    alignDomToBoard(restoredBoard, metrics);
-    syncBoard(restoredBoard, 'rewind');
-    isAnimating = false;
-    currentAnimationState = null;
-    updateHeader();
-    renderGhostTiles();
-    renderAbilityBar();
-    if (controller.isGameOver()) handleGameOver();
-  }
-
-  currentAnimationState = {
-    commitSlideCompletion: finishReverseAnimation,
-    cancelAnimation: finishReverseAnimation,
+function createRewindRng(seed) {
+  let s = (seed >>> 0) || 1;
+  return function() {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
 
-  Promise.all(animPromises).then(() => {
-    setTimeout(finishReverseAnimation, 20);
-  }).catch(() => finishReverseAnimation());
+function getRewindSeed(ctrl) {
+  const state = ctrl ? ctrl.getState() : {};
+  const runId = String(state.runId || 'run');
+  const moveCount = Number(state.moveCount || 0);
+  let str = `${runId}:${moveCount}`;
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 16777619) >>> 0;
+  }
+  return h;
+}
+
+function computeTilePose(index, metrics, seed, phase) {
+  const p = metrics.stepX || 76;
+  const col = index % 4;
+  const row = Math.floor(index / 4);
+
+  const u = (col - 1.5) / 1.5;
+  const w = (row - 1.5) / 1.5;
+
+  const vx = (1.5 - col) * p;
+  const vy = (1.5 - row) * p;
+
+  const d = Math.sqrt(vx * vx + vy * vy);
+  const dMax = p * Math.sqrt(1.5 * 1.5 + 1.5 * 1.5);
+  const r = d / dMax;
+  const rMin = 1 / 3;
+  const rho = Math.max(0, Math.min(1, (r - rMin) / (1 - rMin)));
+
+  const rng = createRewindRng((seed ^ (index * 2654435761) ^ (phase === 'rise' ? 0x9e3779b9 : 0)) >>> 0);
+  const xi = rng();
+  const xi2 = rng();
+
+  const Z = 300 + 300 * (0.4 * r + 0.6 * xi);
+  const theta = 10 + 15 * r;
+
+  const baseTrans = getTileTranslate(index, metrics);
+
+  const nadirTransform = `${baseTrans.transform} translate3d(${REWIND_FX.alpha * vx}px, ${REWIND_FX.alpha * vy}px, -${Z}px) rotateX(${w * theta}deg) rotateY(${-u * theta}deg) scale(${REWIND_FX.sinkScale})`;
+  const baseTransform = `${baseTrans.transform} translate3d(0px, 0px, 0px) rotateX(0deg) rotateY(0deg) scale(1)`;
+
+  const sinkDelay = 140 * (1 - rho) + 60 * xi2;
+  const sinkDuration = 320 + 30 * xi;
+
+  const riseDelay = 110 * rho + 70 * xi2;
+  const riseDuration = 400 + 20 * xi;
+
+  return {
+    index, col, row, u, w, vx, vy, r, rho, xi, xi2, Z, theta,
+    baseTransform, nadirTransform,
+    sinkDelay, sinkDuration,
+    riseDelay, riseDuration
+  };
+}
+
+class RewindDirector {
+  constructor() {
+    this.state = 'IDLE';
+    this.queue = [];
+    this.ignoredCount = 0;
+    this.currentGroup = [];
+    this.epoch = 0;
+    this.currentRate = 1.0;
+    this.targetRate = 1.0;
+    this.rateRaf = null;
+    this.isPaused = false;
+    this.stateHistory = [];
+    this.rateHistory = [];
+    this.swapCount = 0;
+    this.sinkEndTime = 0;
+    this.swapTime = 0;
+    this.riseEndTime = 0;
+  }
+
+  getState() {
+    return this.state;
+  }
+
+  isActive() {
+    return this.state !== 'IDLE';
+  }
+
+  getQueue() {
+    return [...this.queue];
+  }
+
+  getIgnoredCount() {
+    return this.ignoredCount;
+  }
+
+  setState(newState) {
+    const ts = performance.now();
+    this.state = newState;
+    this.stateHistory.push({
+      state: newState,
+      time: ts,
+      queue: this.queue.map(q => q.type),
+      rate: this.currentRate
+    });
+  }
+
+  enqueueInput(type, payload) {
+    if (this.queue.length >= REWIND_FX.queueMax) {
+      this.ignoredCount++;
+      return false;
+    }
+    this.queue.push({ type, payload });
+    if (this.state === 'SINK' || this.state === 'RISE' || this.state === 'RISE_REVERSE') {
+      this.triggerCatchUp();
+    }
+    return true;
+  }
+
+  triggerCatchUp() {
+    if (this.queue.length === 0 || this.currentGroup.length === 0) return;
+    let maxRemaining = 0;
+    for (const a of this.currentGroup) {
+      const timing = a.effect ? a.effect.getComputedTiming() : null;
+      if (timing && typeof timing.endTime === 'number') {
+        const cur = typeof a.currentTime === 'number' ? a.currentTime : 0;
+        const rem = Math.max(0, timing.endTime - cur);
+        if (rem > maxRemaining) maxRemaining = rem;
+      }
+    }
+    const K = Math.max(1, Math.min(REWIND_FX.maxRate, maxRemaining / REWIND_FX.catchUpMs));
+    const targetK = Math.max(K, this.targetRate);
+    if (targetK > this.currentRate) {
+      this.startRateRamp(targetK);
+    }
+  }
+
+  startRateRamp(targetK) {
+    this.targetRate = targetK;
+    const startRate = this.currentRate;
+    const startTime = performance.now();
+    const rampDuration = REWIND_FX.rampMs;
+    const epoch = this.epoch;
+
+    if (this.rateRaf) cancelAnimationFrame(this.rateRaf);
+
+    const tickRamp = (now) => {
+      if (this.epoch !== epoch || !this.isActive()) return;
+      const elapsed = now - startTime;
+      const progress = Math.max(0, Math.min(1, elapsed / rampDuration));
+      const s = progress * progress * (3 - 2 * progress);
+      const k = startRate + (targetK - startRate) * s;
+      this.currentRate = k;
+
+      for (const a of this.currentGroup) {
+        try { a.updatePlaybackRate(k); } catch {}
+      }
+
+      this.rateHistory.push({ time: now, rate: k });
+
+      if (progress < 1) {
+        this.rateRaf = requestAnimationFrame(tickRamp);
+      }
+    };
+
+    this.rateRaf = requestAnimationFrame(tickRamp);
+  }
+
+  processRewindAction() {
+    const canUseNow = controller.getRewindUndoLevels ? controller.getRewindUndoLevels() > 0 : true;
+    const abilityState = controller.getAbilityState()?.rewind;
+    const hasCharges = abilityState && abilityState.charges > 0;
+
+    if (!canUseNow || !hasCharges) {
+      showToast('Nothing to undo');
+      return false;
+    }
+
+    const res = controller.useAbility('rewind', {});
+    if (!res.success) {
+      showToast(res.error || 'Nothing to undo');
+      return false;
+    }
+
+    if (uiMoveLog.length > 0) {
+      uiMoveLog.pop();
+    }
+
+    playRewind();
+    renderAbilityBar();
+    return true;
+  }
+
+  handleRewindTap() {
+    if (controller.isGameOver()) return;
+    if (controller.hasPendingDecision()) return;
+
+    if (this.state === 'IDLE') {
+      if (isAnimating) {
+        this.setState('WAIT_SLIDE');
+        this.enqueueInput('rewind', {});
+        return;
+      }
+      const processed = this.processRewindAction();
+      if (processed) {
+        this.startSink();
+      }
+      return;
+    }
+
+    if (this.state === 'WAIT_SLIDE') {
+      this.enqueueInput('rewind', {});
+      return;
+    }
+
+    if (this.state === 'SINK') {
+      if (this.queue.length === 0) {
+        this.processRewindAction();
+      } else {
+        this.enqueueInput('rewind', {});
+      }
+      return;
+    }
+
+    if (this.state === 'RISE') {
+      if (this.queue.length === 0) {
+        const processed = this.processRewindAction();
+        if (processed) {
+          this.startRiseReverse();
+        }
+      } else {
+        this.enqueueInput('rewind', {});
+      }
+      return;
+    }
+
+    if (this.state === 'RISE_REVERSE') {
+      if (this.queue.length === 0) {
+        this.processRewindAction();
+      } else {
+        this.enqueueInput('rewind', {});
+      }
+      return;
+    }
+
+    if (this.state === 'SWAP') {
+      this.enqueueInput('rewind', {});
+      return;
+    }
+  }
+
+  onSlideAnimationComplete() {
+    if (this.state === 'WAIT_SLIDE') {
+      this.setState('IDLE');
+      this.processQueue();
+    }
+  }
+
+  startSink() {
+    const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced) {
+      this.startReducedMotionSequence();
+      return;
+    }
+
+    this.setState('SINK');
+    isAnimating = true;
+    this.currentRate = 1.0;
+    this.targetRate = 1.0;
+    const epoch = ++this.epoch;
+
+    const metrics = getGridMetrics();
+    const seed = getRewindSeed(controller);
+    const tiles = Array.from(tilesLayer.children).filter(el =>
+      el.classList.contains('tile') || el.classList.contains('stone')
+    );
+
+    const sinkAnims = [];
+
+    for (const el of tiles) {
+      const idx = parseInt(el.getAttribute('data-index'), 10);
+      const pose = computeTilePose(idx, metrics, seed, 'sink');
+
+      el.style.willChange = 'transform, opacity';
+
+      const tAnim = el.animate([
+        { transform: pose.baseTransform },
+        { transform: pose.nadirTransform }
+      ], {
+        duration: pose.sinkDuration,
+        delay: pose.sinkDelay,
+        easing: REWIND_FX.sinkEasing,
+        fill: 'forwards'
+      });
+
+      const oAnim = el.animate([
+        { opacity: 1, offset: 0 },
+        { opacity: 0.9, offset: 0.55 },
+        { opacity: 0, offset: 1 }
+      ], {
+        duration: pose.sinkDuration,
+        delay: pose.sinkDelay,
+        easing: 'linear',
+        fill: 'forwards'
+      });
+
+      sinkAnims.push(tAnim, oAnim);
+    }
+
+    this.currentGroup = sinkAnims;
+
+    if (this.queue.length > 0) {
+      this.triggerCatchUp();
+    }
+
+    Promise.all(sinkAnims.map(a => a.finished.catch(() => {}))).then(() => {
+      if (this.epoch !== epoch || this.state !== 'SINK') return;
+      this.sinkEndTime = performance.now();
+      this.executeSwap();
+    });
+  }
+
+  startRiseReverse() {
+    this.setState('RISE_REVERSE');
+    const targetK = -REWIND_FX.reverseRate;
+    const startRate = this.currentRate;
+    const startTime = performance.now();
+    const rampDuration = REWIND_FX.rampMs;
+    const epoch = this.epoch;
+
+    if (this.rateRaf) cancelAnimationFrame(this.rateRaf);
+
+    const tickReverseRamp = (now) => {
+      if (this.epoch !== epoch || this.state !== 'RISE_REVERSE') return;
+
+      const elapsed = now - startTime;
+      const progress = Math.max(0, Math.min(1, elapsed / rampDuration));
+      const s = progress * progress * (3 - 2 * progress);
+      const k = startRate + (targetK - startRate) * s;
+      this.currentRate = k;
+
+      for (const a of this.currentGroup) {
+        try { a.updatePlaybackRate(k); } catch {}
+      }
+
+      let allAtNadir = true;
+      for (const a of this.currentGroup) {
+        const cur = typeof a.currentTime === 'number' ? a.currentTime : 0;
+        if (cur > 0.5 && a.playState !== 'finished') {
+          allAtNadir = false;
+          break;
+        }
+      }
+
+      if (allAtNadir && progress >= 0.5) {
+        this.executeSwap();
+        return;
+      }
+
+      this.rateRaf = requestAnimationFrame(tickReverseRamp);
+    };
+
+    this.rateRaf = requestAnimationFrame(tickReverseRamp);
+  }
+
+  executeSwap() {
+    this.setState('SWAP');
+    this.swapCount++;
+    this.swapTime = performance.now();
+    const epoch = this.epoch;
+
+    window.__inAllowedStyleMutation = true;
+    let riseAnims = [];
+    try {
+      if (this.epoch !== epoch) return;
+
+      for (const a of this.currentGroup) {
+        try { a.cancel(); } catch {}
+      }
+      this.currentGroup = [];
+
+      if (tilesLayer) {
+        tilesLayer.innerHTML = '';
+      }
+
+      syncBoard(controller.getBoard(), 'rewind-swap');
+
+      const metrics = getGridMetrics();
+      const newTiles = Array.from(tilesLayer.children).filter(el =>
+        el.classList.contains('tile') || el.classList.contains('stone')
+      );
+
+      const seed = getRewindSeed(controller);
+
+      for (const el of newTiles) {
+        const idx = parseInt(el.getAttribute('data-index'), 10);
+        const pose = computeTilePose(idx, metrics, seed, 'rise');
+
+        el.style.opacity = '0';
+        el.style.transform = pose.nadirTransform;
+        el.style.willChange = 'transform, opacity';
+
+        const tAnim = el.animate([
+          { transform: pose.nadirTransform },
+          { transform: pose.baseTransform }
+        ], {
+          duration: pose.riseDuration,
+          delay: pose.riseDelay,
+          easing: REWIND_FX.riseTransformEasing,
+          fill: 'both'
+        });
+
+        const oAnim = el.animate([
+          { opacity: 0 },
+          { opacity: 1 }
+        ], {
+          duration: pose.riseDuration,
+          delay: pose.riseDelay,
+          easing: 'linear',
+          fill: 'both'
+        });
+
+        riseAnims.push(tAnim, oAnim);
+      }
+
+      this.currentGroup = riseAnims;
+
+      updateHeader();
+      renderAbilityBar();
+      if (typeof updateCountdownBadge === 'function') updateCountdownBadge();
+    } finally {
+      (typeof queueMicrotask === 'function' ? queueMicrotask : fn => setTimeout(fn, 0))(() => {
+        window.__inAllowedStyleMutation = false;
+      });
+    }
+
+    this.setState('RISE');
+    this.currentRate = 1.0;
+    this.targetRate = 1.0;
+
+    if (this.queue.length > 0) {
+      this.triggerCatchUp();
+    }
+
+    Promise.all(riseAnims.map(a => a.finished.catch(() => {}))).then(() => {
+      if (this.epoch !== epoch || this.state !== 'RISE') return;
+      this.riseEndTime = performance.now();
+      this.executeCleanup();
+    });
+  }
+
+  executeCleanup() {
+    const epoch = this.epoch;
+
+    window.__inAllowedStyleMutation = true;
+    try {
+      if (this.epoch !== epoch) return;
+
+      for (const a of this.currentGroup) {
+        try { a.cancel(); } catch {}
+      }
+      this.currentGroup = [];
+
+      const metrics = getGridMetrics();
+      const currentBoard = controller.getBoard();
+      const tiles = Array.from(tilesLayer.children).filter(el =>
+        el.classList.contains('tile') || el.classList.contains('stone')
+      );
+
+      for (const el of tiles) {
+        const idx = parseInt(el.getAttribute('data-index'), 10);
+        const trans = getTileTranslate(idx, metrics);
+        el.style.transform = trans.transform;
+        el.style.opacity = '1';
+        el.style.willChange = '';
+      }
+
+      syncBoard(currentBoard, 'rewind');
+
+      this.setState('IDLE');
+      isAnimating = false;
+      currentAnimationState = null;
+      this.currentRate = 1.0;
+      this.targetRate = 1.0;
+    } finally {
+      (typeof queueMicrotask === 'function' ? queueMicrotask : fn => setTimeout(fn, 0))(() => {
+        window.__inAllowedStyleMutation = false;
+      });
+    }
+
+    this.processQueue();
+  }
+
+  processQueue() {
+    if (this.state !== 'IDLE' || this.queue.length === 0) return;
+
+    const item = this.queue.shift();
+    if (item.type === 'rewind') {
+      let rewindsProcessed = 0;
+      if (this.processRewindAction()) {
+        rewindsProcessed++;
+      }
+      while (this.queue.length > 0 && this.queue[0].type === 'rewind') {
+        this.queue.shift();
+        if (this.processRewindAction()) {
+          rewindsProcessed++;
+        }
+      }
+      if (rewindsProcessed > 0) {
+        this.startSink();
+      } else {
+        this.processQueue();
+      }
+    } else if (item.type === 'move') {
+      handleMove(item.payload.direction, item.payload.inputType);
+    } else if (item.type === 'ability') {
+      executeAbility(item.payload.relicId, item.payload.target);
+    }
+  }
+
+  startReducedMotionSequence() {
+    this.setState('SINK');
+    isAnimating = true;
+    this.currentRate = 1.0;
+    this.targetRate = 1.0;
+    const epoch = ++this.epoch;
+
+    const tiles = Array.from(tilesLayer.children).filter(el =>
+      el.classList.contains('tile') || el.classList.contains('stone')
+    );
+
+    const fadeOutAnims = [];
+    for (const el of tiles) {
+      el.style.willChange = 'opacity';
+      const a = el.animate([
+        { opacity: 1 },
+        { opacity: 0 }
+      ], {
+        duration: 75,
+        easing: 'linear',
+        fill: 'forwards'
+      });
+      fadeOutAnims.push(a);
+    }
+
+    this.currentGroup = fadeOutAnims;
+    if (this.queue.length > 0) this.triggerCatchUp();
+
+    Promise.all(fadeOutAnims.map(a => a.finished.catch(() => {}))).then(() => {
+      if (this.epoch !== epoch || this.state !== 'SINK') return;
+      this.sinkEndTime = performance.now();
+      this.executeReducedMotionSwap();
+    });
+  }
+
+  executeReducedMotionSwap() {
+    this.setState('SWAP');
+    this.swapCount++;
+    this.swapTime = performance.now();
+    const epoch = this.epoch;
+
+    window.__inAllowedStyleMutation = true;
+    let fadeInAnims = [];
+    try {
+      if (this.epoch !== epoch) return;
+
+      for (const a of this.currentGroup) {
+        try { a.cancel(); } catch {}
+      }
+      this.currentGroup = [];
+
+      if (tilesLayer) {
+        tilesLayer.innerHTML = '';
+      }
+
+      syncBoard(controller.getBoard(), 'rewind-swap');
+
+      const newTiles = Array.from(tilesLayer.children).filter(el =>
+        el.classList.contains('tile') || el.classList.contains('stone')
+      );
+
+      for (const el of newTiles) {
+        el.style.opacity = '0';
+        el.style.willChange = 'opacity';
+        const a = el.animate([
+          { opacity: 0 },
+          { opacity: 1 }
+        ], {
+          duration: 75,
+          easing: 'linear',
+          fill: 'both'
+        });
+        fadeInAnims.push(a);
+      }
+
+      this.currentGroup = fadeInAnims;
+
+      updateHeader();
+      renderAbilityBar();
+      if (typeof updateCountdownBadge === 'function') updateCountdownBadge();
+    } finally {
+      (typeof queueMicrotask === 'function' ? queueMicrotask : fn => setTimeout(fn, 0))(() => {
+        window.__inAllowedStyleMutation = false;
+      });
+    }
+
+    this.setState('RISE');
+    if (this.queue.length > 0) this.triggerCatchUp();
+
+    Promise.all(fadeInAnims.map(a => a.finished.catch(() => {}))).then(() => {
+      if (this.epoch !== epoch || this.state !== 'RISE') return;
+      this.riseEndTime = performance.now();
+      this.executeCleanup();
+    });
+  }
+
+  pause() {
+    this.isPaused = true;
+    for (const a of this.currentGroup) {
+      try { a.pause(); } catch {}
+    }
+  }
+
+  resume() {
+    this.isPaused = false;
+    for (const a of this.currentGroup) {
+      try { a.play(); } catch {}
+    }
+  }
+
+  hardReset() {
+    window.__inHardReset = true;
+    try {
+      this.epoch++;
+      if (this.rateRaf) cancelAnimationFrame(this.rateRaf);
+      for (const a of this.currentGroup) {
+        try { a.cancel(); } catch {}
+      }
+      this.currentGroup = [];
+      this.queue = [];
+      this.state = 'IDLE';
+      this.currentRate = 1.0;
+      this.targetRate = 1.0;
+      this.isPaused = false;
+      if (currentAnimationState && typeof currentAnimationState.cancelAnimation === 'function') {
+        try { currentAnimationState.cancelAnimation(); } catch {}
+      }
+      isAnimating = false;
+      currentAnimationState = null;
+    } finally {
+      window.__inHardReset = false;
+    }
+  }
+}
+
+export const rewindDirector = new RewindDirector();
+if (typeof window !== 'undefined') {
+  window.rewindDirector = rewindDirector;
 }
 
 function executeRewind() {
-  if (isAnimating && currentAnimationState) {
-    finishCurrentAnimationImmediately();
+  if (cleanSlateSequenceState && cleanSlateSequenceState.inputLocked) {
+    cleanSlateSequenceState.ignoredAbilityCount = (cleanSlateSequenceState.ignoredAbilityCount || 0) + 1;
+    return;
   }
-
-  const logEntry = uiMoveLog.length > 0 ? uiMoveLog.pop() : null;
-  const res = controller.useAbility('rewind', {});
   cancelTargeting();
-
-  if (!res.success) {
-    showToast(`Error: ${res.error || 'Failed to rewind'}`);
-    return;
-  }
-
-  playRewind();
-
-  const restoredBoard = controller.getBoard();
-  const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  let canReverse = !prefersReduced && logEntry !== null;
-  if (canReverse) {
-    for (let i = 0; i < 16; i++) {
-      if (restoredBoard[i] !== logEntry.boardBefore[i]) {
-        canReverse = false;
-        break;
-      }
-    }
-  }
-
-  if (!canReverse) {
-    boardEl.classList.add('rewind-fade', 'rewinding');
-    setTimeout(() => boardEl.classList.remove('rewind-fade', 'rewinding'), 150);
-    alignDomToBoard(restoredBoard, getGridMetrics());
-    syncBoard(restoredBoard, 'rewind');
-    updateHeader();
-    renderGhostTiles();
-    renderAbilityBar();
-    if (controller.isGameOver()) handleGameOver();
-    return;
-  }
-
-  playReverseSlideAnimation(logEntry, restoredBoard, res);
+  rewindDirector.handleRewindTap();
 }
 
 function executeAbility(relicId, target) {
@@ -2739,13 +3240,18 @@ function executeAbility(relicId, target) {
     return;
   }
 
-  if (isAnimating) {
-    finishCurrentAnimationImmediately();
-  }
-
   if (relicId === 'rewind') {
     executeRewind();
     return;
+  }
+
+  if (rewindDirector && rewindDirector.isActive()) {
+    rewindDirector.enqueueInput('ability', { relicId, target });
+    return;
+  }
+
+  if (isAnimating) {
+    finishCurrentAnimationImmediately();
   }
 
   if (relicId === 'diagonal_charge' || relicId === 'eraser') {
@@ -2949,6 +3455,9 @@ function finishCurrentAnimationImmediately() {
     finishCleanSlateImmediately();
     return;
   }
+  if (typeof rewindDirector !== 'undefined' && rewindDirector.isActive()) {
+    return;
+  }
   if (!isAnimating || !currentAnimationState) return;
   if (slideAnimTimer) {
     clearTimeout(slideAnimTimer);
@@ -2998,6 +3507,9 @@ function cancelOngoingAnimation() {
     cancelCleanSlateSequence();
     return;
   }
+  if (typeof rewindDirector !== 'undefined' && rewindDirector.isActive()) {
+    return;
+  }
   if (currentAnimationState && typeof currentAnimationState.cancelAnimation === 'function') {
     currentAnimationState.cancelAnimation();
   } else {
@@ -3020,6 +3532,11 @@ function handleMove(direction, inputType = 'key') {
 
   if (cleanSlateSequenceState && cleanSlateSequenceState.inputLocked) {
     cleanSlateSequenceState.ignoredSwipeCount = (cleanSlateSequenceState.ignoredSwipeCount || 0) + 1;
+    return;
+  }
+
+  if (typeof rewindDirector !== 'undefined' && rewindDirector.isActive()) {
+    rewindDirector.enqueueInput('move', { direction, inputType });
     return;
   }
 
@@ -3537,6 +4054,10 @@ function handleMove(direction, inputType = 'key') {
     isAnimating = false;
     currentAnimationState = null;
     postMoveResolution(moveRes);
+
+    if (typeof rewindDirector !== 'undefined' && rewindDirector.getState() === 'WAIT_SLIDE') {
+      rewindDirector.onSlideAnimationComplete();
+    }
   }
 
   currentAnimationState = { commitSlideCompletion, cancelAnimation };
@@ -3676,6 +4197,14 @@ function handleGameOver() {
  * Run Initialization
  * ------------------------------------------------------------- */
 function startNewGame(seed = null) {
+  window.__inAllowedHardReset = true;
+  try {
+    if (typeof rewindDirector !== 'undefined') {
+      rewindDirector.hardReset();
+    }
+  } finally {
+    window.__inAllowedHardReset = false;
+  }
   cancelOngoingAnimation();
   tickPlayTimer();
   activePlayMs = 0;
@@ -4057,7 +4586,9 @@ function resetEndRunButton() {
 if (btnPauseMenu && pauseOverlay) {
   btnPauseMenu.addEventListener('click', () => {
     controller.recordInput('tap');
-    if (isAnimating || cleanSlateSequenceState) {
+    if (typeof rewindDirector !== 'undefined' && rewindDirector.isActive()) {
+      rewindDirector.pause();
+    } else if (isAnimating || cleanSlateSequenceState) {
       finishCurrentAnimationImmediately();
     }
     tickPlayTimer();
@@ -4072,11 +4603,15 @@ if (btnPauseResume && pauseOverlay) {
     resetEndRunButton();
     pauseOverlay.classList.add('hidden');
     lastPerfTime = performance.now();
-    if (isAnimating || cleanSlateSequenceState) {
-      finishCurrentAnimationImmediately();
-    }
-    if (controller) {
-      syncBoard(controller.getBoard(), 'pauseResume');
+    if (typeof rewindDirector !== 'undefined' && rewindDirector.isActive()) {
+      rewindDirector.resume();
+    } else {
+      if (isAnimating || cleanSlateSequenceState) {
+        finishCurrentAnimationImmediately();
+      }
+      if (controller) {
+        syncBoard(controller.getBoard(), 'pauseResume');
+      }
     }
   });
 }
@@ -4086,6 +4621,10 @@ document.addEventListener('visibilitychange', () => {
   tickPlayTimer();
   if (document.visibilityState === 'visible') {
     lastPerfTime = performance.now();
+  }
+  if (typeof rewindDirector !== 'undefined' && rewindDirector.isActive()) {
+    // Rule C8: Page hidden: do nothing special; on return the sequence continues normally
+    return;
   }
   if (isAnimating || cleanSlateSequenceState) {
     finishCurrentAnimationImmediately();
@@ -4363,6 +4902,9 @@ function renderBestRunsList() {
 
 function showBestRunsOverlay(source) {
   tickPlayTimer();
+  if (typeof rewindDirector !== 'undefined' && rewindDirector.isActive()) {
+    rewindDirector.pause();
+  }
   previousOverlayBeforeBestRuns = source || (startOverlay && !startOverlay.classList.contains('hidden') ? startOverlay : pauseOverlay);
   renderBestRunsList();
   if (source && source.classList) {
@@ -4386,6 +4928,9 @@ function hideBestRunsOverlay() {
   }
   previousOverlayBeforeBestRuns = null;
   lastPerfTime = performance.now();
+  if (typeof rewindDirector !== 'undefined' && rewindDirector.isActive()) {
+    rewindDirector.resume();
+  }
 }
 
 const btnStartTrophy = document.getElementById('btn-start-trophy');
