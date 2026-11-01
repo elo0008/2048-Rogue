@@ -208,39 +208,63 @@ Replay ordering is strictly the array order (move numbers are never used for ord
 
 ---
 
-## 3D Rewind Architecture & Input Director
+## Diagonal Press Wave Rewind & Ability Micro-Interactions
 
-The Rewind ability features a physical 3D "sink and resurface" animation orchestrator driven by the Web Animations API (WAAPI) and governed by a deterministic finite state machine (`RewindDirector`).
+The Rewind ability features a physical "diagonal press wave" animation driven by the Web Animations API (WAAPI) and orchestrated by `WaveDirector`, paired with tactile micro-interactions on the bottom ability cards.
 
-### 1. Spatial Geometry & Math Formulation
-Each board cell tile and stone undergoes keyframed 3D kinematics projecting inward toward the board centre $C$:
-- **Vector & Distance**: $v = C - T$, $d = |v|$, $d_{\max} = p\sqrt{1.5^2 + 1.5^2}$, $r = d / d_{\max}$ ($r_{\min} = 1/3$ for middle tiles).
-- **Normalized Radius**: $\rho = (r - r_{\min}) / (1 - r_{\min}) \in [0, 1]$ ($0$ centre, $1$ corners).
-- **Inward Pitch/Roll**: $u = (T.x - C.x)/(1.5p)$, $w = (T.y - C.y)/(1.5p) \in [-1, 1]$.
-- **Tilt Angle & Depth**: $\theta = \text{lerp}(10^\circ, 25^\circ, r)$, $Z = 300 + 300 \cdot (0.4r + 0.6\xi)$ where $\xi$ is a deterministic pseudorandom value seeded from `hash(runId, moveCount)`.
-- **SINK Nadir Pose**: `translate3d(0.35*v.x, 0.35*v.y, -Z) rotateX(w*theta) rotateY(-u*theta) scale(0.85)`. Tiles tip their inner edges away from the viewer like a funnel wall.
-- **Timing & Delays**:
-  - Outer tiles sink first: delay $= 140(1 - \rho) + 60\xi_2 \in [0, 200\text{ ms}]$, duration $= 320 + 30\xi \in [320, 350\text{ ms}]$.
-  - Centre tiles rise first: delay $= 110\rho + 70\xi_2 \in [0, 180\text{ ms}]$, duration $= 400 + 20\xi \in [400, 420\text{ ms}]$.
+### 1. Spatial Geometry & Press Wave Formulation
+The board cells press straight down into the screen from top-left to bottom-right along diagonal wavefronts:
+- **Diagonal Wavefront Coordinate**:
+  $$m(\text{cell}) = \text{row} + \text{col} \in [0..6]$$
+  Cell start delay is strictly deterministic with no randomness:
+  $$\text{cellDelay} = m \cdot \text{stepMs} = m \cdot 80\text{ ms}$$
+  Total group duration across all 16 cells and empty sockets:
+  $$T_{\text{wave}} = 6 \cdot \text{stepMs} + \text{sinkMs} + \text{riseMs} = 6(80) + 150 + 200 = 830\text{ ms}$$
+- **Stage Switch (`tile` vs `board`)**:
+  - `stage: 'tile'` (default): Pure press with vanishing point at each element's own centre (no `preserve-3d` needed). Sinks straight down into the screen with zero lateral drift ($< 0.001\text{ px}$):
+    $$\text{rest} = \text{perspective(900px) translateZ(0px) scale(1)}$$
+    $$\text{nadir} = \text{perspective(900px) translateZ(-240px) scale(0.9)}$$
+    In this stage, `translateZ(-240px)` produces a uniform scale-down $(900/(900+240) = 0.789)$ which combined with `scale(0.9)` yields a resting-to-nadir width ratio of $0.789 \times 0.9 \approx 0.710$.
+  - `stage: 'board'`: Shared vanishing point at board centre with `transform-style: preserve-3d` on `#tiles-layer`. Corner tiles exhibit realistic lateral perspective convergence.
+- **Unified Visual Unit inside `.tile-face`**:
+  - The outer `.tile` container is rendered with `background: transparent !important`, border none, and box-shadow none.
+  - All visual surfaces (tile backgrounds, colors, gradients, inner borders, bevels) and number text reside entirely within `.tile-face`.
+  - Ensures a single, indivisible visual unit per cell: the number text and tile background cannot desynchronize, fade separately, or become blank colored squares during animations.
+- **Untouched Cells Invariant**:
+  - Unreached cells ($t < m \cdot \text{stepMs}$) remain strictly in their resting state with computed `transform: none` and full opacity until the wavefront arrives at their diagonal.
+  - Keyframe 0 uses `{ transform: 'none' }` with `fill: 'forwards'`.
+  - No premature inline `willChange` writes or pre-promotions at $t=0$.
+- **Separate Transform and Opacity Animations**:
+  - Sink transform: rest $\to$ nadir over $150\text{ ms}$ with `cubic-bezier(0.4, 0, 1, 1)`.
+  - Sink opacity: $1.0$ until $60\%$ progress, then fades to $0.0$ at $100\%$ (separate Animation object on `.tile-face`).
+  - Rise transform: nadir $\to$ rest over $200\text{ ms}$ with `cubic-bezier(0.34, 1.56, 0.64, 1)` (elastic settle).
+  - Rise opacity: $0.0 \to 1.0$ over first $45\%$ duration with ease-out (separate Animation object on `.tile-face`).
+- **Empty Socket Ripples**:
+  - Cells without tiles or stones undergo an empty socket ripple: `.cell` element scales $1.0 \to 0.94 \to 1.0$ (offsets $0, 0.45, 1$) over $350\text{ ms}$. Cells with tiles/stones do not ripple.
+- **Per-Cell Nadir Swap**:
+  - As each cell's sink reaches progress $1.0$ (nadir, opacity $\le 0.02$), the old element is cleanly removed and a fresh element is created at inline `opacity: 0` and nadir pose before rise.
+  - Bookkeeping label: `syncBoard(..., 'rewind-cell-swap')`.
+  - HUD values (score, moves, countdowns) update at the exact moment the first cell with $m = 3$ swaps.
+- **Coalescing Delta Waves**:
+  - If a player rushes rewind taps during a wave, subsequent taps update the authoritative engine board.
+  - Cells that have not yet swapped naturally reveal the newest engine state.
+  - Upon wave group completion, `displayed[]` is compared against engine board. If any discrepancies exist, a focused **delta wave** runs covering only the divergent cells, offset by $(m - m_{\min}) \cdot \text{stepMs}$.
 
-### 2. REWIND_FX Configuration Constants
+### 2. REWIND_FX Configuration Object
 ```javascript
 export const REWIND_FX = {
-  perspective: 1100,
-  alpha: 0.35,
-  zMin: 300,
-  zMax: 600,
-  tiltMin: 10,
-  tiltMax: 25,
-  sinkScale: 0.85,
-  sinkDelayMax: 200,
-  sinkDurationMin: 320,
-  sinkDurationMax: 350,
-  riseDelayMax: 180,
-  riseDurationMin: 400,
-  riseDurationMax: 420,
+  mode: 'wave', // 'wave' (diagonal press wave) or 'vortex' (3D sink & resurface)
+  stage: 'tile', // 'tile' (pure press, zero drift) or 'board' (shared vanishing point)
+  perspective: 900,
+  zDepth: 240,
+  sinkScale: 0.9,
+  stepMs: 80,
+  sinkMs: 150,
+  riseMs: 200,
   sinkEasing: 'cubic-bezier(0.4, 0, 1, 1)',
-  riseTransformEasing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+  riseEasing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+  socketPress: 0.94,
+  shimmerOnUse: true,
   rampMs: 140,
   catchUpMs: 220,
   maxRate: 6,
@@ -249,19 +273,28 @@ export const REWIND_FX = {
 };
 ```
 
-### 3. Director State Machine & Rushed Input
-- **States**: `IDLE`, `WAIT_SLIDE`, `SINK`, `SWAP`, `RISE`, `RISE_REVERSE`.
-- **Rushed Rewind Taps**:
-  - During `IDLE`: Immediately applies undo, deducts charge pip, logs event, and enters `SINK`. If a slide is active, enters `WAIT_SLIDE` and waits for slide completion.
-  - During `SINK` (empty queue): Coalesces and applies engine undo immediately so the upcoming `SWAP` reveals the newest state.
-  - During `RISE` (empty queue): Enters `RISE_REVERSE` — ramps `playbackRate` to $-1.5$ over 140 ms using smoothstep $s(x) = x^2(3-2x)$ so tiles ease back down smoothly to the nadir without snapping, then swaps and rises forward.
-  - During non-empty queue: Enqueued in FIFO input queue (capped at `queueMax = 4`).
-- **Catch-Up Time Scaling**:
-  - When the queue is non-empty, the active group smoothly ramps its rate:
-    $$K = \text{clamp}\left(\frac{\max(endTime - currentTime)}{\text{catchUpMs}}, 1, \text{maxRate}\right)$$
-- **Swap Barrier (D2)**: All animations settle at nadir (`Promise.all(group.map(a => a.finished))`), finished animations are cancelled, and fresh tiles are built synchronously (`syncBoard(..., 'rewind-swap')`) with `opacity: 0` and nadir transform before rising.
-- **Authoritative Cleanup (D4)**: At the top of rise, resting poses are committed, will-change is removed, and authoritative syncBoard reconciliation runs with 0 corrections.
-- **Reduced Motion**: 150 ms linear opacity crossfade preserving full director queueing and catch-up rules.
+### 3. Tactile Ability Card Micro-Interactions & Glass Shine
+- **H1: Icon Tilt**:
+  - On Diagonal Merge, Eraser, and Rewind buttons, the glyph icon rotates $-11^\circ$ on hover for fine pointers (`@media (hover: hover) and (pointer: fine)`).
+  - Touch/coarse pointers apply the same tilt on `:active` (preventing sticky hovers in mobile browsers).
+  - Transition: `transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1)` with `transform-origin: 50% 55%`.
+  - Disabled cards never tilt. Reduced motion disables tilt.
+- **H2: Card Glass Shine Architecture**:
+  - Each ability card button (`.ability-btn`) contains a dedicated child wrapper:
+    ```html
+    <span class="card-shine" aria-hidden="true"></span>
+    ```
+  - The `.ability-btn` preserves `overflow: visible` so badges, counters, pips, and tooltips are never clipped.
+  - `.card-shine` handles edge containment cleanly via `overflow: hidden; border-radius: inherit; pointer-events: none;`.
+  - The light-sweep is rendered via `.card-shine::before`:
+    - Resting state: `opacity: 0; transform: translateX(-130%); animation: none;`. Zero pale block or edge residue.
+    - Animation: `@keyframes card-shine-sweep` travels from `translateX(-130%)` to `translateX(240%)` over $700\text{ ms}$ `cubic-bezier(0.2, 0.8, 0.2, 1)`.
+    - Midpoint opacity peaks at $1.0$ at $50\%$, tapering cleanly to $0.0$ at both $0\%$ and $100\%$ with `animation-fill-mode: none`.
+  - Triggered on all three ability cards (Diagonal Merge, Eraser, Rewind):
+    - Hover on fine pointers (`.ability-btn:not(:disabled):hover .card-shine::before`).
+    - Programmatic trigger on ability activation via `.ability-btn.shimmer .card-shine::before` (invoked by `triggerCardShimmer(relicId)` and cleaned up on animation end).
+    - Fully disabled under `@media (prefers-reduced-motion: reduce)`.
+- **Smoothness Rule**: Once any rewind animation has started, in-flight elements are never prematurely cancelled or snapped; rushed input is handled strictly by smooth `playbackRate` time-scaling (`rampMs = 140`, `catchUpMs = 220`, `maxRate = 6`) and FIFO queueing.
 
 
 

@@ -87,14 +87,14 @@ async function getWsUrl(cdpPort) {
           return page.webSocketDebuggerUrl;
         }
       }
-    } catch {}
+    } catch { }
     await sleep(200);
   }
   throw new Error('Could not connect to Chrome CDP');
 }
 
 class CdpClient {
-  constructor(wsUrl, onConsoleError, onException, onRequest = () => {}) {
+  constructor(wsUrl, onConsoleError, onException, onRequest = () => { }) {
     this.ws = new WebSocket(wsUrl);
     this.id = 1;
     this.callbacks = new Map();
@@ -155,7 +155,7 @@ class CdpClient {
   }
 
   close() {
-    try { this.ws.close(); } catch {}
+    try { this.ws.close(); } catch { }
   }
 }
 
@@ -1642,12 +1642,12 @@ async function runSmokeTest() {
     // C4: Rewind after Clean Slate (Q2)
     console.log('[Smoke Test] Testing C4: Rewind after Clean Slate (cases a, b, c, d)...');
     await cdp.send('Page.navigate', { url: makeUrl('?start=rewind&ascension=64&debug=1') });
-    await sleep(400);
+    await sleep(600);
     await cdp.eval(`(() => {
-      const btn = document.getElementById('btn-play-start');
-      if (btn && !btn.closest('.hidden')) btn.click();
+      const b = document.getElementById('btn-play-start');
+      if (b && !b.closest('.hidden')) b.click();
     })()`);
-    await sleep(200);
+    await sleep(300);
 
     const c4Res = await cdp.eval(`
       (async () => {
@@ -1670,7 +1670,8 @@ async function runSmokeTest() {
         boardEl.dispatchEvent(new TouchEvent('touchstart', { touches: [touch1], targetTouches: [touch1], changedTouches: [touch1], bubbles: true, cancelable: true }));
         boardEl.dispatchEvent(new TouchEvent('touchend', { touches: [], targetTouches: [], changedTouches: [touch2], bubbles: true, cancelable: true }));
 
-        while (window.isAnimating || window.cleanSlateSequenceState) {
+        let safetyA = 0;
+        while ((window.isAnimating || window.cleanSlateSequenceState) && safetyA++ < 100) {
           await new Promise(r => setTimeout(r, 50));
         }
         await new Promise(r => setTimeout(r, 100));
@@ -1708,7 +1709,8 @@ async function runSmokeTest() {
         boardEl.dispatchEvent(new TouchEvent('touchstart', { touches: [touchC1], targetTouches: [touchC1], changedTouches: [touchC1], bubbles: true, cancelable: true }));
         boardEl.dispatchEvent(new TouchEvent('touchend', { touches: [], targetTouches: [], changedTouches: [touchC2], bubbles: true, cancelable: true }));
 
-        while (window.isAnimating) {
+        let safetyB = 0;
+        while (window.isAnimating && safetyB++ < 80) {
           await new Promise(r => setTimeout(r, 50));
         }
         await new Promise(r => setTimeout(r, 100));
@@ -1718,7 +1720,8 @@ async function runSmokeTest() {
         if (freshRewindBtn && !freshRewindBtn.disabled) freshRewindBtn.click();
         else if (typeof window.executeRewind === 'function') window.executeRewind();
 
-        while (window.isAnimating) {
+        let safetyC = 0;
+        while ((window.isAnimating || (window.rewindDirector && window.rewindDirector.isActive())) && safetyC++ < 80) {
           await new Promise(r => setTimeout(r, 50));
         }
         await new Promise(r => setTimeout(r, 100));
@@ -1745,19 +1748,19 @@ async function runSmokeTest() {
       })()
     `);
 
-    console.log('[Smoke Test Debug] c4Res:', c4Res);
+
     assert.strictEqual(c4Res.caseAPass, true, 'C4 (a): Clean slate triggers and uiMoveLogLength is 0');
     assert.strictEqual(c4Res.caseBPass, true, 'C4 (b): Immediate Rewind shows Nothing to undo / disabled, 0 errors, DOM matches');
     assert.strictEqual(c4Res.caseCPass, true, 'C4 (c): Swipe once then Rewind undos only that swipe');
 
     // (d) Diagonal Clean slate then repeat (b)
     await cdp.send('Page.navigate', { url: makeUrl('?start=rewind,diagonal_charge&ascension=64&debug=1') });
-    await sleep(400);
+    await sleep(600);
     await cdp.eval(`(() => {
-      const btn = document.getElementById('btn-play-start');
-      if (btn && !btn.closest('.hidden')) btn.click();
+      const b = document.getElementById('btn-play-start');
+      if (b && !b.closest('.hidden')) b.click();
     })()`);
-    await sleep(200);
+    await sleep(300);
 
     const c4dRes = await cdp.eval(`
       (async () => {
@@ -1774,7 +1777,8 @@ async function runSmokeTest() {
         const ascBefore = (window.controller.state.ascensions || []).length;
         window.executeAbility('diagonal_charge', { from: 0, to: 5 });
 
-        while (window.isAnimating || window.cleanSlateSequenceState) {
+        let safetyD = 0;
+        while ((window.isAnimating || window.cleanSlateSequenceState) && safetyD++ < 100) {
           await new Promise(r => setTimeout(r, 50));
         }
         await new Promise(r => setTimeout(r, 100));
@@ -1816,33 +1820,47 @@ async function runSmokeTest() {
     assert.strictEqual(c4dRes.caseDPass, true, 'C4 (d): Diagonal merge triggers Clean slate and Rewind shows Nothing to undo / disabled');
     console.log('[Smoke Test] ✔ C4 verified: Rewind after Clean Slate passes all 4 cases (a, b, c, d).');
 
-    // E9: 3D Rewind assertions: S1, S2, S4 (three offsets: 100ms, 250ms, 400ms), and S7
-    console.log('[Smoke Test] Testing E9: 3D Rewind assertions (S1, S2, S4 at 3 offsets, S7)...');
+    // E11: Wave Rewind & Micro-Interaction assertions (S1, S2, S3 at 3 offsets, S5, and E9 style checks)
+    console.log('[Smoke Test] Testing E11: Wave Rewind assertions (S1, S2, S3 at 3 offsets, S5) and E9 micro-interactions...');
     await cdp.send('Page.navigate', { url: makeUrl('?start=rewind&rewind=1&debug=1') });
-    await sleep(400);
+    await sleep(600);
     await cdp.eval(`(() => {
-      const btn = document.getElementById('btn-play-start');
-      if (btn && !btn.closest('.hidden')) btn.click();
+      const b = document.getElementById('btn-play-start');
+      if (b && !b.closest('.hidden')) b.click();
     })()`);
-    await sleep(200);
+    await sleep(300);
 
-    const e9Res = await cdp.eval(`
+    const e11Res = await cdp.eval(`
       (async () => {
         const results = {};
 
+        results.swipeDebug = [];
         // Helper to make N swipes
         async function makeSwipes(n) {
           for (let i = 0; i < n; i++) {
             const vm = window.controller.getValidMoves();
+            const countBefore = window.controller.getState().moveCount;
             if (vm.length > 0) window.handleMove(vm[0]);
             await new Promise(r => setTimeout(r, 60));
+            let s = 0;
+            while (window.isAnimating && s++ < 50) await new Promise(r => setTimeout(r, 20));
+            const countAfter = window.controller.getState().moveCount;
+            results.swipeDebug.push({ n, i, vm, countBefore, countAfter });
           }
-          let safety = 0;
-          while (window.isAnimating && safety++ < 50) await new Promise(r => setTimeout(r, 20));
+        }
+
+        function replenishRewind() {
+          if (window.controller && window.controller.state) {
+            if (!window.controller.state.abilities) window.controller.state.abilities = {};
+            window.controller.state.abilities.rewind = { charges: 3, counter: 0, swipesAtMax: 0, maxCharges: 3, swipesPerCharge: 10 };
+            if (window.controller.state.relics) window.controller.state.relics.add('rewind');
+            if (typeof window.renderAbilityBar === 'function') window.renderAbilityBar();
+          }
         }
 
         // S1: Single rewind from idle
         await makeSwipes(1);
+        replenishRewind();
         const movesBeforeS1 = window.controller.getState().moveCount;
         window.executeRewind();
         let s1Safety = 0;
@@ -1860,12 +1878,13 @@ async function runSmokeTest() {
 
         // S2: Three Rewind taps 60ms apart
         await makeSwipes(3);
+        replenishRewind();
         const movesBeforeS2 = window.controller.getState().moveCount;
         window.executeRewind();
         setTimeout(() => window.executeRewind(), 60);
         setTimeout(() => window.executeRewind(), 120);
         let s2Safety = 0;
-        while ((window.rewindDirector.isActive() || window.isAnimating) && s2Safety++ < 120) {
+        while ((window.rewindDirector.isActive() || window.isAnimating) && s2Safety++ < 160) {
           await new Promise(r => setTimeout(r, 20));
         }
         const b2 = window.controller.getBoard();
@@ -1877,61 +1896,293 @@ async function runSmokeTest() {
           dom2.every(t => b2[t.idx] == t.val) &&
           (movesBeforeS2 - window.controller.getState().moveCount === 3);
 
-        // S4: Rewind during RISE at three offsets (100ms, 250ms, 400ms)
-        const s4Offsets = [100, 250, 400];
-        results.s4OffsetsPass = true;
-        for (const off of s4Offsets) {
+        // S3: Rewind during wave at three offsets (100ms, 250ms, 400ms)
+        const s3Offsets = [100, 250, 400];
+        results.s3OffsetsPass = true;
+        results.s3Debug = [];
+        for (const off of s3Offsets) {
           await makeSwipes(2);
+          replenishRewind();
           window.executeRewind();
-          let riseSafety = 0;
-          while (window.rewindDirector.getState() !== 'RISE' && riseSafety++ < 60) {
-            await new Promise(r => setTimeout(r, 20));
-          }
           await new Promise(r => setTimeout(r, off));
-          if (window.rewindDirector.getState() === 'RISE') {
+          if (window.rewindDirector.isActive()) {
             window.executeRewind();
           }
           let safety = 0;
-          while ((window.rewindDirector.isActive() || window.isAnimating) && safety++ < 120) {
+          while ((window.rewindDirector.isActive() || window.isAnimating) && safety++ < 160) {
             await new Promise(r => setTimeout(r, 20));
           }
-          const b4 = window.controller.getBoard();
-          const dom4 = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+          const b3 = window.controller.getBoard();
+          const dom3 = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
             idx: parseInt(t.getAttribute('data-index'), 10),
             val: t.getAttribute('data-val')
           }));
-          const offMatch = dom4.length === b4.filter(x => x !== 0).length && dom4.every(t => b4[t.idx] == t.val);
-          if (!offMatch) results.s4OffsetsPass = false;
+          const offMatch = dom3.length === b3.filter(x => x !== 0).length && dom3.every(t => b3[t.idx] == t.val);
+          results.s3Debug.push({
+            off,
+            offMatch,
+            domLen: dom3.length,
+            engineLen: b3.filter(x => x !== 0).length,
+            safety,
+            isAnimating: window.isAnimating,
+            directorActive: window.rewindDirector.isActive()
+          });
+          if (!offMatch) results.s3OffsetsPass = false;
         }
 
-        // S7: Swipe, Rewind, Swipe, Rewind 40ms apart
-        const vm7 = window.controller.getValidMoves();
-        const d7 = vm7.length > 0 ? vm7[0] : 'L';
-        window.handleMove(d7, 'swipe');
+        // S5: Swipe, Rewind, Swipe, Rewind 40ms apart
+        replenishRewind();
+        const vm5 = window.controller.getValidMoves();
+        const d5 = vm5.length > 0 ? vm5[0] : 'L';
+        window.handleMove(d5, 'swipe');
         setTimeout(() => window.executeRewind(), 40);
-        setTimeout(() => window.handleMove(d7, 'swipe'), 80);
+        setTimeout(() => window.handleMove(d5, 'swipe'), 80);
         setTimeout(() => window.executeRewind(), 120);
-        let s7Safety = 0;
-        while ((window.rewindDirector.isActive() || window.isAnimating) && s7Safety++ < 120) {
+        let s5Safety = 0;
+        while ((window.rewindDirector.isActive() || window.isAnimating) && s5Safety++ < 120) {
           await new Promise(r => setTimeout(r, 20));
         }
-        const b7 = window.controller.getBoard();
-        const dom7 = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
+        const b5 = window.controller.getBoard();
+        const dom5 = Array.from(document.querySelectorAll('#tiles-layer .tile, #tiles-layer .stone')).map(t => ({
           idx: parseInt(t.getAttribute('data-index'), 10),
           val: t.getAttribute('data-val')
         }));
-        results.s7Pass = dom7.length === b7.filter(x => x !== 0).length &&
-          dom7.every(t => b7[t.idx] == t.val);
+        results.s5Pass = dom5.length === b5.filter(x => x !== 0).length &&
+          dom5.every(t => b5[t.idx] == t.val);
+
+        // Layout integrity check
+        const barRect = document.getElementById('ability-bar')?.getBoundingClientRect();
+        const boardRect = document.getElementById('board')?.getBoundingClientRect();
+        results.barTop = barRect ? barRect.top : 0;
+        results.boardTop = boardRect ? boardRect.top : 0;
+
+        // Pips & label containment
+        const rewindBtn = document.querySelector('.ability-btn[data-relic="rewind"]');
+        const btnRect = rewindBtn?.getBoundingClientRect();
+        const pipsEl = rewindBtn?.querySelector('.ability-btn-pips');
+        const nameEl = rewindBtn?.querySelector('.ability-btn-name');
+        const pipsRect = pipsEl?.getBoundingClientRect();
+        const nameRect = nameEl?.getBoundingClientRect();
+        results.pipsInside = btnRect && pipsRect ? (pipsRect.top >= btnRect.top - 2 && pipsRect.bottom <= btnRect.bottom + 2) : true;
+        results.nameInside = btnRect && nameRect ? (nameRect.top >= btnRect.top - 2 && nameRect.bottom <= btnRect.bottom + 2) : true;
 
         return results;
       })()
     `);
 
-    assert.strictEqual(e9Res.s1Pass, true, 'E9: S1 single rewind passes with DOM match and 1 undo');
-    assert.strictEqual(e9Res.s2Pass, true, 'E9: S2 three rapid rewinds pass with DOM match and 3 undos');
-    assert.strictEqual(e9Res.s4OffsetsPass, true, 'E9: S4 rewind during RISE at 3 offsets (100, 250, 400ms) passes smoothly');
-    assert.strictEqual(e9Res.s7Pass, true, 'E9: S7 rapid swipe/rewind interleaving passes with DOM match');
-    console.log('[Smoke Test] ✔ E9 verified: 3D Rewind assertions passed (S1, S2, S4 at 3 offsets, S7).');
+
+    console.log('e11Res.s3Debug:', e11Res.s3Debug);
+    assert.strictEqual(e11Res.s1Pass, true, 'E11: S1 single rewind passes with DOM match and 1 undo');
+    assert.strictEqual(e11Res.s2Pass, true, 'E11: S2 three rapid rewinds pass with DOM match and 3 undos');
+    assert.strictEqual(e11Res.s3OffsetsPass, true, 'E11: S3 rewind during wave at 3 offsets (100, 250, 400ms) passes smoothly');
+    assert.strictEqual(e11Res.s5Pass, true, 'E11: S5 rapid swipe/rewind interleaving passes with DOM match');
+    assert.strictEqual(e11Res.pipsInside, true, 'E11: Ability card pips are fully contained');
+    assert.strictEqual(e11Res.nameInside, true, 'E11: Ability card labels are fully contained');
+
+    // Make a move to ensure rewind is enabled
+    await cdp.eval(`(() => {
+      const vm = window.controller.getValidMoves();
+      if (vm.length > 0) window.handleMove(vm[0]);
+    })()`);
+    await sleep(200);
+
+    // Test hover-tilt via CDP pseudo-state (fine pointer)
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1280,
+      height: 800,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+    await sleep(100);
+    await cdp.send('DOM.enable');
+    await cdp.send('CSS.enable');
+    const docE11 = await cdp.send('DOM.getDocument', { depth: -1 });
+    const { nodeId: rewindNodeId } = await cdp.send('DOM.querySelector', {
+      nodeId: docE11.root.nodeId,
+      selector: 'button.ability-btn[data-relic="rewind"]'
+    });
+    assert.ok(rewindNodeId, 'Rewind button DOM node must exist');
+
+    // Apply hover pseudo-state
+    await cdp.send('CSS.forcePseudoState', { nodeId: rewindNodeId, forcedPseudoClasses: ['hover'] });
+    await sleep(450);
+    const hoverTiltDeg = await cdp.eval(`(() => {
+      const el = document.querySelector('.ability-btn[data-relic="rewind"] .ability-btn-icon-wrap img, .ability-btn[data-relic="rewind"] .relic-icon-img, .ability-btn[data-relic="rewind"] .relic-svg');
+      if (!el) return 0;
+      const st = window.getComputedStyle(el);
+      const tr = st.transform;
+      if (!tr || tr === 'none') return 0;
+      const m = tr.match(/matrix\\(([^)]+)\\)/);
+      if (m) {
+        const parts = m[1].split(',').map(Number);
+        const rad = Math.atan2(parts[1], parts[0]);
+        return Math.round(rad * (180 / Math.PI));
+      }
+      return 0;
+    })()`);
+
+    assert.ok(hoverTiltDeg <= -10 && hoverTiltDeg >= -12, `Hovered icon tilt must be between -10 and -12 deg (got ${hoverTiltDeg} deg)`);
+
+    // Remove hover pseudo-state
+    await cdp.send('CSS.forcePseudoState', { nodeId: rewindNodeId, forcedPseudoClasses: [] });
+    await sleep(450);
+    const unhoverTiltDeg = await cdp.eval(`(() => {
+      const el = document.querySelector('.ability-btn[data-relic="rewind"] .ability-btn-icon-wrap img, .ability-btn[data-relic="rewind"] .relic-icon-img, .ability-btn[data-relic="rewind"] .relic-svg');
+      if (!el) return 0;
+      const st = window.getComputedStyle(el);
+      const tr = st.transform;
+      if (!tr || tr === 'none') return 0;
+      const m = tr.match(/matrix\\(([^)]+)\\)/);
+      if (m) {
+        const parts = m[1].split(',').map(Number);
+        const rad = Math.atan2(parts[1], parts[0]);
+        return Math.round(rad * (180 / Math.PI));
+      }
+      return 0;
+    })()`);
+    assert.ok(Math.abs(unhoverTiltDeg) <= 1, `Unhovered icon tilt must return to 0 deg (got ${unhoverTiltDeg} deg)`);
+
+    console.log(`[Smoke Test] ✔ E11 verified: Wave rewind assertions (S1, S2, S3, S5) and E9 micro-interactions (hover tilt ${hoverTiltDeg} deg, unhovered ${unhoverTiltDeg} deg, containment) passed.`);
+
+    // E12: Wave Invariants (B4, B1) and Card Shine Invariants (C4)
+    console.log('[Smoke Test] Testing E12: Wave Invariants (B4 single switch, B1 opacity invariant) & C4 Card Shine Residue...');
+    const e12Res = await cdp.eval(`
+      (async () => {
+        // Setup board for Rewind
+        window.startNewGame(999);
+        window.controller.state.relics = new Set(['diagonal_charge', 'eraser', 'rewind']);
+        window.renderAbilityBar();
+        
+        // 1. C4 Card Shine Check at rest
+        const shineCards = ['diagonal_charge', 'eraser', 'rewind'];
+        const shineRestErrors = [];
+        for (const cardId of shineCards) {
+          const btn = document.querySelector(\`.ability-btn[data-relic="\${cardId}"]\`);
+          if (!btn) {
+            shineRestErrors.push(\`Card \${cardId} not found\`);
+            continue;
+          }
+          const shineEl = btn.querySelector('.card-shine');
+          if (!shineEl) {
+            shineRestErrors.push(\`Card \${cardId} missing .card-shine element\`);
+            continue;
+          }
+          const cs = window.getComputedStyle(shineEl, '::before');
+          const op = parseFloat(cs.opacity) || 0;
+          if (op !== 0) {
+            shineRestErrors.push(\`Card \${cardId} shine ::before opacity \${op} != 0\`);
+          }
+        }
+        
+        // Test shimmer trigger and cleanup on rewind card
+        window.triggerCardShimmer('rewind');
+        const hasShimmerClassDuring = document.querySelector('.ability-btn[data-relic="rewind"]')?.classList.contains('shimmer');
+        await new Promise(r => setTimeout(r, 750));
+        const hasShimmerClassAfter = document.querySelector('.ability-btn[data-relic="rewind"]')?.classList.contains('shimmer');
+        const csAfter = window.getComputedStyle(document.querySelector('.ability-btn[data-relic="rewind"] .card-shine'), '::before');
+        const opAfter = parseFloat(csAfter.opacity) || 0;
+        
+        // 2. Setup board with 16 cells and perform a move
+        window.controller.state.board = [
+          2, 4, 8, 16,
+          32, 64, 128, 256,
+          512, 1024, 2, 4,
+          2, 2, 4, 8
+        ];
+        window.syncBoard(window.controller.getBoard(), 'smoke-wave-setup');
+        window.handleMove('ArrowLeft', 'swipe');
+        while (window.isAnimating) await new Promise(r => setTimeout(r, 20));
+        
+        // 3. Monitor Wave Rewind for B4 and B1
+        const initialDomBoard = Array.from({ length: 16 }, (_, idx) => {
+          const el = document.querySelector(\`#tiles-layer .tile[data-index="\${idx}"], #tiles-layer .stone[data-index="\${idx}"]\`);
+          return el ? el.getAttribute('data-val') : 'empty';
+        });
+        
+        const cellSwitches = Array.from({ length: 16 }, () => ({ count: 0, swapTime: -1, lastVal: null }));
+        for (let i = 0; i < 16; i++) {
+          cellSwitches[i].lastVal = initialDomBoard[i];
+        }
+        
+        let b1Violations = 0;
+        let recording = true;
+        const startTime = performance.now();
+        
+        function sample() {
+          if (!recording) return;
+          const now = performance.now() - startTime;
+          
+          for (let i = 0; i < 16; i++) {
+            const el = document.querySelector(\`#tiles-layer .tile[data-index="\${i}"], #tiles-layer .stone[data-index="\${i}"]\`);
+            const curVal = el ? el.getAttribute('data-val') : 'empty';
+            if (curVal !== cellSwitches[i].lastVal) {
+              cellSwitches[i].count++;
+              cellSwitches[i].swapTime = now;
+              cellSwitches[i].lastVal = curVal;
+            }
+            
+            if (el && el.classList.contains('tile')) {
+              const face = el.querySelector('.tile-face');
+              const textNode = face ? (face.childNodes[0] || face) : null;
+              const faceCs = face ? window.getComputedStyle(face) : null;
+              const textParentCs = (textNode && textNode.parentElement) ? window.getComputedStyle(textNode.parentElement) : null;
+              if (faceCs && textParentCs) {
+                const opFace = parseFloat(faceCs.opacity) || 1;
+                const opText = parseFloat(textParentCs.opacity) || 1;
+                if (Math.abs(opFace - opText) > 0.05) {
+                  b1Violations++;
+                }
+              }
+            }
+          }
+          requestAnimationFrame(sample);
+        }
+        
+        requestAnimationFrame(sample);
+        window.executeRewind();
+        
+        while (window.rewindDirector.isActive() || window.isAnimating) {
+          await new Promise(r => setTimeout(r, 20));
+        }
+        await new Promise(r => setTimeout(r, 50));
+        recording = false;
+        
+        // Assert B4: All cells switched exactly once, monotonic in m
+        let b4AllSingleSwitch = true;
+        const swapTimesByM = Array.from({ length: 7 }, () => []);
+        for (let i = 0; i < 16; i++) {
+          if (cellSwitches[i].count !== 1) b4AllSingleSwitch = false;
+          const r = Math.floor(i / 4), c = i % 4;
+          const m = r + c;
+          swapTimesByM[m].push(cellSwitches[i].swapTime);
+        }
+        
+        let monotonicM = true;
+        const meanM = swapTimesByM.map(arr => arr.reduce((a, b) => a + b, 0) / arr.length);
+        for (let m = 0; m < 6; m++) {
+          if (meanM[m] >= meanM[m + 1]) monotonicM = false;
+        }
+        
+        return {
+          shineRestErrors,
+          hasShimmerClassDuring,
+          hasShimmerClassAfter,
+          opAfter,
+          b1Violations,
+          b4AllSingleSwitch,
+          monotonicM,
+          meanM
+        };
+      })()
+    `);
+    assert.strictEqual(e12Res.shineRestErrors.length, 0, 'C4: All cards shine ::before must have opacity 0 at rest');
+    assert.strictEqual(e12Res.hasShimmerClassAfter, false, 'C4: shimmer class must be removed after sweep');
+    assert.strictEqual(e12Res.opAfter, 0, 'C4: shine ::before opacity must return to 0 after sweep');
+    assert.strictEqual(e12Res.b1Violations, 0, 'B1: Effective opacity difference between body and number must be 0 across all sampled frames');
+    assert.strictEqual(e12Res.b4AllSingleSwitch, true, 'B4: Every cell must switch state exactly once during wave rewind');
+    assert.strictEqual(e12Res.monotonicM, true, 'B4: Swap times must be strictly monotonic in wave diagonal m');
+    console.log(`[Smoke Test] ✔ E12 verified: B4 wave single-switch, B1 opacity invariant, and C4 card shine residue tests passed.`);
 
     // E8: Clean Slate Banner Title and Tagline verification
     console.log('[Smoke Test] Testing E8: Clean Slate banner title and tagline assertions...');

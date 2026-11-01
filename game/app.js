@@ -1669,6 +1669,7 @@ window.__correctionsByCallSite = {
   interrupt: 0,
   rewind: 0,
   'rewind-swap': 0,
+  'rewind-cell-swap': 0,
   ability: 0,
   'decision-resolve': 0,
   'draft-resolve': 0,
@@ -1724,6 +1725,7 @@ function createTileElement(index, val, isSpawn = false, metrics = getGridMetrics
   const id = nextTileId++;
   el.id = `tile-${id}`;
   el.setAttribute('data-tile-id', String(id));
+  el.setAttribute('data-tid', String(id));
   el.setAttribute('data-index', String(index));
 
   const trans = getTileTranslate(index, metrics);
@@ -1834,6 +1836,7 @@ function alignDomToBoard(board, metrics = getGridMetrics()) {
 }
 
 function syncBoard(board = (controller ? controller.getBoard() : []), callSite = 'other') {
+  if (callSite === 'rewind-cell-swap') return;
   if (!boardEl || !tilesLayer) return;
   const cells = boardEl.querySelectorAll('.cell');
   if (!cells || cells.length !== 16) return;
@@ -2355,6 +2358,11 @@ function renderAbilityBar() {
     btn.appendChild(pipsEl);
     btn.appendChild(cdEl);
 
+    const shineEl = document.createElement('span');
+    shineEl.className = 'card-shine';
+    shineEl.setAttribute('aria-hidden', 'true');
+    btn.appendChild(shineEl);
+
     // Press-and-hold (500ms) shows description popover without triggering ability
     let holdTimer = null;
     let didHold = false;
@@ -2407,6 +2415,25 @@ function renderAbilityBar() {
 
     abilityBar.appendChild(btn);
   }
+}
+
+function triggerCardShimmer(relicId) {
+  if (REWIND_FX && REWIND_FX.shimmerOnUse === false) return;
+  const btn = document.querySelector(`.ability-btn[data-relic="${relicId}"], .ability[data-relic="${relicId}"]`);
+  if (!btn) return;
+  btn.classList.add('shimmer');
+  const onEnd = () => {
+    btn.classList.remove('shimmer');
+    btn.removeEventListener('animationend', onEnd);
+  };
+  btn.addEventListener('animationend', onEnd, { once: true });
+  setTimeout(() => {
+    btn.classList.remove('shimmer');
+    btn.removeEventListener('animationend', onEnd);
+  }, 750);
+}
+if (typeof window !== 'undefined') {
+  window.triggerCardShimmer = triggerCardShimmer;
 }
 
 function startTargeting(relicId) {
@@ -2536,26 +2563,38 @@ function clearTargetingHighlights() {
  * 3D Rewind FX & Input Director
  * ------------------------------------------------------------- */
 export const REWIND_FX = {
-  perspective: 1100,
+  mode: 'wave',
+  stage: 'tile',
+  perspective: 900,
+  zDepth: 240,
+  sinkScale: 0.9,
+  stepMs: 80,
+  sinkMs: 150,
+  riseMs: 200,
+  sinkEasing: 'cubic-bezier(0.4, 0, 1, 1)',
+  riseEasing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+  socketPress: 0.94,
+  shimmerOnUse: true,
+  rampMs: 140,
+  catchUpMs: 220,
+  maxRate: 6,
+  reverseRate: 1.5,
+  queueMax: 4,
+  // Vortex mode parameters preserved intact:
   alpha: 0.35,
   zMin: 300,
   zMax: 600,
   tiltMin: 10,
   tiltMax: 25,
-  sinkScale: 0.85,
   sinkDelayMax: 200,
   sinkDurationMin: 320,
   sinkDurationMax: 350,
   riseDelayMax: 180,
   riseDurationMin: 400,
   riseDurationMax: 420,
-  sinkEasing: 'cubic-bezier(0.4, 0, 1, 1)',
+  vortexPerspective: 1100,
+  vortexSinkScale: 0.85,
   riseTransformEasing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
-  rampMs: 140,
-  catchUpMs: 220,
-  maxRate: 6,
-  reverseRate: 1.5,
-  queueMax: 4,
 };
 if (typeof window !== 'undefined') {
   window.REWIND_FX = REWIND_FX;
@@ -2609,7 +2648,8 @@ function computeTilePose(index, metrics, seed, phase) {
 
   const baseTrans = getTileTranslate(index, metrics);
 
-  const nadirTransform = `${baseTrans.transform} translate3d(${REWIND_FX.alpha * vx}px, ${REWIND_FX.alpha * vy}px, -${Z}px) rotateX(${w * theta}deg) rotateY(${-u * theta}deg) scale(${REWIND_FX.sinkScale})`;
+  const sinkScale = REWIND_FX.vortexSinkScale || 0.85;
+  const nadirTransform = `${baseTrans.transform} translate3d(${REWIND_FX.alpha * vx}px, ${REWIND_FX.alpha * vy}px, -${Z}px) rotateX(${w * theta}deg) rotateY(${-u * theta}deg) scale(${sinkScale})`;
   const baseTransform = `${baseTrans.transform} translate3d(0px, 0px, 0px) rotateX(0deg) rotateY(0deg) scale(1)`;
 
   const sinkDelay = 140 * (1 - rho) + 60 * xi2;
@@ -2632,6 +2672,7 @@ class RewindDirector {
     this.queue = [];
     this.ignoredCount = 0;
     this.currentGroup = [];
+    this.riseAnimations = [];
     this.epoch = 0;
     this.currentRate = 1.0;
     this.targetRate = 1.0;
@@ -2643,6 +2684,15 @@ class RewindDirector {
     this.sinkEndTime = 0;
     this.swapTime = 0;
     this.riseEndTime = 0;
+    this.displayed = new Array(16).fill(0);
+    this.waveCount = 0;
+    this.deltaWaveCount = 0;
+    this.waveStartTime = 0;
+    this.cellSwapTimes = {};
+    this.firstM3SwapTime = null;
+    this.totalDurationMeasured = 0;
+    this.pendingSwapCount = 0;
+    this.completedSwapCount = 0;
   }
 
   getState() {
@@ -2678,14 +2728,14 @@ class RewindDirector {
       return false;
     }
     this.queue.push({ type, payload });
-    if (this.state === 'SINK' || this.state === 'RISE' || this.state === 'RISE_REVERSE') {
+    if (this.state === 'WAVE' || this.state === 'SINK' || this.state === 'RISE' || this.state === 'SWAP') {
       this.triggerCatchUp();
     }
     return true;
   }
 
   triggerCatchUp() {
-    if (this.queue.length === 0 || this.currentGroup.length === 0) return;
+    if (this.currentGroup.length === 0) return;
     let maxRemaining = 0;
     for (const a of this.currentGroup) {
       const timing = a.effect ? a.effect.getComputedTiming() : null;
@@ -2733,6 +2783,13 @@ class RewindDirector {
     this.rateRaf = requestAnimationFrame(tickRamp);
   }
 
+  syncDisplayedFromDom() {
+    const b = controller ? controller.getBoard() : [];
+    for (let i = 0; i < 16; i++) {
+      this.displayed[i] = b[i] ?? 0;
+    }
+  }
+
   processRewindAction() {
     const canUseNow = controller.getRewindUndoLevels ? controller.getRewindUndoLevels() > 0 : true;
     const abilityState = controller.getAbilityState()?.rewind;
@@ -2755,6 +2812,8 @@ class RewindDirector {
 
     playRewind();
     renderAbilityBar();
+    triggerCardShimmer('rewind');
+
     return true;
   }
 
@@ -2768,9 +2827,14 @@ class RewindDirector {
         this.enqueueInput('rewind', {});
         return;
       }
+      this.syncDisplayedFromDom();
       const processed = this.processRewindAction();
       if (processed) {
-        this.startSink();
+        if (REWIND_FX.mode === 'vortex') {
+          this.startSink();
+        } else {
+          this.startWave();
+        }
       }
       return;
     }
@@ -2780,49 +2844,346 @@ class RewindDirector {
       return;
     }
 
-    if (this.state === 'SINK') {
-      if (this.queue.length === 0) {
-        this.processRewindAction();
-      } else {
-        this.enqueueInput('rewind', {});
-      }
-      return;
-    }
-
-    if (this.state === 'RISE') {
-      if (this.queue.length === 0) {
-        const processed = this.processRewindAction();
-        if (processed) {
-          this.startRiseReverse();
+    if (this.state === 'WAVE' || this.state === 'SINK' || this.state === 'RISE' || this.state === 'SWAP') {
+      if (REWIND_FX.mode === 'wave') {
+        if (this.queue.length === 0) {
+          this.processRewindAction();
+          this.triggerCatchUp();
+        } else {
+          this.enqueueInput('rewind', {});
         }
       } else {
-        this.enqueueInput('rewind', {});
+        if (this.state === 'SINK' || this.state === 'SWAP') {
+          if (this.queue.length === 0) {
+            this.processRewindAction();
+          } else {
+            this.enqueueInput('rewind', {});
+          }
+        } else if (this.state === 'RISE') {
+          if (this.queue.length === 0) {
+            const processed = this.processRewindAction();
+            if (processed) this.startRiseReverse();
+          } else {
+            this.enqueueInput('rewind', {});
+          }
+        } else if (this.state === 'RISE_REVERSE') {
+          if (this.queue.length === 0) {
+            this.processRewindAction();
+          } else {
+            this.enqueueInput('rewind', {});
+          }
+        }
       }
-      return;
-    }
-
-    if (this.state === 'RISE_REVERSE') {
-      if (this.queue.length === 0) {
-        this.processRewindAction();
-      } else {
-        this.enqueueInput('rewind', {});
-      }
-      return;
-    }
-
-    if (this.state === 'SWAP') {
-      this.enqueueInput('rewind', {});
       return;
     }
   }
 
   onSlideAnimationComplete() {
-    if (this.state === 'WAIT_SLIDE') {
+    if (this.state === 'WAIT_SLIDE' || this.state === 'IDLE') {
       this.setState('IDLE');
       this.processQueue();
     }
   }
 
+  startWave(deltaCells = null) {
+    const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced) {
+      this.startReducedMotionSequence();
+      return;
+    }
+
+    this.setState('WAVE');
+    isAnimating = true;
+    const epoch = ++this.epoch;
+    if (this.rateRaf) cancelAnimationFrame(this.rateRaf);
+    this.currentRate = 1.0;
+    this.targetRate = 1.0;
+
+    const now = performance.now();
+    if (!deltaCells) {
+      this.waveCount = 1;
+      this.deltaWaveCount = 0;
+      this.waveStartTime = now;
+      this.cellSwapTimes = {};
+      this.firstM3SwapTime = null;
+    } else {
+      this.waveCount++;
+      this.deltaWaveCount++;
+    }
+
+    const metrics = getGridMetrics();
+    const cellsToAnimate = deltaCells
+      ? new Set(deltaCells)
+      : new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+
+    const mMin = deltaCells
+      ? Math.min(...deltaCells.map(idx => Math.floor(idx / 4) + (idx % 4)))
+      : 0;
+
+    this.pendingSwapCount = cellsToAnimate.size;
+    this.completedSwapCount = 0;
+    this.currentGroup = [];
+    this.riseAnimations = [];
+    this.activeWaveAnimations = [];
+    this.activeWavePromises = [];
+
+    if (this.waveWatchdogTimer) {
+      clearTimeout(this.waveWatchdogTimer);
+      this.waveWatchdogTimer = null;
+    }
+    const maxM = deltaCells
+      ? Math.max(...deltaCells.map(idx => Math.floor(idx / 4) + (idx % 4)))
+      : 6;
+    const computedWaveDuration = (maxM - mMin) * REWIND_FX.stepMs + REWIND_FX.sinkMs + REWIND_FX.riseMs;
+    this.waveWatchdogTimer = setTimeout(() => {
+      if (this.epoch === epoch && this.state === 'WAVE') {
+        console.error('watchdog_wave_timeout: wave did not complete in time');
+        if (typeof window !== 'undefined') {
+          window.watchdogWaveTimeoutFired = (window.watchdogWaveTimeoutFired || 0) + 1;
+        }
+        this.executeCleanup();
+      }
+    }, computedWaveDuration + 4000);
+
+    for (let i = 0; i < 16; i++) {
+      if (!cellsToAnimate.has(i)) continue;
+
+      const row = Math.floor(i / 4);
+      const col = i % 4;
+      const m = row + col;
+      const cellDelay = (m - mMin) * REWIND_FX.stepMs;
+
+      const oldEl = tilesLayer ? tilesLayer.querySelector(`.tile[data-index="${i}"], .stone[data-index="${i}"]`) : null;
+
+      if (oldEl) {
+        const animTarget = REWIND_FX.stage === 'tile'
+          ? (oldEl.querySelector('.tile-face') || oldEl)
+          : oldEl;
+
+        const baseTrans = getTileTranslate(i, metrics);
+        const restPose = REWIND_FX.stage === 'tile'
+          ? 'none'
+          : `${baseTrans.transform} translateZ(0px) scale(1)`;
+        const nadirPose = REWIND_FX.stage === 'tile'
+          ? `perspective(${REWIND_FX.perspective}px) translateZ(-${REWIND_FX.zDepth}px) scale(${REWIND_FX.sinkScale})`
+          : `${baseTrans.transform} translateZ(-${REWIND_FX.zDepth}px) scale(${REWIND_FX.sinkScale})`;
+
+        const tAnim = animTarget.animate([
+          { transform: restPose, offset: 0 },
+          { transform: nadirPose, offset: 1 }
+        ], {
+          duration: REWIND_FX.sinkMs,
+          delay: cellDelay,
+          easing: REWIND_FX.sinkEasing,
+          fill: 'forwards'
+        });
+
+        const oAnim = animTarget.animate([
+          { opacity: 1, offset: 0 },
+          { opacity: 1, offset: 0.6 },
+          { opacity: 0, offset: 1 }
+        ], {
+          duration: REWIND_FX.sinkMs,
+          delay: cellDelay,
+          easing: 'linear',
+          fill: 'forwards'
+        });
+
+        this.currentGroup.push(tAnim, oAnim);
+
+        Promise.all([tAnim.finished.catch(() => {}), oAnim.finished.catch(() => {})]).then(() => {
+          if (this.epoch !== epoch || this.state !== 'WAVE') return;
+          this.executeCellSwap(i, m, oldEl, [tAnim, oAnim], epoch);
+        });
+      } else {
+        const cellEl = boardEl ? boardEl.querySelector(`.cell[data-index="${i}"], .grid-cell[data-index="${i}"]`) : null;
+        if (cellEl) {
+          const ripAnim = cellEl.animate([
+            { transform: 'scale(1)', offset: 0 },
+            { transform: `scale(${REWIND_FX.socketPress})`, offset: 0.45 },
+            { transform: 'scale(1)', offset: 1 }
+          ], {
+            delay: cellDelay,
+            duration: REWIND_FX.sinkMs + REWIND_FX.riseMs,
+            easing: 'ease-in-out',
+            fill: 'none'
+          });
+          this.currentGroup.push(ripAnim);
+          this.activeWaveAnimations.push(ripAnim);
+          this.activeWavePromises.push(ripAnim.finished.catch(() => {}));
+        }
+
+        const sentinel = document.createElement('div');
+        sentinel.style.position = 'absolute';
+        sentinel.style.opacity = '0';
+        sentinel.style.pointerEvents = 'none';
+        sentinel.setAttribute('data-sentinel', String(i));
+        if (boardEl) boardEl.appendChild(sentinel);
+
+        const barrierAnim = sentinel.animate([
+          { opacity: 0 },
+          { opacity: 0 }
+        ], {
+          delay: cellDelay,
+          duration: REWIND_FX.sinkMs
+        });
+        this.currentGroup.push(barrierAnim);
+
+        barrierAnim.finished.catch(() => {}).then(() => {
+          if (sentinel.parentNode) sentinel.parentNode.removeChild(sentinel);
+          if (this.epoch !== epoch || this.state !== 'WAVE') return;
+          this.executeCellSwap(i, m, null, [barrierAnim], epoch);
+        });
+      }
+    }
+
+    if (this.queue.length > 0) {
+      this.triggerCatchUp();
+    }
+  }
+
+  executeCellSwap(cellIdx, m, oldEl, finishedAnims, epoch) {
+    if (this.epoch !== epoch || this.state !== 'WAVE') return;
+
+    for (const a of finishedAnims) {
+      try {
+        if (a.playState === 'finished' || (a.currentTime >= (a.effect?.getComputedTiming()?.endTime ?? 0))) {
+          a.cancel();
+        }
+      } catch {}
+    }
+    this.currentGroup = this.currentGroup.filter(a => !finishedAnims.includes(a));
+
+    if (oldEl && oldEl.parentNode) {
+      oldEl.parentNode.removeChild(oldEl);
+    }
+
+    const targetVal = controller.getBoard()[cellIdx] ?? 0;
+    const metrics = getGridMetrics();
+
+    if (targetVal !== 0) {
+      const newEl = createTileElement(cellIdx, targetVal, false, metrics);
+      const animTarget = REWIND_FX.stage === 'tile'
+        ? (newEl.querySelector('.tile-face') || newEl)
+        : newEl;
+
+      const baseTrans = getTileTranslate(cellIdx, metrics);
+      const restPose = REWIND_FX.stage === 'tile'
+        ? 'none'
+        : `${baseTrans.transform} translateZ(0px) scale(1)`;
+      const nadirPose = REWIND_FX.stage === 'tile'
+        ? `perspective(${REWIND_FX.perspective}px) translateZ(-${REWIND_FX.zDepth}px) scale(${REWIND_FX.sinkScale})`
+        : `${baseTrans.transform} translateZ(-${REWIND_FX.zDepth}px) scale(${REWIND_FX.sinkScale})`;
+
+      if (REWIND_FX.stage === 'tile') {
+        animTarget.style.transform = nadirPose;
+        animTarget.style.opacity = '0';
+      } else {
+        newEl.style.transform = nadirPose;
+        newEl.style.opacity = '0';
+      }
+
+      tilesLayer.appendChild(newEl);
+
+      const tRiseAnim = animTarget.animate([
+        { transform: nadirPose, offset: 0 },
+        { transform: restPose, offset: 1 }
+      ], {
+        duration: REWIND_FX.riseMs,
+        easing: REWIND_FX.riseEasing,
+        fill: 'forwards'
+      });
+
+      const oRiseAnim = animTarget.animate([
+        { opacity: 0, offset: 0 },
+        { opacity: 1, offset: 0.45 },
+        { opacity: 1, offset: 1 }
+      ], {
+        duration: REWIND_FX.riseMs,
+        easing: 'linear',
+        fill: 'forwards'
+      });
+
+      if (this.currentRate !== 1.0) {
+        try {
+          tRiseAnim.updatePlaybackRate(this.currentRate);
+          oRiseAnim.updatePlaybackRate(this.currentRate);
+        } catch {}
+      }
+      if (this.isPaused) {
+        try {
+          tRiseAnim.pause();
+          oRiseAnim.pause();
+        } catch {}
+      }
+
+      Promise.all([tRiseAnim.finished.catch(() => {}), oRiseAnim.finished.catch(() => {})]).then(() => {
+        if (REWIND_FX.stage === 'tile') {
+          animTarget.style.transform = '';
+          animTarget.style.opacity = '';
+        } else {
+          newEl.style.transform = baseTrans.transform;
+          newEl.style.opacity = '';
+        }
+      });
+
+      this.currentGroup.push(tRiseAnim, oRiseAnim);
+      this.riseAnimations.push(tRiseAnim, oRiseAnim);
+      this.activeWaveAnimations.push(tRiseAnim, oRiseAnim);
+      this.activeWavePromises.push(tRiseAnim.finished.catch(() => {}), oRiseAnim.finished.catch(() => {}));
+    }
+
+    this.displayed[cellIdx] = targetVal;
+    this.swapCount++;
+    syncBoard(controller.getBoard(), 'rewind-cell-swap');
+
+    const swapTs = performance.now();
+    this.cellSwapTimes[cellIdx] = swapTs - this.waveStartTime;
+
+    if (m === 3 && this.firstM3SwapTime === null) {
+      this.firstM3SwapTime = swapTs - this.waveStartTime;
+      updateHeader();
+      renderAbilityBar();
+      if (typeof updateCountdownBadge === 'function') updateCountdownBadge();
+    }
+
+    this.completedSwapCount++;
+    if (this.completedSwapCount === this.pendingSwapCount) {
+      const waitGroup = this.activeWavePromises && this.activeWavePromises.length > 0
+        ? this.activeWavePromises
+        : this.riseAnimations.map(a => a.finished.catch(() => {}));
+      if (waitGroup.length > 0) {
+        Promise.all(waitGroup).then(() => {
+          if (this.epoch !== epoch || this.state !== 'WAVE') return;
+          this.onWaveGroupFinished(epoch);
+        });
+      } else {
+        this.onWaveGroupFinished(epoch);
+      }
+    }
+  }
+
+  onWaveGroupFinished(epoch) {
+    if (this.epoch !== epoch || this.state !== 'WAVE') return;
+
+    this.totalDurationMeasured = performance.now() - this.waveStartTime;
+
+    const engineBoard = controller.getBoard();
+    const changedCells = [];
+    for (let i = 0; i < 16; i++) {
+      if (this.displayed[i] !== (engineBoard[i] ?? 0)) {
+        changedCells.push(i);
+      }
+    }
+
+    if (changedCells.length > 0) {
+      this.startWave(changedCells);
+    } else {
+      this.executeCleanup();
+    }
+  }
+
+  // Legacy vortex sink
   startSink() {
     const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReduced) {
@@ -2936,70 +3297,63 @@ class RewindDirector {
     this.swapTime = performance.now();
     const epoch = this.epoch;
 
-    window.__inAllowedStyleMutation = true;
     let riseAnims = [];
-    try {
-      if (this.epoch !== epoch) return;
+    if (this.epoch !== epoch) return;
 
-      for (const a of this.currentGroup) {
-        try { a.cancel(); } catch {}
-      }
-      this.currentGroup = [];
-
-      if (tilesLayer) {
-        tilesLayer.innerHTML = '';
-      }
-
-      syncBoard(controller.getBoard(), 'rewind-swap');
-
-      const metrics = getGridMetrics();
-      const newTiles = Array.from(tilesLayer.children).filter(el =>
-        el.classList.contains('tile') || el.classList.contains('stone')
-      );
-
-      const seed = getRewindSeed(controller);
-
-      for (const el of newTiles) {
-        const idx = parseInt(el.getAttribute('data-index'), 10);
-        const pose = computeTilePose(idx, metrics, seed, 'rise');
-
-        el.style.opacity = '0';
-        el.style.transform = pose.nadirTransform;
-        el.style.willChange = 'transform, opacity';
-
-        const tAnim = el.animate([
-          { transform: pose.nadirTransform },
-          { transform: pose.baseTransform }
-        ], {
-          duration: pose.riseDuration,
-          delay: pose.riseDelay,
-          easing: REWIND_FX.riseTransformEasing,
-          fill: 'both'
-        });
-
-        const oAnim = el.animate([
-          { opacity: 0 },
-          { opacity: 1 }
-        ], {
-          duration: pose.riseDuration,
-          delay: pose.riseDelay,
-          easing: 'linear',
-          fill: 'both'
-        });
-
-        riseAnims.push(tAnim, oAnim);
-      }
-
-      this.currentGroup = riseAnims;
-
-      updateHeader();
-      renderAbilityBar();
-      if (typeof updateCountdownBadge === 'function') updateCountdownBadge();
-    } finally {
-      (typeof queueMicrotask === 'function' ? queueMicrotask : fn => setTimeout(fn, 0))(() => {
-        window.__inAllowedStyleMutation = false;
-      });
+    for (const a of this.currentGroup) {
+      try { a.cancel(); } catch {}
     }
+    this.currentGroup = [];
+
+    if (tilesLayer) {
+      tilesLayer.innerHTML = '';
+    }
+
+    syncBoard(controller.getBoard(), 'rewind-swap');
+
+    const metrics = getGridMetrics();
+    const newTiles = Array.from(tilesLayer.children).filter(el =>
+      el.classList.contains('tile') || el.classList.contains('stone')
+    );
+
+    const seed = getRewindSeed(controller);
+
+    for (const el of newTiles) {
+      const idx = parseInt(el.getAttribute('data-index'), 10);
+      const pose = computeTilePose(idx, metrics, seed, 'rise');
+
+      el.style.opacity = '0';
+      el.style.transform = pose.nadirTransform;
+      el.style.willChange = 'transform, opacity';
+
+      const tAnim = el.animate([
+        { transform: pose.nadirTransform },
+        { transform: pose.baseTransform }
+      ], {
+        duration: pose.riseDuration,
+        delay: pose.riseDelay,
+        easing: REWIND_FX.riseTransformEasing || REWIND_FX.riseEasing,
+        fill: 'both'
+      });
+
+      const oAnim = el.animate([
+        { opacity: 0 },
+        { opacity: 1 }
+      ], {
+        duration: pose.riseDuration,
+        delay: pose.riseDelay,
+        easing: 'linear',
+        fill: 'both'
+      });
+
+      riseAnims.push(tAnim, oAnim);
+    }
+
+    this.currentGroup = riseAnims;
+
+    updateHeader();
+    renderAbilityBar();
+    if (typeof updateCountdownBadge === 'function') updateCountdownBadge();
 
     this.setState('RISE');
     this.currentRate = 1.0;
@@ -3018,42 +3372,53 @@ class RewindDirector {
 
   executeCleanup() {
     const epoch = this.epoch;
+    if (this.epoch !== epoch) return;
 
-    window.__inAllowedStyleMutation = true;
-    try {
-      if (this.epoch !== epoch) return;
-
-      for (const a of this.currentGroup) {
-        try { a.cancel(); } catch {}
-      }
-      this.currentGroup = [];
-
-      const metrics = getGridMetrics();
-      const currentBoard = controller.getBoard();
-      const tiles = Array.from(tilesLayer.children).filter(el =>
-        el.classList.contains('tile') || el.classList.contains('stone')
-      );
-
-      for (const el of tiles) {
-        const idx = parseInt(el.getAttribute('data-index'), 10);
-        const trans = getTileTranslate(idx, metrics);
-        el.style.transform = trans.transform;
-        el.style.opacity = '1';
-        el.style.willChange = '';
-      }
-
-      syncBoard(currentBoard, 'rewind');
-
-      this.setState('IDLE');
-      isAnimating = false;
-      currentAnimationState = null;
-      this.currentRate = 1.0;
-      this.targetRate = 1.0;
-    } finally {
-      (typeof queueMicrotask === 'function' ? queueMicrotask : fn => setTimeout(fn, 0))(() => {
-        window.__inAllowedStyleMutation = false;
-      });
+    if (this.waveWatchdogTimer) {
+      clearTimeout(this.waveWatchdogTimer);
+      this.waveWatchdogTimer = null;
     }
+
+    if (this.rateRaf) cancelAnimationFrame(this.rateRaf);
+    for (const a of this.currentGroup) {
+      try {
+        if (a.playState === 'finished' || (a.currentTime >= (a.effect?.getComputedTiming()?.endTime ?? 0))) {
+          a.cancel();
+        }
+      } catch {}
+    }
+    this.currentGroup = [];
+    this.riseAnimations = [];
+    this.activeWaveAnimations = [];
+    this.activeWavePromises = [];
+
+    const metrics = getGridMetrics();
+    const currentBoard = controller.getBoard();
+    const tiles = Array.from(tilesLayer.children).filter(el =>
+      el.classList.contains('tile') || el.classList.contains('stone')
+    );
+
+    for (const el of tiles) {
+      const idx = parseInt(el.getAttribute('data-index'), 10);
+      const trans = getTileTranslate(idx, metrics);
+      el.style.transform = trans.transform;
+      el.style.opacity = '1';
+      el.style.willChange = '';
+      const face = el.querySelector('.tile-face, .stone-face');
+      if (face) {
+        face.style.transform = '';
+        face.style.opacity = '';
+        face.style.willChange = '';
+      }
+    }
+
+    syncBoard(currentBoard, 'rewind');
+
+    this.setState('IDLE');
+    isAnimating = false;
+    currentAnimationState = null;
+    this.currentRate = 1.0;
+    this.targetRate = 1.0;
 
     this.processQueue();
   }
@@ -3063,6 +3428,7 @@ class RewindDirector {
 
     const item = this.queue.shift();
     if (item.type === 'rewind') {
+      this.syncDisplayedFromDom();
       let rewindsProcessed = 0;
       if (this.processRewindAction()) {
         rewindsProcessed++;
@@ -3074,14 +3440,32 @@ class RewindDirector {
         }
       }
       if (rewindsProcessed > 0) {
-        this.startSink();
+        if (REWIND_FX.mode === 'vortex') {
+          this.startSink();
+        } else {
+          this.startWave();
+        }
       } else {
         this.processQueue();
       }
     } else if (item.type === 'move') {
       handleMove(item.payload.direction, item.payload.inputType);
+      if (isAnimating) {
+        if (this.queue.length > 0) {
+          this.setState('WAIT_SLIDE');
+        }
+      } else {
+        this.processQueue();
+      }
     } else if (item.type === 'ability') {
       executeAbility(item.payload.relicId, item.payload.target);
+      if (isAnimating) {
+        if (this.queue.length > 0) {
+          this.setState('WAIT_SLIDE');
+        }
+      } else {
+        this.processQueue();
+      }
     }
   }
 
@@ -3126,50 +3510,43 @@ class RewindDirector {
     this.swapTime = performance.now();
     const epoch = this.epoch;
 
-    window.__inAllowedStyleMutation = true;
     let fadeInAnims = [];
-    try {
-      if (this.epoch !== epoch) return;
+    if (this.epoch !== epoch) return;
 
-      for (const a of this.currentGroup) {
-        try { a.cancel(); } catch {}
-      }
-      this.currentGroup = [];
-
-      if (tilesLayer) {
-        tilesLayer.innerHTML = '';
-      }
-
-      syncBoard(controller.getBoard(), 'rewind-swap');
-
-      const newTiles = Array.from(tilesLayer.children).filter(el =>
-        el.classList.contains('tile') || el.classList.contains('stone')
-      );
-
-      for (const el of newTiles) {
-        el.style.opacity = '0';
-        el.style.willChange = 'opacity';
-        const a = el.animate([
-          { opacity: 0 },
-          { opacity: 1 }
-        ], {
-          duration: 75,
-          easing: 'linear',
-          fill: 'both'
-        });
-        fadeInAnims.push(a);
-      }
-
-      this.currentGroup = fadeInAnims;
-
-      updateHeader();
-      renderAbilityBar();
-      if (typeof updateCountdownBadge === 'function') updateCountdownBadge();
-    } finally {
-      (typeof queueMicrotask === 'function' ? queueMicrotask : fn => setTimeout(fn, 0))(() => {
-        window.__inAllowedStyleMutation = false;
-      });
+    for (const a of this.currentGroup) {
+      try { a.cancel(); } catch {}
     }
+    this.currentGroup = [];
+
+    if (tilesLayer) {
+      tilesLayer.innerHTML = '';
+    }
+
+    syncBoard(controller.getBoard(), 'rewind-swap');
+
+    const newTiles = Array.from(tilesLayer.children).filter(el =>
+      el.classList.contains('tile') || el.classList.contains('stone')
+    );
+
+    for (const el of newTiles) {
+      el.style.opacity = '0';
+      el.style.willChange = 'opacity';
+      const a = el.animate([
+        { opacity: 0 },
+        { opacity: 1 }
+      ], {
+        duration: 75,
+        easing: 'linear',
+        fill: 'both'
+      });
+      fadeInAnims.push(a);
+    }
+
+    this.currentGroup = fadeInAnims;
+
+    updateHeader();
+    renderAbilityBar();
+    if (typeof updateCountdownBadge === 'function') updateCountdownBadge();
 
     this.setState('RISE');
     if (this.queue.length > 0) this.triggerCatchUp();
@@ -3196,27 +3573,29 @@ class RewindDirector {
   }
 
   hardReset() {
-    window.__inHardReset = true;
-    try {
-      this.epoch++;
-      if (this.rateRaf) cancelAnimationFrame(this.rateRaf);
-      for (const a of this.currentGroup) {
-        try { a.cancel(); } catch {}
-      }
-      this.currentGroup = [];
-      this.queue = [];
-      this.state = 'IDLE';
-      this.currentRate = 1.0;
-      this.targetRate = 1.0;
-      this.isPaused = false;
-      if (currentAnimationState && typeof currentAnimationState.cancelAnimation === 'function') {
-        try { currentAnimationState.cancelAnimation(); } catch {}
-      }
-      isAnimating = false;
-      currentAnimationState = null;
-    } finally {
-      window.__inHardReset = false;
+    this.epoch++;
+    if (this.waveWatchdogTimer) {
+      clearTimeout(this.waveWatchdogTimer);
+      this.waveWatchdogTimer = null;
     }
+    if (this.rateRaf) cancelAnimationFrame(this.rateRaf);
+    for (const a of this.currentGroup) {
+      try { a.cancel(); } catch {}
+    }
+    this.currentGroup = [];
+    this.riseAnimations = [];
+    this.activeWaveAnimations = [];
+    this.activeWavePromises = [];
+    this.queue = [];
+    this.state = 'IDLE';
+    this.currentRate = 1.0;
+    this.targetRate = 1.0;
+    this.isPaused = false;
+    if (currentAnimationState && typeof currentAnimationState.cancelAnimation === 'function') {
+      try { currentAnimationState.cancelAnimation(); } catch {}
+    }
+    isAnimating = false;
+    currentAnimationState = null;
   }
 }
 
@@ -3269,6 +3648,8 @@ function executeAbility(relicId, target) {
     showToast(`Error: ${res.error || 'Failed to use ability'}`);
     return;
   }
+
+  triggerCardShimmer(relicId);
 
   // Animation and audio feedback
   if (relicId === 'diagonal_charge') {
@@ -4055,7 +4436,7 @@ function handleMove(direction, inputType = 'key') {
     currentAnimationState = null;
     postMoveResolution(moveRes);
 
-    if (typeof rewindDirector !== 'undefined' && rewindDirector.getState() === 'WAIT_SLIDE') {
+    if (typeof rewindDirector !== 'undefined' && (rewindDirector.getState() === 'WAIT_SLIDE' || rewindDirector.queue.length > 0)) {
       rewindDirector.onSlideAnimationComplete();
     }
   }
@@ -4197,13 +4578,8 @@ function handleGameOver() {
  * Run Initialization
  * ------------------------------------------------------------- */
 function startNewGame(seed = null) {
-  window.__inAllowedHardReset = true;
-  try {
-    if (typeof rewindDirector !== 'undefined') {
-      rewindDirector.hardReset();
-    }
-  } finally {
-    window.__inAllowedHardReset = false;
+  if (typeof rewindDirector !== 'undefined') {
+    rewindDirector.hardReset();
   }
   cancelOngoingAnimation();
   tickPlayTimer();
@@ -4219,6 +4595,7 @@ function startNewGame(seed = null) {
   const bestScore = getStoredBestScore();
   controller = new GameController(chosenSeed, activeConfig, playerId);
   controller.bestScoreAtRunStart = bestScore;
+  window.controller = controller;
 
   if (startBestScoreEl) startBestScoreEl.textContent = bestScore.toLocaleString('en-US');
 

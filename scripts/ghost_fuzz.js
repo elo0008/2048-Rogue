@@ -24,7 +24,8 @@ if (!fs.existsSync(outDir)) {
   fs.mkdirSync(outDir, { recursive: true });
 }
 const outFilePath = path.join(outDir, isLongMode ? 'fuzz_long.txt' : 'fuzz_short.txt');
-const logStream = fs.createWriteStream(outFilePath, { encoding: 'utf8' });
+const fullLogPath = path.join(outDir, isLongMode ? 'fuzz_long_full.txt' : 'fuzz_short_full.txt');
+const logStream = fs.createWriteStream(fullLogPath, { encoding: 'utf8' });
 
 const origLog = console.log;
 const origErr = console.error;
@@ -490,6 +491,15 @@ const WAIT_IDLE_SCRIPT = `
       'erasable'
     ];
     function check() {
+      if (window.isAnimating || (window.rewindDirector && window.rewindDirector.isActive())) {
+        idleStart = null;
+        if (performance.now() - startTime > 2200) {
+          resolve({ timeout: true });
+          return;
+        }
+        requestAnimationFrame(check);
+        return;
+      }
       const allAnims = document.getAnimations();
       const nonIdleAnims = allAnims.filter(a => {
         if (a.playState === 'finished' || a.playState === 'idle') return false;
@@ -563,6 +573,7 @@ async function runScenario(cdp, name, urlParams, runner, setupFn = null) {
         interrupt: 0,
         rewind: 0,
         'rewind-swap': 0,
+        'rewind-cell-swap': 0,
         ability: 0,
         'decision-resolve': 0,
         'draft-resolve': 0,
@@ -731,7 +742,7 @@ async function runScenario(cdp, name, urlParams, runner, setupFn = null) {
     });
   }
 
-  console.log(`✔ Scenario ${name} PASSED all ${ACTIONS_PER_SCENARIO} actions. (effective actions: ${effectiveActions}, gameOvers: ${gameOvers}, playAgains: ${playAgains}, rewinds: ${rewinds}, diagonal: ${diagonalUses}, eraser: ${eraserUses}, idle timeouts: ${idleTimeouts}, syncBoard corrections: ${debugCorrections} [slideFinish: ${callSites.slideFinish || 0}, rewind: ${callSites.rewind || 0}, interrupt: ${callSites.interrupt || 0}, ability: ${callSites.ability || 0}, decision-resolve: ${callSites['decision-resolve'] || 0}, draft-resolve: ${callSites['draft-resolve'] || 0}, setup: ${callSites.setup || 0}, inj: ${callSites.inj || 0}], initialRender: ${initialRender}, 16ms slide samples: ${slideSamples})`);
+  console.log(`✔ Scenario ${name} PASSED all ${ACTIONS_PER_SCENARIO} actions. (effective actions: ${effectiveActions}, gameOvers: ${gameOvers}, playAgains: ${playAgains}, rewinds: ${rewinds}, diagonal: ${diagonalUses}, eraser: ${eraserUses}, idle timeouts: ${idleTimeouts}, syncBoard corrections: ${debugCorrections} [slideFinish: ${callSites.slideFinish || 0}, rewind: ${callSites.rewind || 0}, rewind-cell-swap: ${callSites['rewind-cell-swap'] || 0}, interrupt: ${callSites.interrupt || 0}, ability: ${callSites.ability || 0}, decision-resolve: ${callSites['decision-resolve'] || 0}, draft-resolve: ${callSites['draft-resolve'] || 0}, setup: ${callSites.setup || 0}, inj: ${callSites.inj || 0}], initialRender: ${initialRender}, 16ms slide samples: ${slideSamples})`);
   if (callSites.inj > 0) {
     console.log(`   [Call sites breakdown]: ${JSON.stringify(callSites)}`);
   }
@@ -1829,7 +1840,7 @@ async function runFuzz() {
 
             window.executeRewind();
             setTimeout(() => {
-              if (window.rewindDirector.getState() === 'SINK') {
+              if (window.rewindDirector.getState() === 'WAVE') {
                 window.executeRewind();
               }
             }, 100);
@@ -1866,18 +1877,18 @@ async function runFuzz() {
             while (window.isAnimating) await new Promise(r => setTimeout(r, 20));
 
             window.executeRewind();
-            let reversed = false;
+            let rushed = false;
             let safetyR = 0;
-            function tryReverse() {
-              if (window.rewindDirector.getState() === 'RISE' && !reversed) {
-                reversed = true;
+            function tryRush() {
+              if (window.rewindDirector.getState() === 'WAVE' && !rushed) {
+                rushed = true;
                 window.executeRewind();
               }
-              if (!reversed && safetyR++ < 80) {
-                setTimeout(tryReverse, 15);
+              if (!rushed && safetyR++ < 80) {
+                setTimeout(tryRush, 15);
               }
             }
-            setTimeout(tryReverse, 100);
+            setTimeout(tryRush, 100);
 
             let safety = 0;
             function check() {
@@ -1889,7 +1900,7 @@ async function runFuzz() {
                 }));
                 const domMatches = domTiles.length === engineBoard.filter(x => x !== 0).length &&
                   domTiles.every(t => engineBoard[t.idx] == t.val);
-                resolve({ reversed, domMatches });
+                resolve({ rushed, domMatches });
               } else {
                 setTimeout(check, 20);
               }
@@ -1898,7 +1909,7 @@ async function runFuzz() {
           })
         `);
         if (res.domMatches) nO_S4++;
-        desc = `S4 rewind during RISE (reversed: ${res.reversed}, domMatches: ${res.domMatches})`;
+        desc = `S4 rewind during WAVE (rushed: ${res.rushed}, domMatches: ${res.domMatches})`;
       } else if (mode === 3) {
         // S5: Swipes during SINK, swap, and RISE
         const res = await c.eval(`
@@ -2129,10 +2140,11 @@ async function runFuzz() {
 
     let summaryOutput = '';
     summaryOutput += '================================= FUZZ SUMMARY =================================\n';
-    summaryOutput += 'Scenario | Status | Actions | Effective | Over/Again | Rew/Diag/Ers | Guard TO | Corrections (tot:[sf/rw/ab/dec/drf/set/inj]) | InitialRender | Slide Samples\n';
+    summaryOutput += 'Scenario | Status | Actions | Effective | Over/Again | Rew/Diag/Ers | Guard TO | Corrections (tot:[sf/rw/rcs/ab/dec/drf/set/inj]) | InitialRender | Slide Samples\n';
     summaryOutput += '---------------------------------------------------------------------------------------------------------------------------------------------\n';
     let totalSlideFinish = 0;
     let totalRewind = 0;
+    let totalRewindCellSwap = 0;
     let totalAbility = 0;
     let totalDecision = 0;
     let totalDraft = 0;
@@ -2143,7 +2155,8 @@ async function runFuzz() {
 
     for (const r of results) {
       const sf = r.callSites?.slideFinish || 0;
-      const rw = (r.callSites?.rewind || 0) + (r.callSites?.['rewind-swap'] || 0);
+      const rw = r.callSites?.rewind || 0;
+      const rcs = (r.callSites?.['rewind-cell-swap'] || 0) + (r.callSites?.['rewind-swap'] || 0);
       const ab = r.callSites?.ability || 0;
       const dec = r.callSites?.['decision-resolve'] || 0;
       const drf = r.callSites?.['draft-resolve'] || 0;
@@ -2156,7 +2169,12 @@ async function runFuzz() {
         r.pass = false;
       }
 
-      const rowCategorySum = sf + rw + ab + dec + drf + set + inj;
+      if (rw !== 0) {
+        console.error(`❌ RECONCILE REWIND CORRECTIONS DETECTED in Scenario ${r.scenario}: rewind=${rw} (must be 0)!`);
+        r.pass = false;
+      }
+
+      const rowCategorySum = sf + rw + rcs + ab + dec + drf + set + inj;
       if (r.corrections !== rowCategorySum) {
         console.error(`❌ ACCOUNTING MISMATCH in Scenario ${r.scenario}: total (${r.corrections}) !== sum of categories (${rowCategorySum})!`);
         r.pass = false;
@@ -2164,6 +2182,7 @@ async function runFuzz() {
 
       totalSlideFinish += sf;
       totalRewind += rw;
+      totalRewindCellSwap += rcs;
       totalAbility += ab;
       totalDecision += dec;
       totalDraft += drf;
@@ -2172,7 +2191,7 @@ async function runFuzz() {
       totalSamples += r.slideSamples || 0;
       totalRowCorrections += r.corrections;
 
-      const corrStr = `${r.corrections} [${sf}/${rw}/${ab}/${dec}/${drf}/${set}/${inj}]`;
+      const corrStr = `${r.corrections} [${sf}/${rw}/${rcs}/${ab}/${dec}/${drf}/${set}/${inj}]`;
       const row = `${r.scenario.padEnd(42)} | ` +
         `${(r.pass ? 'PASS' : 'FAIL').padEnd(6)} | ` +
         `${String(r.actions).padEnd(7)} | ` +
@@ -2186,12 +2205,12 @@ async function runFuzz() {
       summaryOutput += row;
     }
     summaryOutput += '---------------------------------------------------------------------------------------------------------------------------------------------\n';
-    const totalCategorySum = totalSlideFinish + totalRewind + totalAbility + totalDecision + totalDraft + totalSetup + totalInj;
+    const totalCategorySum = totalSlideFinish + totalRewind + totalRewindCellSwap + totalAbility + totalDecision + totalDraft + totalSetup + totalInj;
     if (totalRowCorrections !== totalCategorySum) {
       console.error(`❌ TOTALS MISMATCH: totalRowCorrections (${totalRowCorrections}) !== totalCategorySum (${totalCategorySum})!`);
       process.exit(1);
     }
-    summaryOutput += `TOTALS: slideFinish: ${totalSlideFinish}, rewind: ${totalRewind}, ability: ${totalAbility}, decision-resolve: ${totalDecision}, draft-resolve: ${totalDraft}, setup: ${totalSetup}, inj: ${totalInj}, slideSamples: ${totalSamples}\n`;
+    summaryOutput += `TOTALS: slideFinish: ${totalSlideFinish}, rewind: ${totalRewind}, rewind-cell-swap: ${totalRewindCellSwap}, ability: ${totalAbility}, decision-resolve: ${totalDecision}, draft-resolve: ${totalDraft}, setup: ${totalSetup}, inj: ${totalInj}, slideSamples: ${totalSamples}\n`;
     summaryOutput += '=============================================================================================================\n';
 
     origLog('\n' + summaryOutput);
