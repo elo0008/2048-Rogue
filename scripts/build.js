@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
 import { computeIconMetrics } from './icon_metrics.js';
 import { findChrome } from './find_chrome.js';
 import { computeReplayVersion } from '../verify/version.js';
@@ -10,6 +11,46 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.join(rootDir, 'dist');
+
+export function validateAndProcessLabMarkers(code, target) {
+  const beginRegex = /\/\*DEV_LAB_BEGIN\*\//g;
+  const endRegex = /\/\*DEV_LAB_END\*\//g;
+
+  const beginMatches = [...code.matchAll(beginRegex)];
+  const endMatches = [...code.matchAll(endRegex)];
+
+  if (beginMatches.length !== endMatches.length) {
+    throw new Error(`[BUILD ERROR] Unbalanced DEV_LAB markers: ${beginMatches.length} BEGIN vs ${endMatches.length} END`);
+  }
+
+  const combined = [];
+  for (const m of beginMatches) combined.push({ type: 'BEGIN', index: m.index });
+  for (const m of endMatches) combined.push({ type: 'END', index: m.index });
+  combined.sort((a, b) => a.index - b.index);
+
+  let inBlock = false;
+  for (const token of combined) {
+    if (token.type === 'BEGIN') {
+      if (inBlock) throw new Error(`[BUILD ERROR] Nested DEV_LAB_BEGIN marker found at offset ${token.index}`);
+      inBlock = true;
+    } else {
+      if (!inBlock) throw new Error(`[BUILD ERROR] Unmatched DEV_LAB_END marker found at offset ${token.index}`);
+      inBlock = false;
+    }
+  }
+
+  if (target === 'prod') {
+    code = code.replace(/\/\*DEV_LAB_BEGIN\*\/[\s\S]*?\/\*DEV_LAB_END\*\//g, '');
+    const forbidden = ['/*DEV_LAB', 'lab.js', 'labApi', 'labPhase'];
+    for (const f of forbidden) {
+      if (code.includes(f)) {
+        throw new Error(`[BUILD ERROR] Forbidden lab token "${f}" found in production build!`);
+      }
+    }
+  }
+
+  return code;
+}
 
 export function computeGameContentHash(dir = path.join(rootDir, 'game')) {
   const gameFiles = fs.readdirSync(dir)
@@ -24,9 +65,31 @@ export function computeGameContentHash(dir = path.join(rootDir, 'game')) {
 }
 
 export async function build(options = {}) {
-  const targetDistDir = options.distDir || distDir;
+  const target = options.target || process.env.BUILD_TARGET || (process.argv[2] === 'dev' ? 'dev' : 'prod');
+  const isDev = target === 'dev';
+
+  // DEV BUILD GUARD
+  if (isDev) {
+    const vercelEnv = process.env.VERCEL_ENV || '';
+    let gitBranch = process.env.VERCEL_GIT_COMMIT_REF || '';
+    if (!gitBranch) {
+      try {
+        gitBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: rootDir, encoding: 'utf8' }).trim();
+      } catch {}
+    }
+    if (vercelEnv === 'production' || gitBranch === 'main') {
+      const reason = vercelEnv === 'production'
+        ? `VERCEL_ENV is 'production'`
+        : `git branch is 'main' (VERCEL_GIT_COMMIT_REF='${process.env.VERCEL_GIT_COMMIT_REF || ''}', git branch='${gitBranch}')`;
+      const msg = `[BUILD GUARD ERROR] Dev target build is forbidden when VERCEL_ENV === 'production' or on branch 'main'. Rejected: ${reason}`;
+      console.error(`\n${msg}\n`);
+      throw new Error(msg);
+    }
+  }
+
+  const targetDistDir = options.distDir || (isDev ? (process.env.VERCEL ? path.join(rootDir, 'dist') : path.join(rootDir, 'dist-dev')) : distDir);
   const targetRootDir = options.rootDir || rootDir;
-  console.log(`Building self-contained static bundle in ${path.relative(rootDir, targetDistDir) || 'dist/'} ...`);
+  console.log(`Building target "${target}" in ${path.relative(rootDir, targetDistDir) || 'dist/'} ...`);
 
   // Verify or regenerate icon metrics
   const iconsSrcDir = path.join(targetRootDir, 'game', 'icons');
@@ -100,6 +163,7 @@ export async function build(options = {}) {
 
   // Copy app.js with buildId and replayVersion replacement
   let appJs = fs.readFileSync(path.join(targetRootDir, 'game', 'app.js'), 'utf-8');
+  appJs = validateAndProcessLabMarkers(appJs, target);
   appJs = appJs.replaceAll('__BUILD_ID__', buildId).replaceAll('__REPLAY_VERSION__', replayVersion);
   fs.writeFileSync(path.join(targetDistDir, 'app.js'), appJs, 'utf-8');
 
@@ -155,6 +219,18 @@ export async function build(options = {}) {
     }
   }
 
+  // Copy game/dev directory ONLY if target is dev
+  if (target === 'dev') {
+    const devSrcDir = path.join(targetRootDir, 'game', 'dev');
+    const devDistDir = path.join(targetDistDir, 'dev');
+    if (fs.existsSync(devSrcDir)) {
+      fs.mkdirSync(devDistDir, { recursive: true });
+      for (const f of fs.readdirSync(devSrcDir)) {
+        fs.copyFileSync(path.join(devSrcDir, f), path.join(devDistDir, f));
+      }
+    }
+  }
+
   // Calculate real total size recursively
   function getDirSizeBytes(dir) {
     let bytes = 0;
@@ -207,5 +283,6 @@ const isMain = process.argv[1] && (
 );
 
 if (isMain) {
-  await build();
+  const target = process.env.BUILD_TARGET || (process.argv[2] === 'dev' ? 'dev' : 'prod');
+  await build({ target });
 }

@@ -1,13 +1,20 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
+const isDev = process.argv[2] === 'dev' || process.env.BUILD_TARGET === 'dev';
+const targetDir = isDev
+  ? (fs.existsSync(path.join(rootDir, 'dist-dev')) ? path.join(rootDir, 'dist-dev') : path.join(rootDir, 'dist'))
+  : path.join(rootDir, 'dist');
+
 const PORT = parseInt(process.env.PORT || '3000', 10);
+const HOST = isDev ? '0.0.0.0' : '0.0.0.0';
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -20,20 +27,18 @@ const MIME_TYPES = {
   '.jpeg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
 };
 
 const server = http.createServer((req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   let pathname = decodeURIComponent(parsedUrl.pathname);
 
-  const distDir = path.join(rootDir, 'dist');
   const safePath = path.normalize(pathname).replace(/^(\.\.[/\\])+/, '');
-  let filePath = path.join(distDir, safePath);
+  let filePath = path.join(targetDir, safePath);
 
   if (pathname === '/' || pathname === '/index.html') {
-    filePath = path.join(distDir, 'index.html');
-  } else if (safePath.startsWith('dist' + path.sep) || safePath === 'dist') {
-    filePath = path.join(rootDir, safePath);
+    filePath = path.join(targetDir, 'index.html');
   }
 
   // If directory, check for index.html
@@ -60,9 +65,34 @@ const server = http.createServer((req, res) => {
   stream.pipe(res);
 });
 
-server.listen(PORT, () => {
-  console.log(`2048 Rogue dev server running at:`);
-  console.log(`  > http://localhost:${PORT}/`);
-  console.log(`  > http://localhost:${PORT}/game/`);
-  console.log(`Press Ctrl+C to stop.`);
+function getLanIps() {
+  const interfaces = os.networkInterfaces();
+  const ips = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      const family = typeof iface.family === 'string' ? iface.family : (iface.family === 4 ? 'IPv4' : 'IPv6');
+      if (family === 'IPv4' && !iface.internal) {
+        ips.push(iface.address);
+      }
+    }
+  }
+  return ips;
+}
+
+server.listen(PORT, HOST, () => {
+  if (isDev) {
+    const ips = getLanIps();
+    console.log(`\n2048 Rogue Animation Lab (Dev Server) running at:`);
+    console.log(`  > Local:   http://localhost:${PORT}/?lab=1`);
+    for (const ip of ips) {
+      console.log(`  > LAN:     http://${ip}:${PORT}/?lab=1`);
+    }
+    console.log(`\nServing: ${path.relative(rootDir, targetDir) || 'dist-dev/'}`);
+    console.log(`(Note: Phone must be on the same Wi-Fi / local network. Ensure Windows Firewall allows Node traffic if unreachable.)`);
+    console.log(`Press Ctrl+C to stop.\n`);
+  } else {
+    console.log(`2048 Rogue server running at:`);
+    console.log(`  > http://localhost:${PORT}/`);
+    console.log(`Press Ctrl+C to stop.`);
+  }
 });

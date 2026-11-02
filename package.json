@@ -5,7 +5,9 @@
   "scripts": {
     "test": "node --test sim/tests/*.test.js && node --test verify/tests/*.test.js && node scripts/smoke_test.js && node scripts/ui_canonical_check.js && node scripts/ghost_fuzz.js",
     "serve": "node scripts/serve.js",
+    "serve:dev": "node scripts/serve.js dev",
     "build": "node scripts/build.js",
+    "build:dev": "node scripts/build.js dev",
     "icons": "node scripts/icon_metrics.js",
     "sim": "node sim/run.js"
   },

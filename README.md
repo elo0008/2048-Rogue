@@ -296,5 +296,52 @@ export const REWIND_FX = {
     - Fully disabled under `@media (prefers-reduced-motion: reduce)`.
 - **Smoothness Rule**: Once any rewind animation has started, in-flight elements are never prematurely cancelled or snapped; rushed input is handled strictly by smooth `playbackRate` time-scaling (`rampMs = 140`, `catchUpMs = 220`, `maxRate = 6`) and FIFO queueing.
 
+---
+
+## Developer Lab (Animation & Preset Staging)
+
+A dedicated, isolated developer testing tool is available to trigger the Clean Slate ceremony phases and Rewind wave animations instantly on physical mobile devices or desktop browsers without needing to play to 2048.
+
+The lab is completely stripped from production releases (`npm run build`), leaving zero traces, zero tokens, and zero DOM nodes in `dist/`.
+
+### 1. Running Locally
+Build and launch the dev distribution:
+```bash
+npm run serve:dev
+```
+This automatically compiles the dev target to `dist-dev/`, starts the server listening on all network interfaces (`0.0.0.0`), and prints the available localhost and LAN URLs:
+```
+Local:   http://localhost:3000/?lab=1
+Network: http://<lan-ipv4>:3000/?lab=1
+```
+Open the printed URL with `?lab=1`. A collapsed **LAB** handle appears at the bottom-left of the viewport (touch target $\ge 36\text{px}$, non-overlapping with the board or ability bar). Tapping the handle opens the bottom sheet.
+
+### 2. Testing from a Mobile Device over LAN
+1. Ensure your mobile phone and development machine are connected to the same local Wi-Fi network.
+2. Ensure incoming traffic on port 3000 is allowed through your development machine's firewall / private network settings (allow when prompted by OS).
+3. On your mobile phone browser, navigate to:
+   ```
+   http://<your-dev-machine-lan-ipv4>:3000/?lab=1
+   ```
+4. Tap the collapsed **LAB** handle at the bottom-left to stage presets (1–9), test Hold-at-Phase boundaries, verify reduced motion, or run loop repetitions.
+
+### 3. Deploying to Vercel (Preview Deployments)
+To test the Animation Lab on real mobile devices via Vercel preview URLs, perform the following manual configuration steps in the Vercel dashboard:
+1. **Set Environment Variable:**  
+   In **Project Settings** $\to$ **Environment Variables**, create an environment variable:
+   - **Key:** `BUILD_TARGET`
+   - **Value:** `dev`
+   - **Scope:** Select **Preview** ONLY (ensure **Production** and **Development** are unselected).
+2. **Confirm Deployment Protection:**  
+   In **Project Settings** $\to$ **Deployment Protection**, ensure **Vercel Authentication** or **Password Protection** is enabled for Preview deployments.  
+   > **Security Note:** State plainly that nothing hides the dev build from someone who has its URL if preview protection is off. Anyone with access to the preview URL can view the dev build and open `?lab=1`.
+3. **Open Preview URL:**  
+   Push any feature branch (non-`main`). While authenticated on your mobile phone, open the resulting preview deployment URL with `?lab=1`:
+   ```
+   https://<project-preview-domain>.vercel.app/?lab=1
+   ```
+4. **Production Stays Clean:**  
+   The build pipeline strictly enforces production protection: `scripts/build.js` contains a build guard that immediately terminates with an error if `BUILD_TARGET=dev` is attempted when `VERCEL_ENV === 'production'` or when building the `main` branch. Merges into `main` and production deployments will always compile as `BUILD_TARGET=prod`, completely excluding `game/dev/` and stripping all marked lab code.
+
 
 

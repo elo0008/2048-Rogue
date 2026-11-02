@@ -79,6 +79,8 @@ const STORAGE_KEY_BEST = '2048_rogue_best_points';
 const STORAGE_KEY_ERRORS = '2048_rogue_errors';
 const BUILD_ID = '__BUILD_ID__';
 
+let persistenceEnabled = true;
+
 let sessionTopRuns = null;
 
 function getTopRuns() {
@@ -115,7 +117,7 @@ function getTopRuns() {
     seeded.sort((a, b) => (b.points || 0) - (a.points || 0));
     const top10 = seeded.slice(0, 10);
     try {
-      localStorage.setItem(STORAGE_KEY_TOP_RUNS, JSON.stringify(top10));
+      if (persistenceEnabled) localStorage.setItem(STORAGE_KEY_TOP_RUNS, JSON.stringify(top10));
     } catch {}
     sessionTopRuns = top10;
     return top10;
@@ -141,7 +143,7 @@ function saveTopRun(entry) {
     list.sort((a, b) => (b.points || 0) - (a.points || 0));
     const top10 = list.slice(0, 10);
     try {
-      localStorage.setItem(STORAGE_KEY_TOP_RUNS, JSON.stringify(top10));
+      if (persistenceEnabled) localStorage.setItem(STORAGE_KEY_TOP_RUNS, JSON.stringify(top10));
     } catch {}
     sessionTopRuns = top10;
   } catch {
@@ -170,7 +172,7 @@ function saveErrorRecord(errObj) {
     const list = getStoredErrors();
     list.push(errObj);
     const trimmed = list.slice(-10);
-    localStorage.setItem(STORAGE_KEY_ERRORS, JSON.stringify(trimmed));
+    if (persistenceEnabled) localStorage.setItem(STORAGE_KEY_ERRORS, JSON.stringify(trimmed));
   } catch (err) {
     console.warn('LocalStorage error save failed:', err);
   }
@@ -462,7 +464,7 @@ function getPlayerId() {
     let pid = localStorage.getItem(STORAGE_KEY_PLAYER);
     if (!pid) {
       pid = 'anon_' + Math.random().toString(36).slice(2, 10);
-      localStorage.setItem(STORAGE_KEY_PLAYER, pid);
+      if (persistenceEnabled) localStorage.setItem(STORAGE_KEY_PLAYER, pid);
     }
     return pid;
   } catch {
@@ -486,7 +488,7 @@ function saveRunToHistory(runRecord) {
     const history = getStoredHistory();
     history.push(runRecord);
     const trimmed = history.slice(-20);
-    localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(trimmed));
+    if (persistenceEnabled) localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(trimmed));
   } catch (err) {
     console.warn('LocalStorage save failed:', err);
   }
@@ -502,7 +504,7 @@ function getStoredBestScore() {
 
 function saveStoredBestScore(score) {
   try {
-    localStorage.setItem(STORAGE_KEY_BEST, String(score));
+    if (persistenceEnabled) localStorage.setItem(STORAGE_KEY_BEST, String(score));
   } catch (err) {
     console.warn('LocalStorage best score save failed (storage may be blocked):', err);
   }
@@ -838,7 +840,7 @@ function markHintSeen(hintId) {
   try {
     const seen = getSeenHints();
     seen.add(hintId);
-    localStorage.setItem(HINTS_STORAGE_KEY, JSON.stringify(Array.from(seen)));
+    if (persistenceEnabled) localStorage.setItem(HINTS_STORAGE_KEY, JSON.stringify(Array.from(seen)));
   } catch {}
 }
 
@@ -1220,6 +1222,7 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
       else if (triggerValue >= 4096) tagline = 'Touch Grass';
       if (subtitleEl) subtitleEl.textContent = tagline;
 
+      cleanSlateBanner.classList.remove('hidden');
       const wrapper = cleanSlateBanner.querySelector('.stand-center-wrapper');
       const board = boardEl || document.getElementById('game-board');
       if (board && wrapper) {
@@ -1230,7 +1233,6 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
         wrapper.style.width = `${bRect.width}px`;
         wrapper.style.height = `${bRect.height}px`;
       }
-      cleanSlateBanner.classList.remove('hidden');
 
       // Static banner for ~1.4 s
       timers.push(setTimeout(() => {
@@ -1295,6 +1297,7 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
     else if (triggerValue >= 4096) tagline = 'Touch Grass';
     if (subtitleEl) subtitleEl.textContent = tagline;
 
+    cleanSlateBanner.classList.remove('hidden');
     const wrapper = cleanSlateBanner.querySelector('.stand-center-wrapper');
     const board = boardEl || document.getElementById('game-board');
     if (board && wrapper) {
@@ -1305,7 +1308,16 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
       wrapper.style.width = `${bRect.width}px`;
       wrapper.style.height = `${bRect.height}px`;
     }
-    cleanSlateBanner.classList.remove('hidden');
+/*DEV_LAB_BEGIN*/
+    if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
+      const bTitle = document.getElementById('clean-slate-title');
+      if (bTitle) {
+        const bAnim = bTitle.animate([{ opacity: 1 }, { opacity: 1 }], { duration: 1850 });
+        anims.push(bAnim);
+      }
+      window.__ROGUE_LAB_API__.onPhase('banner', { state, triggerValue });
+    }
+/*DEV_LAB_END*/
 
     // Impact hits at ~150 ms (same as Last Stand stamp)
     timers.push(setTimeout(() => {
@@ -1336,6 +1348,18 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
       const el = tilesLayer ? tilesLayer.querySelector(`.tile[data-index="${sIdx}"]`) : null;
       if (el) el.classList.add('tile-clean-slate-charge');
     }
+/*DEV_LAB_BEGIN*/
+    if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
+      for (const sIdx of survivorIndices) {
+        const el = tilesLayer ? tilesLayer.querySelector(`.tile[data-index="${sIdx}"]`) : null;
+        if (el) {
+          const cAnim = el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }], { duration: 450 });
+          anims.push(cAnim);
+        }
+      }
+      window.__ROGUE_LAB_API__.onPhase('charge', { state });
+    }
+/*DEV_LAB_END*/
     playCleanSlateShimmer();
   }, 2000));
 
@@ -1378,6 +1402,11 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
         fill: 'forwards',
       });
       anims.push(ringAnim);
+/*DEV_LAB_BEGIN*/
+      if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
+        window.__ROGUE_LAB_API__.onPhase('ring', { state, ringAnim });
+      }
+/*DEV_LAB_END*/
 
       timers.push(setTimeout(() => {
         if (ring.parentNode) ring.remove();
@@ -1401,6 +1430,11 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
 
     timers.push(setTimeout(() => {
       state.phase = 'E';
+/*DEV_LAB_BEGIN*/
+      if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
+        window.__ROGUE_LAB_API__.onPhase('breaks', { state, item });
+      }
+/*DEV_LAB_END*/
       playThrottledBreakSound(item.isStone);
 
       if (item.isStone) {
@@ -1428,6 +1462,11 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
   const payoutTime = Math.max(2450, lastBreakStartTime + 10);
   timers.push(setTimeout(() => {
     state.phase = 'F';
+/*DEV_LAB_BEGIN*/
+    if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
+      window.__ROGUE_LAB_API__.onPhase('payout', { state, payout });
+    }
+/*DEV_LAB_END*/
     state.prePayoutScore = null;
     updateHeader();
 
@@ -1463,6 +1502,11 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
     cleanSlateSequenceState = null;
     currentAnimationState = null;
     isAnimating = false;
+/*DEV_LAB_BEGIN*/
+    if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
+      window.__ROGUE_LAB_API__.onPhase('end', { state });
+    }
+/*DEV_LAB_END*/
 
     if (cleanSlateBanner) cleanSlateBanner.classList.add('hidden');
     if (tilesLayer) {
@@ -3908,6 +3952,13 @@ function cancelOngoingAnimation() {
 }
 
 function handleMove(direction, inputType = 'key') {
+  const dirMap = {
+    'ArrowLeft': 'L', 'KeyA': 'L', 'left': 'L', 'L': 'L',
+    'ArrowRight': 'R', 'KeyD': 'R', 'right': 'R', 'R': 'R',
+    'ArrowUp': 'U', 'KeyW': 'U', 'up': 'U', 'U': 'U',
+    'ArrowDown': 'D', 'KeyS': 'D', 'down': 'D', 'D': 'D',
+  };
+  direction = dirMap[direction] || direction;
   if (controller.isGameOver()) return;
   if (controller.hasPendingDecision()) return;
 
@@ -4511,7 +4562,7 @@ function handleGameOver() {
   // Score headline & local storage best score check
   const storedBest = getStoredBestScore();
   const currentPoints = currentRunLog.points || 0;
-  const isNewBest = currentPoints > storedBest;
+  const isNewBest = persistenceEnabled && currentPoints > storedBest;
   if (isNewBest) {
     saveStoredBestScore(currentPoints);
     if (endNewBestBadge) endNewBestBadge.classList.remove('hidden');
@@ -5126,6 +5177,10 @@ if (btnPlayAgain) {
 // Copy run log button (copies { currentRun: <record>, history: [<last 20 records>] }, fallback download)
 if (btnCopyLog) {
   btnCopyLog.addEventListener('click', async () => {
+    if (!persistenceEnabled) {
+      showToast('Run log disabled in sandbox');
+      return;
+    }
     initAudio();
     playClick();
     const metadata = getDiagnosticMetadata();
@@ -5403,3 +5458,131 @@ if (hasLaunchParams) {
   startNewGame(null);
   if (startOverlay) startOverlay.classList.remove('hidden');
 }
+
+/*DEV_LAB_BEGIN*/
+(function initDevLabModule() {
+  if (typeof window === 'undefined') return;
+
+  const labApi = {
+    setPersistence(val) {
+      persistenceEnabled = !!val;
+      if (!persistenceEnabled && btnCopyLog) {
+        btnCopyLog.disabled = true;
+        btnCopyLog.title = 'Run log disabled in sandbox';
+        let note = document.getElementById('sandbox-copy-note');
+        if (!note && btnCopyLog.parentNode) {
+          note = document.createElement('span');
+          note.id = 'sandbox-copy-note';
+          note.className = 'sandbox-note';
+          note.style.cssText = 'display:block; font-size:11px; color:#c89b3c; margin-top:2px;';
+          note.textContent = 'Run log disabled in sandbox';
+          btnCopyLog.parentNode.insertBefore(note, btnCopyLog.nextSibling);
+        }
+      }
+    },
+    stage(spec) {
+      if (!controller) return;
+      if (Array.isArray(spec.board)) {
+        const mapped = spec.board.map(c => (c === null || c === undefined) ? 0 : ((c && typeof c === 'object') ? { ...c } : c));
+        if (controller.state) controller.state.board = mapped;
+        controller.board = mapped;
+      }
+      if (Array.isArray(spec.relics)) {
+        const relicSet = new Set(spec.relics);
+        if (controller.state) controller.state.relics = relicSet;
+        controller.relics = relicSet;
+      }
+      if (spec.charges && typeof spec.charges === 'object') {
+        if (!controller.state.abilities) controller.state.abilities = {};
+        for (const [k, v] of Object.entries(spec.charges)) {
+          const rid = (k === 'diagonal-merge' || k === 'diagonal') ? 'diagonal_charge' : k;
+          if (!controller.state.abilities[rid]) controller.state.abilities[rid] = {};
+          controller.state.abilities[rid].charges = v;
+        }
+      }
+      if (typeof spec.moveCount === 'number') {
+        if (controller.state) controller.state.moveCount = spec.moveCount;
+        controller.moveCount = spec.moveCount;
+      }
+      if (typeof spec.movesSinceLastStone === 'number') {
+        if (controller.state) controller.state.movesSinceLastStone = spec.movesSinceLastStone;
+        controller.movesSinceLastStone = spec.movesSinceLastStone;
+      }
+      if (typeof spec.draftDue === 'boolean') {
+        if (controller.state) controller.state.draftDueOnNextMove = spec.draftDue;
+        controller.draftDueOnNextMove = spec.draftDue;
+      }
+      if (controller.state) {
+        if (!controller.state.config) controller.state.config = {};
+        controller.state.config.ascensionAt = spec.ascensionAt || 2048;
+        controller.state.ascensionLevel = 0;
+        controller.state.over = false;
+        controller.state.pendingDecision = null;
+      }
+      controller.pendingDecision = null;
+      if (draftOverlay) draftOverlay.classList.add('hidden');
+      if (controller.config) {
+        controller.config.ascensionAt = spec.ascensionAt || 2048;
+      }
+      uiMoveLog = [];
+      controller.moveLog = [];
+      syncBoard(controller.getBoard(), 'lab-stage');
+      renderAbilityBar();
+      updateHeader();
+    },
+    triggerSwipe(direction) {
+      const dirMap = { left: 'L', right: 'R', up: 'U', down: 'D', L: 'L', R: 'R', U: 'U', D: 'D' };
+      handleMove(dirMap[direction] || direction, 'swipe');
+    },
+    triggerAbility(type, target) {
+      const rid = (type === 'diagonal-merge' || type === 'diagonal') ? 'diagonal_charge' : type;
+      executeAbility(rid, target);
+    },
+    triggerRewind() {
+      executeAbility('rewind', {});
+    },
+    getCleanSlateState() {
+      return cleanSlateSequenceState;
+    },
+    onPhase(phaseName, data) {
+      if (window.__ROGUE_LAB__ && typeof window.__ROGUE_LAB__.handlePhase === 'function') {
+        window.__ROGUE_LAB__.handlePhase(phaseName, data);
+      }
+    },
+    getAscensions() {
+      return controller ? (controller.getState().ascensions || []) : [];
+    },
+    getBoard() {
+      return controller ? controller.getBoard() : [];
+    },
+    getController() {
+      return controller;
+    },
+    restartSandbox() {
+      startNewGame();
+    }
+  };
+
+  window.__ROGUE_LAB_API__ = labApi;
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasLabParam = urlParams.get('lab') === '1';
+  let isLabStored = false;
+  try {
+    isLabStored = window.sessionStorage?.getItem('2048_rogue_lab') === '1';
+  } catch {}
+
+  if (hasLabParam || isLabStored) {
+    try {
+      window.sessionStorage.setItem('2048_rogue_lab', '1');
+    } catch {}
+    labApi.setPersistence(false);
+    import('./dev/lab.js').then(mod => {
+      if (mod && mod.initLab) {
+        mod.initLab(labApi);
+      }
+    }).catch(err => console.error('Failed to load lab:', err));
+  }
+})();
+/*DEV_LAB_END*/
+

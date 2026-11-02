@@ -2091,13 +2091,13 @@ async function runSmokeTest() {
           2, 2, 4, 8
         ];
         window.syncBoard(window.controller.getBoard(), 'smoke-wave-setup');
-        window.handleMove('ArrowLeft', 'swipe');
+        window.handleMove('L', 'swipe');
         while (window.isAnimating) await new Promise(r => setTimeout(r, 20));
         
         // 3. Monitor Wave Rewind for B4 and B1
         const initialDomBoard = Array.from({ length: 16 }, (_, idx) => {
           const el = document.querySelector(\`#tiles-layer .tile[data-index="\${idx}"], #tiles-layer .stone[data-index="\${idx}"]\`);
-          return el ? el.getAttribute('data-val') : 'empty';
+          return el ? (el.getAttribute('data-tid') || el.getAttribute('data-val')) : 'empty';
         });
         
         const cellSwitches = Array.from({ length: 16 }, () => ({ count: 0, swapTime: -1, lastVal: null }));
@@ -2115,7 +2115,7 @@ async function runSmokeTest() {
           
           for (let i = 0; i < 16; i++) {
             const el = document.querySelector(\`#tiles-layer .tile[data-index="\${i}"], #tiles-layer .stone[data-index="\${i}"]\`);
-            const curVal = el ? el.getAttribute('data-val') : 'empty';
+            const curVal = el ? (el.getAttribute('data-tid') || el.getAttribute('data-val')) : 'empty';
             if (curVal !== cellSwitches[i].lastVal) {
               cellSwitches[i].count++;
               cellSwitches[i].swapTime = now;
@@ -2200,17 +2200,39 @@ async function runSmokeTest() {
         ];
         window.syncBoard(controller.getBoard(), 'e8-1');
         window.handleMove('L', 'swipe');
-        await new Promise(r => setTimeout(r, 350));
+        // HOLD midpoint: IN is 240ms, HOLD is 1230ms, midpoint is at 240 + 615 = 855ms after banner start (~855-900ms after move)
+        await new Promise(r => setTimeout(r, 855));
         const banner1 = document.getElementById('clean-slate-banner');
-        const title1 = document.getElementById('clean-slate-title')?.textContent?.trim();
+        const titleEl1 = document.getElementById('clean-slate-title');
+        const title1 = titleEl1?.textContent?.trim();
         const sub1 = banner1?.querySelector('.stand-subtitle')?.textContent?.trim();
+
+        const tRect1 = titleEl1 ? titleEl1.getBoundingClientRect() : null;
+        const cs1 = titleEl1 ? window.getComputedStyle(titleEl1) : null;
+        const op1 = cs1 ? parseFloat(cs1.opacity) : 0;
+        const inViewport1 = tRect1 ? (tRect1.left >= 0 && tRect1.top >= 0 && tRect1.right <= window.innerWidth && tRect1.bottom <= window.innerHeight && tRect1.width > 0 && tRect1.height > 0) : false;
+        const cx1 = tRect1 ? (tRect1.left + tRect1.width / 2) : 0;
+        const cy1 = tRect1 ? (tRect1.top + tRect1.height / 2) : 0;
+        const hitEl1 = document.elementFromPoint(cx1, cy1);
+        const hitBannerOrChild1 = hitEl1 ? (hitEl1.id === 'clean-slate-banner' || !!hitEl1.closest('#clean-slate-banner')) : false;
+
+        const vis1 = {
+          opacity: op1,
+          rect: tRect1 ? { left: Math.round(tRect1.left), top: Math.round(tRect1.top), width: Math.round(tRect1.width), height: Math.round(tRect1.height) } : null,
+          inViewport: inViewport1,
+          hitBannerOrChild: hitBannerOrChild1,
+          hitElement: hitEl1 ? (hitEl1.tagName.toLowerCase() + (hitEl1.id ? '#' + hitEl1.id : '') + (hitEl1.className ? '.' + hitEl1.className.trim().split(/\s+/).join('.') : '')) : 'null',
+          pass: op1 > 0.9 && inViewport1 && hitBannerOrChild1
+        };
+
         results.push({
           case: '1024+1024',
           title: title1,
           tagline: sub1,
           expectedTitle: '2048',
           expectedTagline: 'We Won',
-          pass: title1 === '2048' && sub1 === 'We Won'
+          visibility: vis1,
+          pass: title1 === '2048' && sub1 === 'We Won' && vis1.pass
         });
 
         if (typeof window.finishCleanSlateImmediately === 'function') {
@@ -2279,8 +2301,11 @@ async function runSmokeTest() {
       })()
     `);
     for (const r of e8Res) {
+      if (r.visibility) {
+        assert.strictEqual(r.visibility.pass, true, `E8 Visibility ${r.case}: Title must be visible at HOLD midpoint. Opacity: ${r.visibility.opacity} (>0.9), inViewport: ${r.visibility.inViewport}, hitBannerOrChild: ${r.visibility.hitBannerOrChild} (hit: ${r.visibility.hitElement}, rect: ${JSON.stringify(r.visibility.rect)})`);
+      }
       assert.strictEqual(r.pass, true, `E8 ${r.case}: expected "${r.expectedTitle}" + "${r.expectedTagline}", got "${r.title}" + "${r.tagline}"`);
-      console.log(`[Smoke Test] ✔ E8 verified: ${r.case} -> banner "${r.title}" + "${r.tagline}"`);
+      console.log(`[Smoke Test] ✔ E8 verified: ${r.case} -> banner "${r.title}" + "${r.tagline}" (visibility: PASS)`);
     }
 
     // Dist scan for forbidden strings
@@ -2298,6 +2323,38 @@ async function runSmokeTest() {
     }
     assert.strictEqual(forbiddenCount, 0, 'No forbidden strings (tailwind, googleapis, fredoka) in dist/');
     console.log('[Smoke Test] ✔ 0 forbidden strings in dist/.');
+
+    // E8: Verify Production Lab Absence & Sandbox Storage Isolation
+    console.log('[Smoke Test] Asserting production build has zero lab artifacts and sandbox storage is protected...');
+    assert.strictEqual(fs.existsSync(path.join(distDir, 'dev')), false, 'dev/ directory must not exist in production dist/');
+
+    const labTokens = ['lab.js', 'DEV_LAB', 'labApi', 'labPhase'];
+    for (const df of distFiles) {
+      const content = fs.readFileSync(path.join(distDir, df), 'utf8');
+      for (const token of labTokens) {
+        assert.strictEqual(content.includes(token), false, `Forbidden lab token "${token}" found in production dist/${df}`);
+      }
+      if (df.endsWith('app.js')) {
+        assert.strictEqual(content.includes('persistenceEnabled'), true, 'Neutral flag "persistenceEnabled" must exist in dist/app.js');
+      } else {
+        assert.strictEqual(content.includes('persistenceEnabled'), false, `Token "persistenceEnabled" leaked to dist/${df}`);
+      }
+    }
+    console.log('[Smoke Test] ✔ Production build contains zero lab tokens (dev/ absent, marked blocks stripped).');
+
+    // In-browser verification on production build: no lab handle/sheet with ?lab=1, sandbox storage integrity
+    const labAbsentBrowserCheck = await cdp.eval(`(() => {
+      const handle = document.getElementById('rogue-lab-handle');
+      const sheet = document.getElementById('rogue-lab-sheet');
+      return {
+        hasHandle: Boolean(handle),
+        hasSheet: Boolean(sheet),
+        persistenceEnabled: typeof persistenceEnabled !== 'undefined' ? persistenceEnabled : null
+      };
+    })()`);
+    assert.strictEqual(labAbsentBrowserCheck.hasHandle, false, 'Production build must not have #rogue-lab-handle in DOM');
+    assert.strictEqual(labAbsentBrowserCheck.hasSheet, false, 'Production build must not have #rogue-lab-sheet in DOM');
+    console.log('[Smoke Test] ✔ Production DOM has no lab handle or sheet.');
 
     cdp.close();
   } finally {

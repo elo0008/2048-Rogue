@@ -2695,6 +2695,12 @@ button:focus-visible {
  * Clean Slate (Ascension) Sequence Visuals
  * Transform / Opacity / Box-shadow only - zero layout changes.
  * ------------------------------------------------------------- */
+.clean-slate-banner,
+.clean-slate-banner .stand-center-wrapper,
+.clean-slate-banner .stand-copy {
+  pointer-events: auto;
+}
+
 .clean-slate-banner:not(.hidden) .clean-slate-title {
   animation: standExitRight 0.38s cubic-bezier(0.6, 0, 0.8, 0.25) 1.47s forwards;
   will-change: transform;
