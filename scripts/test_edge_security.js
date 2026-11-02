@@ -6,7 +6,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { handleSubmissionRequest } from '../supabase/functions/submit-run/handler.ts';
+import {
+  handleSubmissionRequest,
+  IP_REQUEST_LIMIT_HOURLY,
+  IP_NEW_DEVICE_LIMIT_DAILY,
+  DEVICE_SUBMISSION_LIMIT_DAILY
+} from '../supabase/functions/submit-run/handler.ts';
 import { getTamperCases } from '../verify/tests/tamper_cases.js';
 import { computeRulesVersion, computeReplayVersion } from '../verify/version.js';
 import { dailySeed } from '../verify/profile.js';
@@ -530,15 +535,15 @@ async function runTests(selfCheckMode = false) {
   // --------------------------------------------------------------------------
   // (f) RATE LIMITS & ATOMIC CONCURRENCY TEST
   // --------------------------------------------------------------------------
-  log('\n(f) Rate limits (Device 60/day, IP 200/hr, New Devices 3/day) & Atomic Concurrency:');
+  log(`\n(f) Rate limits (Device ${DEVICE_SUBMISSION_LIMIT_DAILY}/day, IP ${IP_REQUEST_LIMIT_HOURLY}/hr, New Devices ${IP_NEW_DEVICE_LIMIT_DAILY}/day) & Atomic Concurrency:`);
 
-  // Test 1: IP request limit (200 requests / hour)
+  // Test 1: IP request limit (600 requests / hour)
   const currentHourKey = `${todayUtc}T${String(new Date().getUTCHours()).padStart(2, '0')}`;
   const ipKey = `ip_req:192.168.1.100:${currentHourKey}`;
-  for (let i = 0; i < 200; i++) {
-    await db.consumeRateLimit(ipKey, 200);
+  for (let i = 0; i < IP_REQUEST_LIMIT_HOURLY; i++) {
+    await db.consumeRateLimit(ipKey, IP_REQUEST_LIMIT_HOURLY);
   }
-  const ipOver = await db.consumeRateLimit(ipKey, 200);
+  const ipOver = await db.consumeRateLimit(ipKey, IP_REQUEST_LIMIT_HOURLY);
   assert.strictEqual(ipOver.allowed, false);
   const ipOverReq = new Request('http://localhost:54321/functions/v1/submit-run', {
     method: 'POST',
@@ -547,14 +552,15 @@ async function runTests(selfCheckMode = false) {
   });
   const ipRes = await handleSubmissionRequest(ipOverReq, db);
   assert.strictEqual(ipRes.status, 429);
-  assert.strictEqual(ipRes.headers.get('Retry-After'), '3600');
-  log(`  ✔ [RATE LIMIT 429] IP request limit hit at 201 requests -> HTTP 429 (Retry-After: 3600)`);
+  const ipRetryAfter = parseInt(ipRes.headers.get('Retry-After') || '0', 10);
+  assert.ok(ipRetryAfter > 0 && ipRetryAfter <= 3600, 'Retry-After must be positive seconds <= 3600');
+  log(`  ✔ [RATE LIMIT 429] IP request limit hit at ${IP_REQUEST_LIMIT_HOURLY + 1} requests -> HTTP 429 (Retry-After: ${ipRetryAfter})`);
 
-  // Test 2: New devices per IP (max 3/day)
+  // Test 2: New devices per IP (max 30/day)
   const newDevIp = '10.0.0.50';
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= IP_NEW_DEVICE_LIMIT_DAILY; i++) {
     await db.registerDevice(`known_dev_${i}`, `Known-${i}`);
-    await db.consumeRateLimit(`ip_newdev:${newDevIp}:${todayUtc}`, 3);
+    await db.consumeRateLimit(`ip_newdev:${newDevIp}:${todayUtc}`, IP_NEW_DEVICE_LIMIT_DAILY);
   }
   const newDevReq = new Request('http://localhost:54321/functions/v1/submit-run', {
     method: 'POST',
@@ -563,17 +569,18 @@ async function runTests(selfCheckMode = false) {
   });
   const newDevRes = await handleSubmissionRequest(newDevReq, db);
   assert.strictEqual(newDevRes.status, 429);
-  assert.strictEqual(newDevRes.headers.get('Retry-After'), '86400');
-  log(`  ✔ [RATE LIMIT 429] 4th new device on IP 10.0.0.50 -> HTTP 429 (Retry-After: 86400)`);
+  const newDevRetryAfter = parseInt(newDevRes.headers.get('Retry-After') || '0', 10);
+  assert.ok(newDevRetryAfter > 0 && newDevRetryAfter <= 86400, 'Retry-After must be positive seconds <= 86400');
+  log(`  ✔ [RATE LIMIT 429] ${IP_NEW_DEVICE_LIMIT_DAILY + 1}th new device on IP 10.0.0.50 -> HTTP 429 (Retry-After: ${newDevRetryAfter})`);
 
   // Test 3: Submissions per device (max 60/day)
   const devKey = `dev_sub:spammer_dev_01:${todayUtc}`;
-  for (let i = 0; i < 60; i++) {
-    await db.consumeRateLimit(devKey, 60);
+  for (let i = 0; i < DEVICE_SUBMISSION_LIMIT_DAILY; i++) {
+    await db.consumeRateLimit(devKey, DEVICE_SUBMISSION_LIMIT_DAILY);
   }
-  const devOver = await db.consumeRateLimit(devKey, 60);
+  const devOver = await db.consumeRateLimit(devKey, DEVICE_SUBMISSION_LIMIT_DAILY);
   assert.strictEqual(devOver.allowed, false);
-  log(`  ✔ [RATE LIMIT 429] 61st accepted submission from device spammer_dev_01 blocked (limit: 60/day)`);
+  log(`  ✔ [RATE LIMIT 429] ${DEVICE_SUBMISSION_LIMIT_DAILY + 1}st accepted submission from device spammer_dev_01 blocked (limit: ${DEVICE_SUBMISSION_LIMIT_DAILY}/day)`);
 
   // Test 4: Concurrency test of 50 parallel requests hitting rate limit atomically
   const concKey = `ip_req:192.168.2.200:${currentHourKey}`;

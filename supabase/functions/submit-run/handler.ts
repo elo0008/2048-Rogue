@@ -54,24 +54,24 @@ export function getCorsHeaders(req: Request): HeadersInit {
   };
 }
 
+// Rate Limits for Abuse Protection and Carrier NAT Accommodation
+// Mobile players frequently share IP addresses (Carrier Grade NAT).
+// Per-IP request limit: 600/hour allows multiple active devices behind the same public mobile IP.
+export const IP_REQUEST_LIMIT_HOURLY = 600;
+// New devices per IP per day: 30 permits households and mobile carrier IP pools to onboard devices.
+export const IP_NEW_DEVICE_LIMIT_DAILY = 30;
+// Accepted submissions per device per day: 60 allows active daily play while bounding spam.
+export const DEVICE_SUBMISSION_LIMIT_DAILY = 60;
+
 export function getClientIp(req: Request): string {
-  // On Supabase Edge Functions, incoming requests route through Cloudflare infrastructure.
-  // Cloudflare unconditionally overwrites or sets the 'cf-connecting-ip' header with the client's
-  // physical socket IP. External clients cannot forge this header at the Cloudflare edge layer.
+  // Use cf-connecting-ip only. In production on Supabase Edge Runtime, Cloudflare sets/overwrites cf-connecting-ip.
+  // If absent, fall back to the shared bucket 'unknown' and log a warning.
   const cfIp = req.headers.get('cf-connecting-ip');
-  if (cfIp) return cfIp.trim();
-
-  // Secondary fallback: x-real-ip (set by Supabase Kong API gateway)
-  const realIp = req.headers.get('x-real-ip');
-  if (realIp) return realIp.trim();
-
-  // Development / test fallback: x-forwarded-for (untrusted for production, acceptable for local harness)
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) {
-    const first = forwarded.split(',')[0].trim();
-    if (first) return first;
+  if (cfIp && cfIp.trim()) {
+    return cfIp.trim();
   }
-  return '127.0.0.1';
+  console.warn('[getClientIp] cf-connecting-ip header missing; falling back to "unknown"');
+  return 'unknown';
 }
 
 export interface DatabaseAdapter {
@@ -178,33 +178,39 @@ export async function handleSubmissionRequest(
   const todayUtc = now.toISOString().slice(0, 10);
   const currentHourKey = `${todayUtc}T${String(now.getUTCHours()).padStart(2, '0')}`;
 
+  // Dynamic Retry-After calculations (seconds to next UTC hour / next UTC midnight)
+  const nextHourMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours() + 1, 0, 0, 0);
+  const retryAfterHour = Math.max(1, Math.ceil((nextHourMs - now.getTime()) / 1000));
+  const nextMidnightMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0);
+  const retryAfterMidnight = Math.max(1, Math.ceil((nextMidnightMs - now.getTime()) / 1000));
+
   if (db) {
-    // 5a. IP request limit (200 requests per IP per hour)
+    // 5a. IP request limit (600 requests per IP per hour)
     const ipReqKey = `ip_req:${clientIp}:${currentHourKey}`;
-    const ipCheck = await db.consumeRateLimit(ipReqKey, 200);
+    const ipCheck = await db.consumeRateLimit(ipReqKey, IP_REQUEST_LIMIT_HOURLY);
     if (!ipCheck.allowed) {
-      return new Response(JSON.stringify({ error: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests from this IP (limit: 200/hour)' }), {
+      return new Response(JSON.stringify({ error: 'RATE_LIMIT_EXCEEDED', message: `Too many requests from this IP (limit: ${IP_REQUEST_LIMIT_HOURLY}/hour)` }), {
         status: 429,
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/json',
-          'Retry-After': '3600',
+          'Retry-After': String(retryAfterHour),
         },
       });
     }
 
-    // 5b. New devices per IP per day (max 3)
+    // 5b. New devices per IP per day (max 30)
     const isRegistered = await db.isDeviceRegistered(deviceId);
     if (!isRegistered) {
       const ipDevKey = `ip_newdev:${clientIp}:${todayUtc}`;
-      const devCheck = await db.consumeRateLimit(ipDevKey, 3);
+      const devCheck = await db.consumeRateLimit(ipDevKey, IP_NEW_DEVICE_LIMIT_DAILY);
       if (!devCheck.allowed) {
-        return new Response(JSON.stringify({ error: 'DEVICE_CREATION_LIMIT', message: 'Max 3 new devices per IP per day' }), {
+        return new Response(JSON.stringify({ error: 'DEVICE_CREATION_LIMIT', message: `Max ${IP_NEW_DEVICE_LIMIT_DAILY} new devices per IP per day` }), {
           status: 429,
           headers: {
             ...corsHeaders,
             'Content-Type': 'application/json',
-            'Retry-After': '86400',
+            'Retry-After': String(retryAfterMidnight),
           },
         });
       }
@@ -278,7 +284,7 @@ export async function handleSubmissionRequest(
     });
   }
 
-  // 7. Execute Verification (verifyRun) with wall-clock measurement
+  // 7. Execute Verification (verifyRun) with wall-clock and CPU measurement
   const verifyOptions: any = {
     mode,
     dayUTC,
@@ -287,13 +293,26 @@ export async function handleSubmissionRequest(
   };
 
   const tVerifyStart = performance.now();
+  const denoGlobal = (globalThis as any).Deno;
+  const cpuStart = (typeof denoGlobal?.cpuUsage === 'function') ? denoGlobal.cpuUsage() : null;
+
   const verdict = verifyRun(runLog, verifyOptions);
   const verifyWallMs = performance.now() - tVerifyStart;
+  const cpuEnd = (cpuStart && typeof denoGlobal?.cpuUsage === 'function') ? denoGlobal.cpuUsage() : null;
 
-  const timingHeaders: HeadersInit = {
+  let verifyCpuMs: number | null = null;
+  if (cpuStart && cpuEnd) {
+    // Deno.cpuUsage() returns cumulative { user: number, system: number } in microseconds
+    verifyCpuMs = ((cpuEnd.user - cpuStart.user) + (cpuEnd.system - cpuStart.system)) / 1000;
+  }
+
+  const timingHeaders: Record<string, string> = {
     'x-verify-ms': verifyWallMs.toFixed(2),
     'Server-Timing': `verify;dur=${verifyWallMs.toFixed(2)}`,
   };
+  if (verifyCpuMs !== null) {
+    timingHeaders['x-verify-cpu-ms'] = verifyCpuMs.toFixed(2);
+  }
 
   if (!verdict.ok) {
     return new Response(JSON.stringify({
@@ -333,15 +352,15 @@ export async function handleSubmissionRequest(
 
     // Max 60 accepted submissions per device per day
     const devSubKey = `dev_sub:${deviceId}:${dayUTC || todayUtc}`;
-    const devSubCheck = await db.consumeRateLimit(devSubKey, 60);
+    const devSubCheck = await db.consumeRateLimit(devSubKey, DEVICE_SUBMISSION_LIMIT_DAILY);
     if (!devSubCheck.allowed) {
-      return new Response(JSON.stringify({ error: 'DEVICE_DAILY_LIMIT_EXCEEDED', message: 'Max 60 submissions per device per day' }), {
+      return new Response(JSON.stringify({ error: 'DEVICE_DAILY_LIMIT_EXCEEDED', message: `Max ${DEVICE_SUBMISSION_LIMIT_DAILY} submissions per device per day` }), {
         status: 429,
         headers: {
           ...corsHeaders,
           ...timingHeaders,
           'Content-Type': 'application/json',
-          'Retry-After': '3600',
+          'Retry-After': String(retryAfterMidnight),
         },
       });
     }
