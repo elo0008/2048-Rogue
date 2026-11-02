@@ -1,0 +1,388 @@
+// supabase/functions/submit-run/handler.ts
+// Pure HTTP request handler for Rogue 2048 Leaderboard Verification
+// Web-standard types only (Request, Response, Headers) - zero Deno or Node specific globals
+
+import { verifyRun, extractSubmission } from './vendor/verify/verify_run.js';
+
+let defaultManifest: any = null;
+try {
+  const mod = await import('./vendor/manifest.json', { with: { type: 'json' } });
+  defaultManifest = mod.default || mod;
+} catch (_e) {
+  defaultManifest = null;
+}
+
+// Adjectives and nouns for deterministic server-side display name generation
+const ADJECTIVES = [
+  'Amber', 'Azure', 'Bold', 'Brave', 'Calm', 'Clever', 'Cobalt', 'Cosmic',
+  'Crimson', 'Daring', 'Eager', 'Emerald', 'Fierce', 'Fleet', 'Golden', 'Grand',
+  'Jade', 'Keen', 'Lunar', 'Mighty', 'Nimble', 'Noble', 'Onyx', 'Quiet',
+  'Radiant', 'Rapid', 'Ruby', 'Rustic', 'Shadow', 'Silent', 'Silver', 'Solar',
+  'Stellar', 'Swift', 'True', 'Valiant', 'Vivid', 'Warm', 'Wild', 'Wise'
+];
+
+const NOUNS = [
+  'Badger', 'Bear', 'Bison', 'Crane', 'Dragon', 'Eagle', 'Falcon', 'Fox',
+  'Gryphon', 'Hawk', 'Heron', 'Jaguar', 'Leopard', 'Lion', 'Lynx', 'Otter',
+  'Owl', 'Panther', 'Phoenix', 'Puma', 'Raven', 'Robin', 'Sable', 'Stag',
+  'Tiger', 'Viper', 'Wolf', 'Wolverine'
+];
+
+export function generateDisplayName(deviceId: string): string {
+  // Deterministic pseudo-random name based on deviceId characters
+  let hash = 0;
+  for (let i = 0; i < deviceId.length; i++) {
+    hash = (hash * 31 + deviceId.charCodeAt(i)) >>> 0;
+  }
+  const adj = ADJECTIVES[hash % ADJECTIVES.length];
+  const noun = NOUNS[(hash >>> 6) % NOUNS.length];
+  const num = (hash >>> 12) % 900 + 100; // 100 - 999
+  return `${adj}-${noun}-${num}`;
+}
+
+export function getCorsHeaders(req: Request): HeadersInit {
+  const origin = req.headers.get('origin') || '';
+  const isAllowed = origin === 'https://rogue2048.vercel.app' || /^http:\/\/localhost(?::\d+)?$/.test(origin);
+  if (!isAllowed) {
+    return { 'Vary': 'Origin' };
+  }
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
+  };
+}
+
+export function getClientIp(req: Request): string {
+  // On Supabase Edge Functions, incoming requests route through Cloudflare infrastructure.
+  // Cloudflare unconditionally overwrites or sets the 'cf-connecting-ip' header with the client's
+  // physical socket IP. External clients cannot forge this header at the Cloudflare edge layer.
+  const cfIp = req.headers.get('cf-connecting-ip');
+  if (cfIp) return cfIp.trim();
+
+  // Secondary fallback: x-real-ip (set by Supabase Kong API gateway)
+  const realIp = req.headers.get('x-real-ip');
+  if (realIp) return realIp.trim();
+
+  // Development / test fallback: x-forwarded-for (untrusted for production, acceptable for local harness)
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (forwarded) {
+    const first = forwarded.split(',')[0].trim();
+    if (first) return first;
+  }
+  return '127.0.0.1';
+}
+
+export interface DatabaseAdapter {
+  isDeviceRegistered(deviceId: string): Promise<boolean>;
+  registerDevice(deviceId: string, displayName: string): Promise<void>;
+  updateDeviceSeen(deviceId: string): Promise<void>;
+  isDuplicateEvent(deviceId: string, eventsHash: string): Promise<boolean>;
+  consumeRateLimit(key: string, limit: number): Promise<{ allowed: boolean; current: number }>;
+  recordAcceptedRun(submission: {
+    deviceId: string;
+    dayUtc: string;
+    seed: bigint;
+    points: number;
+    totalMoves: number;
+    maxTile: number;
+    relicsOwned: string[];
+    replayVersion: string;
+    eventsHash: string;
+    durationMs: number | null;
+    flags: string[];
+    receivedAt?: string;
+  }): Promise<{ id: number | string }>;
+}
+
+export async function handleSubmissionRequest(
+  req: Request,
+  db?: DatabaseAdapter,
+  manifestOverride?: any
+): Promise<Response> {
+  const corsHeaders = getCorsHeaders(req);
+
+  // 1. Handle CORS Preflight
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'METHOD_NOT_ALLOWED' }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // 2. Read raw request body cleanly and validate size (<= 1 MB)
+  let rawBodyText: string;
+  try {
+    rawBodyText = await req.text();
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: 'BODY_READ_FAILED', message: err.message }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const contentLength = parseInt(req.headers.get('content-length') || '0', 10);
+  if (contentLength > 1048576 || rawBodyText.length > 1048576) {
+    return new Response(JSON.stringify({ error: 'PAYLOAD_TOO_LARGE', message: 'Body exceeds 1 MB limit' }), {
+      status: 413,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  let body: any;
+  try {
+    body = JSON.parse(rawBodyText);
+  } catch {
+    return new Response(JSON.stringify({ error: 'INVALID_JSON', message: 'Malformed JSON payload' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // 3. Pre-Verification Validation: Device ID (F3: reject everything else with 400 before any other work)
+  const deviceId = body?.deviceId;
+  if (!deviceId || typeof deviceId !== 'string' || !/^[a-z0-9_]{8,64}$/.test(deviceId)) {
+    return new Response(JSON.stringify({ error: 'INVALID_DEVICE_ID', message: 'deviceId must match /^[a-z0-9_]{8,64}$/' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // F1: Never read mode from the request body. Verification mode is strictly constant 'daily' in submit-run.
+  const mode = 'daily';
+  const runLog = body?.runLog;
+
+  // 4. Pre-Verification Validation: Event count <= 20000
+  if (!runLog || typeof runLog !== 'object' || !Array.isArray(runLog.events)) {
+    return new Response(JSON.stringify({ error: 'INVALID_RUN_LOG', message: 'runLog.events array required' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (runLog.events.length > 20000) {
+    return new Response(JSON.stringify({ error: 'EVENTS_LIMIT_EXCEEDED', message: 'Max 20000 events permitted' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // 5. Abuse Limits (Rate limiting)
+  const clientIp = getClientIp(req);
+  const now = new Date();
+  const todayUtc = now.toISOString().slice(0, 10);
+  const currentHourKey = `${todayUtc}T${String(now.getUTCHours()).padStart(2, '0')}`;
+
+  if (db) {
+    // 5a. IP request limit (200 requests per IP per hour)
+    const ipReqKey = `ip_req:${clientIp}:${currentHourKey}`;
+    const ipCheck = await db.consumeRateLimit(ipReqKey, 200);
+    if (!ipCheck.allowed) {
+      return new Response(JSON.stringify({ error: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests from this IP (limit: 200/hour)' }), {
+        status: 429,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'Retry-After': '3600',
+        },
+      });
+    }
+
+    // 5b. New devices per IP per day (max 3)
+    const isRegistered = await db.isDeviceRegistered(deviceId);
+    if (!isRegistered) {
+      const ipDevKey = `ip_newdev:${clientIp}:${todayUtc}`;
+      const devCheck = await db.consumeRateLimit(ipDevKey, 3);
+      if (!devCheck.allowed) {
+        return new Response(JSON.stringify({ error: 'DEVICE_CREATION_LIMIT', message: 'Max 3 new devices per IP per day' }), {
+          status: 429,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Retry-After': '86400',
+          },
+        });
+      }
+    }
+  }
+
+  // 6. Day Boundary Rule
+  // day_utc is the UTC date of the run's start timestamp from the run log, and must equal the day the server computed the seed for
+  let dayUTC: string | null = null;
+  if (runLog.startTimestamp) {
+    const d = new Date(runLog.startTimestamp);
+    if (!isNaN(d.getTime())) {
+      dayUTC = d.toISOString().slice(0, 10);
+    }
+  }
+  if (!dayUTC && typeof body.dayUTC === 'string') {
+    dayUTC = body.dayUTC;
+  }
+
+  if (mode === 'daily') {
+    if (!dayUTC || !/^\d{4}-\d{2}-\d{2}$/.test(dayUTC)) {
+      return new Response(JSON.stringify({ error: 'DAY_UTC_REQUIRED', message: 'daily mode requires valid startTimestamp or dayUTC' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const yesterdayUtc = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
+    // Grace period: allow today and yesterday UTC (handles runs spanning midnight)
+    if (dayUTC !== todayUtc && dayUTC !== yesterdayUtc) {
+      return new Response(JSON.stringify({
+        error: 'DAY_OUT_OF_BOUNDS',
+        message: `Run start day (${dayUTC}) must be today (${todayUtc}) or yesterday (${yesterdayUtc}) UTC`
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
+  // F2. Fail closed: if the vendored manifest cannot be loaded, or rulesVersion/replayVersion are missing, return HTTP 500 and verify nothing.
+  let activeManifest: any = null;
+  try {
+    activeManifest = manifestOverride !== undefined
+      ? (typeof manifestOverride === 'function' ? await manifestOverride() : manifestOverride)
+      : defaultManifest;
+
+    if (!activeManifest && manifestOverride === undefined) {
+      const mod = await import('./vendor/manifest.json', { with: { type: 'json' } });
+      activeManifest = mod.default || mod;
+    }
+  } catch (_e) {
+    activeManifest = null;
+  }
+
+  const expectedRulesVersion = activeManifest?.rulesVersion;
+  const expectedReplayVersion = activeManifest?.replayVersion;
+
+  if (
+    !expectedRulesVersion ||
+    !expectedReplayVersion ||
+    typeof expectedRulesVersion !== 'string' ||
+    typeof expectedReplayVersion !== 'string'
+  ) {
+    return new Response(JSON.stringify({
+      error: 'SERVER_CONFIGURATION_ERROR',
+      message: 'Failed to load authoritative rules/replay manifest'
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // 7. Execute Verification (verifyRun) with wall-clock measurement
+  const verifyOptions: any = {
+    mode,
+    dayUTC,
+    expectedRulesVersion,
+    expectedReplayVersion,
+  };
+
+  const tVerifyStart = performance.now();
+  const verdict = verifyRun(runLog, verifyOptions);
+  const verifyWallMs = performance.now() - tVerifyStart;
+
+  const timingHeaders: HeadersInit = {
+    'x-verify-ms': verifyWallMs.toFixed(2),
+    'Server-Timing': `verify;dur=${verifyWallMs.toFixed(2)}`,
+  };
+
+  if (!verdict.ok) {
+    return new Response(JSON.stringify({
+      error: 'VERIFICATION_REJECTED',
+      status: verdict.status,
+      reason: verdict.reason,
+      flags: verdict.flags || [],
+    }), {
+      status: 422,
+      headers: { ...corsHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // 8. Extract Trusted Replay Submission (Server-trust contract Z3)
+  const submission = await extractSubmission(runLog, verdict);
+  if (!submission) {
+    return new Response(JSON.stringify({ error: 'SUBMISSION_EXTRACTION_FAILED' }), {
+      status: 500,
+      headers: { ...corsHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // 9. Idempotency Check & Abuse Limit per device/day (max 60 accepted submissions)
+  if (db) {
+    // Idempotent: same events_hash from same device is not stored twice
+    const isDuplicate = await db.isDuplicateEvent(deviceId, submission.eventsHash);
+    if (isDuplicate) {
+      return new Response(JSON.stringify({
+        status: 'ALREADY_SUBMITTED',
+        message: 'This exact run was already recorded.',
+        eventsHash: submission.eventsHash,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Max 60 accepted submissions per device per day
+    const devSubKey = `dev_sub:${deviceId}:${dayUTC || todayUtc}`;
+    const devSubCheck = await db.consumeRateLimit(devSubKey, 60);
+    if (!devSubCheck.allowed) {
+      return new Response(JSON.stringify({ error: 'DEVICE_DAILY_LIMIT_EXCEEDED', message: 'Max 60 submissions per device per day' }), {
+        status: 429,
+        headers: {
+          ...corsHeaders,
+          ...timingHeaders,
+          'Content-Type': 'application/json',
+          'Retry-After': '3600',
+        },
+      });
+    }
+
+    // Register device if not exists
+    const isDeviceKnown = await db.isDeviceRegistered(deviceId);
+    if (!isDeviceKnown) {
+      const generatedName = generateDisplayName(deviceId);
+      await db.registerDevice(deviceId, generatedName);
+    } else {
+      await db.updateDeviceSeen(deviceId);
+    }
+
+    // Store verified run
+    await db.recordAcceptedRun({
+      deviceId,
+      dayUtc: dayUTC || todayUtc,
+      seed: BigInt(submission.seed),
+      points: submission.points,
+      totalMoves: submission.moves,
+      maxTile: submission.maxTile,
+      relicsOwned: submission.relicsOwned,
+      replayVersion: submission.replayVersion,
+      eventsHash: submission.eventsHash,
+      durationMs: typeof runLog.durationMs === 'number' ? runLog.durationMs : (typeof runLog.activeMs === 'number' ? runLog.activeMs : null),
+      flags: verdict.flags || [],
+    });
+  }
+
+  return new Response(JSON.stringify({
+    status: 'ACCEPTED',
+    verdict: {
+      status: verdict.status,
+      points: submission.points,
+      moves: submission.moves,
+      maxTile: submission.maxTile,
+      eventsHash: submission.eventsHash,
+      flags: verdict.flags || [],
+    }
+  }), {
+    status: 200,
+    headers: { ...corsHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
+  });
+}

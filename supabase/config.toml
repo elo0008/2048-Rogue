@@ -1,0 +1,31 @@
+# Supabase local development configuration for Rogue 2048 Leaderboard
+project_id = "rogue-2048"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[db.pooler]
+enabled = false
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[edge_runtime]
+enabled = true
+port = 54323
+inspector_port = 8083
+
+[functions.submit-run]
+verify_jwt = false
+import_map = "./functions/submit-run/deno.json"
+

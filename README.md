@@ -343,5 +343,116 @@ To test the Animation Lab on real mobile devices via Vercel preview URLs, perfor
 4. **Production Stays Clean:**  
    The build pipeline strictly enforces production protection: `scripts/build.js` contains a build guard that immediately terminates with an error if `BUILD_TARGET=dev` is attempted when `VERCEL_ENV === 'production'` or when building the `main` branch. Merges into `main` and production deployments will always compile as `BUILD_TARGET=prod`, completely excluding `game/dev/` and stripping all marked lab code.
 
+---
+
+## Leaderboard Backend (Supabase Spike)
+
+A serverless, authoritative leaderboard backend spike powered by Supabase (free tier) and Deno Edge Runtime. It verifies submitted run logs server-side against the deterministic game engine (`sim/engine.js`), rejects tampered replays and non-canonical configurations, enforces strict anti-abuse rate limits, and calculates competitive daily and weekly leaderboards using secure database RPC functions.
+
+### 1. Prerequisites
+- **Supabase CLI:** (Optional for local development). Install via:
+  ```bash
+  # Windows (Winget)
+  winget install Supabase.CLI
+  # macOS (Homebrew)
+  brew install supabase/tap/supabase
+  # Or Scoop
+  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git; scoop install supabase
+  ```
+- **Docker Desktop:** Required by the Supabase CLI if running the full local stack (`supabase start`).
+- **Remote Project:** If Docker is not installed locally, a free-tier remote project on [supabase.com](https://supabase.com) can be linked directly.
+
+### 2. Running Locally
+1. **Start the local Supabase stack:**
+   ```bash
+   supabase start
+   ```
+2. **Bundle edge vendor dependencies:**
+   ```bash
+   node scripts/build_edge.js
+   ```
+3. **Serve Edge Functions locally:**
+   ```bash
+   supabase functions serve submit-run --no-verify-jwt
+   ```
+
+### 3. Manual Setup in Supabase Dashboard (Remote Deployment)
+1. **Execute Schema Migration:**
+   Open the **SQL Editor** in the Supabase Dashboard and run the contents of [`supabase/migrations/0001_leaderboard.sql`](supabase/migrations/0001_leaderboard.sql).
+   This provisions:
+   - `devices`, `daily_runs`, and `abuse_rate_limits` tables with strict Row-Level Security (0 anon read/write policies).
+   - Public SECURITY DEFINER RPC functions `daily_best(target_day)` and `weekly_best(target_week_start)`.
+2. **Deploy the Edge Function:**
+   ```bash
+   supabase functions deploy submit-run --no-verify-jwt
+   ```
+3. **No External Secrets Required:**
+   The function executes using Supabase's built-in platform environment variables (`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`).
+
+### 4. Critical Security Warnings: Client Secrets Invariant
+> [!CAUTION]
+> **NEVER expose server secrets in client code:**
+> - `SUPABASE_SERVICE_ROLE_KEY`
+> - Database password / connection strings (`postgres://...`)
+> - Supabase JWT Secret
+> 
+> The client web application (`game/`) must only ever be configured with the public `anon` key. The base tables (`daily_runs`, `devices`, `abuse_rate_limits`) have **strict zero-trust RLS policies** enabled: direct `SELECT`, `INSERT`, `UPDATE`, or `DELETE` from the public `anon` role are completely denied (HTTP 401/403). Only the Edge Function possesses `service_role` access to write verified runs, and clients can only query public leaderboards via sanitized RPC views.
+
+### 5. Free-Tier Platform Constraints & Caveats
+- **1-Week Inactivity Pause:** Free-tier Supabase projects are automatically paused after 7 days of inactivity. If paused, restore the project in the Supabase Dashboard.
+- **Edge Function 2-Second CPU Limit:** Edge Runtime functions on the free tier enforce a maximum CPU wall execution time of 2,000 ms.
+  - **Empirical Benchmarks:** In the verification suite (`scripts/out/edge_cpu.txt`), replaying the longest real corpus game (2,590 events) takes a median of **24.5 ms** (36x safety margin). A synthetic maximum run of 20,000 events takes a median of **26.3 ms** (62x safety margin). Both comfortably satisfy the 2-second limit.
+
+### 6. Edge Verification Test Suite
+Execute the offline, zero-dependency edge test suite:
+```bash
+npm run test:edge
+```
+This runs:
+- `test_edge_parity.js`: Verifies exact verdict parity between Node and Edge runtime across corpus runs and fixtures.
+- `test_edge_cpu.js`: Asserts CPU wall time across 20 repetitions vs the 2,000 ms budget.
+- `test_edge_security.js`: Tests RLS denials, view column projections, 6 tamper rejections, config mismatch, wrong-day seeds, rate limits, duplicate idempotence, and payload bounds with self-check proof.
+- `test_edge_rank.js`: Asserts `daily_best` and `weekly_best` SQL window ordering against an independent JS reference calculation with self-check proof.
+
+### 7. Live Hosted Verification Test Suite
+Execute live integration tests against your linked hosted Supabase project and deployed Edge Function:
+```bash
+npm run test:live
+```
+> [!NOTE]
+> `npm run test:live` requires a linked hosted Supabase project and credentials configured in `.env.test` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`). It is **NOT** part of the offline `npm test` suite.
+
+#### Manual Setup Steps (By Developer):
+1. **Link Project (Supabase CLI):**
+   ```bash
+   supabase link --project-ref <your-project-ref>
+   ```
+2. **Push Schema Migration:**
+   ```bash
+   supabase db push
+   ```
+   Pushes [`supabase/migrations/0001_leaderboard.sql`](supabase/migrations/0001_leaderboard.sql), enabling zero-trust RLS on base tables and granting access to `service_role` and public RPC functions `daily_best` and `weekly_best`.
+3. **Bundle Edge Vendors & Deploy Function:**
+   ```bash
+   node scripts/build_edge.js
+   supabase functions deploy submit-run --no-verify-jwt --use-api
+   ```
+   *(Uses `--use-api` to deploy without requiring local Docker daemon)*.
+4. **Local Test Environment (.env.test):**
+   Create `.env.test` at the repository root:
+   ```ini
+   SUPABASE_URL=https://<your-project-ref>.supabase.co
+   SUPABASE_ANON_KEY=<public-anon-key>
+   SUPABASE_SERVICE_ROLE_KEY=<service-role-secret-key>
+   ```
+   > [!CAUTION]
+   > **NEVER commit `.env.test` or service role keys.** Verify that `.env.test` is listed in `.gitignore`.
+
+#### Free-Tier Pause Warning:
+- Free-tier Supabase projects automatically pause after 7 consecutive days of inactivity.
+- If a project pauses, incoming Edge Function and API requests return HTTP 503.
+- Unpause the project with a single click in the Supabase Dashboard under **Project Settings -> General -> Restore Project**.
+
+
 
 

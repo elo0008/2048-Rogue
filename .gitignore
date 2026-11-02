@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-dev/
 sim/out/
 scratch/
 screenshots*/
@@ -10,3 +11,5 @@ sample_run_log.json
 .temp_chrome*/
 test_output*.txt
 scripts/out/
+supabase/functions/*/vendor/
+.env.test

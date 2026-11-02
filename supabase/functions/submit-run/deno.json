@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": ["deno.window", "deno.ns"]
+  },
+  "imports": {
+    "@verify/": "./vendor/verify/",
+    "@game/": "./vendor/game/",
+    "@sim/": "./vendor/sim/"
+  }
+}
+

@@ -9,7 +9,9 @@
     "build": "node scripts/build.js",
     "build:dev": "node scripts/build.js dev",
     "icons": "node scripts/icon_metrics.js",
-    "sim": "node sim/run.js"
+    "sim": "node sim/run.js",
+    "test:edge": "node scripts/test_edge_parity.js && node scripts/test_edge_cpu.js && node scripts/test_edge_security.js && node scripts/test_edge_rank.js",
+    "test:live": "node scripts/test_live.js"
   },
   "engines": {
     "node": ">=18"
