@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { verifyRun } from '../verify/verify_run.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2355,6 +2356,114 @@ async function runSmokeTest() {
     assert.strictEqual(labAbsentBrowserCheck.hasHandle, false, 'Production build must not have #rogue-lab-handle in DOM');
     assert.strictEqual(labAbsentBrowserCheck.hasSheet, false, 'Production build must not have #rogue-lab-sheet in DOM');
     console.log('[Smoke Test] ✔ Production DOM has no lab handle or sheet.');
+
+    // -------------------------------------------------------------
+    // Keyboard Input Event Recording Smoke Test
+    // -------------------------------------------------------------
+    console.log('[Smoke Test] Testing Keyboard Run-Log Recording (>60 moves via Input.dispatchKeyEvent, draft, ability, verifyRun)...');
+    await cdp.send('Page.navigate', { url: makeUrl('?start=rewind&seed=10') });
+    await sleep(600);
+
+    const km = {
+      'L': { key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37 },
+      'R': { key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 },
+      'U': { key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38 },
+      'D': { key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 },
+    };
+
+    let kbAbilityUsed = false;
+    let kbDraftUsed = false;
+    let kbLoopCount = 0;
+
+    while (kbLoopCount < 200) {
+      kbLoopCount++;
+      const s = await cdp.eval(`
+        (() => {
+          const c = window.controller;
+          if (!c) return { ok: false };
+          if (c.hasPendingDecision()) {
+            const dec = c.getPendingDecision();
+            if (dec.type === 'draft') {
+              const cards = Array.from(document.querySelectorAll('.draft-card, .draftcard'));
+              const card = cards.find(el => !el.textContent.includes('Mason')) || cards[0];
+              if (card) {
+                card.click();
+                return { draft: true };
+              }
+            }
+          }
+          const rewindBtn = document.querySelector('.ability-btn[data-relic="rewind"]');
+          return {
+            moveCount: c.state ? c.state.moveCount : 0,
+            valid: c.getValidMoves(),
+            over: c.isGameOver(),
+            rewindReady: Boolean(rewindBtn && !rewindBtn.disabled)
+          };
+        })()
+      `);
+
+      if (s.draft) {
+        kbDraftUsed = true;
+        await sleep(80);
+        continue;
+      }
+
+      if (!kbAbilityUsed && s.moveCount >= 10 && s.rewindReady) {
+        await cdp.eval(`
+          (() => {
+            const btn = document.querySelector('.ability-btn[data-relic="rewind"]');
+            if (btn) btn.click();
+          })()
+        `);
+        kbAbilityUsed = true;
+        await sleep(120);
+        continue;
+      }
+
+      if (s.over || (s.moveCount >= 65 && kbDraftUsed && kbAbilityUsed)) break;
+
+      let dir = 'D';
+      if (s.valid && s.valid.length > 0) {
+        if (s.valid.includes('D')) dir = 'D';
+        else if (s.valid.includes('L')) dir = 'L';
+        else if (s.valid.includes('R')) dir = 'R';
+        else dir = s.valid[0];
+      }
+
+      const k = km[dir] || km['D'];
+      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...k });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...k });
+      await sleep(20);
+    }
+
+    // End run via two-step confirm in pause menu
+    await cdp.eval(`
+      (async () => {
+        const pauseBtn = document.getElementById('btn-pause-menu');
+        if (pauseBtn) pauseBtn.click();
+        await new Promise(r => setTimeout(r, 60));
+        const endBtn = document.getElementById('btn-pause-end-run');
+        if (endBtn) {
+          endBtn.click();
+          await new Promise(r => setTimeout(r, 60));
+          endBtn.click();
+        }
+      })()
+    `);
+    await sleep(200);
+
+    const kbRunLog = await cdp.eval(`window.controller ? window.controller.getRunLog() : null`);
+    assert.strictEqual(Boolean(kbRunLog), true, 'RunLog must exist');
+    const kbSEvents = (kbRunLog?.events || []).filter(e => typeof e === 'string' && e.startsWith('s:'));
+    assert.strictEqual(kbSEvents.length > 60, true, `Expected >60 s: events in runLog.events, got ${kbSEvents.length}`);
+    const kbHasDraft = (kbRunLog?.events || []).some(e => typeof e === 'string' && e.startsWith('d:'));
+    assert.strictEqual(kbHasDraft, true, 'RunLog must contain a draft pick event');
+    const kbHasAbility = (kbRunLog?.events || []).some(e => typeof e === 'string' && e.startsWith('a:'));
+    assert.strictEqual(kbHasAbility, true, 'RunLog must contain an ability use event');
+    const kbVerdict = verifyRun(kbRunLog, { mode: 'any' });
+    assert.strictEqual(kbVerdict.status, 'OK', `verifyRun status must be OK, got ${kbVerdict.status}`);
+    assert.strictEqual(kbVerdict.ok, true, `verifyRun ok must be true: ${kbVerdict.reason}`);
+    console.log(`[Smoke Test] ✔ Keyboard run-log verified: ${kbSEvents.length} s: events recorded, draft resolved, ability used, verifyRun status OK.`);
 
     cdp.close();
   } finally {

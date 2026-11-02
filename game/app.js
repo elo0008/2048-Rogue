@@ -3979,6 +3979,9 @@ function handleMove(direction, inputType = 'key') {
   cancelTargeting();
   dismissHint();
   controller.recordInput(inputType, direction);
+  if (inputType !== 'swipe') {
+    controller.events.push(`s:${direction}`);
+  }
   initAudio();
 
   const boardBefore = controller.getBoard();
