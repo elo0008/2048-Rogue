@@ -46,7 +46,7 @@ const SET_NAME_URL = `${SUPABASE_URL}/functions/v1/set-name`;
 function redact(str) {
   if (!str) return '';
   return str
-    .replace(/kudxaxewnvqurzukrnsm/g, '[REDACTED_PROJECT_REF]')
+    .replace(/kudxaxewnvqurzukrnsm|csdbgcxbavrtdnazctll/g, '[REDACTED_PROJECT_REF]')
     .replace(/\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g, '[REDACTED_IP]');
 }
 
@@ -107,7 +107,7 @@ async function main() {
     { rule: 7, name: 'Rule 7: Reserved name', payload: 'admin' },
     { rule: 8, name: 'Rule 8: Short token blocklist match', payload: 'ass' },
     { rule: 9, name: 'Rule 9: Short substring blocklist match', payload: 'qzzx' },
-    { rule: 10, name: 'Rule 10: Long substring blocklist match', payload: 'Salaidh' },
+    { rule: 10, name: 'Rule 10: Long substring blocklist match', payload: 'Randi' },
   ];
 
   let p1PassedCount = 0;

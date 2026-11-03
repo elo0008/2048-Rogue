@@ -252,7 +252,7 @@ const p1Cases = [
   { rule: 7, name: 'Rule 7: Reserved name', input: 'admin' },
   { rule: 8, name: 'Rule 8: Short token blocklist match', input: 'ass' },
   { rule: 9, name: 'Rule 9: Short substring blocklist match', input: 'qzzx' },
-  { rule: 10, name: 'Rule 10: Long substring blocklist match', input: 'Salaidh' },
+  { rule: 10, name: 'Rule 10: Long substring blocklist match', input: 'Randi' },
 ];
 
 const mockDb = { consumeRateLimit: () => {}, setDisplayNameLimited: () => {} };
@@ -313,6 +313,21 @@ const multiTokenNames = [
 for (const name of multiTokenNames) {
   assertName(`Multi-token harmless handle: ${name}`, name, true, name);
 }
+
+// 18. P0 Proper Nouns Allowlisted & Continued Blocks
+console.log('\n--- 18. P0 Proper Nouns Allowlisted & Continued Blocks ---');
+const p0AllowlistedNames = [
+  'Brandi', 'Brandice', 'Brandie', 'Brandise', 'Tatiana', 'Tatiania',
+  'Claudelle', 'Claudetta', 'Domeniga', 'Querida', 'Salaidh', 'Ursala', 'Kikelia'
+];
+for (const n of p0AllowlistedNames) {
+  assertName(`P0 allowlisted genuine proper noun: ${n}`, n, true, n);
+}
+
+// Ensure Claude, Randi, and Randie remain strictly blocked
+assertName('P0 blocked reserved: Claude', 'Claude', false, 'NAME_NOT_ALLOWED');
+assertName('P0 blocked word: Randi', 'Randi', false, 'NAME_NOT_ALLOWED');
+assertName('P0 blocked word: Randie', 'Randie', false, 'NAME_NOT_ALLOWED');
 
 console.log(`\n================================================================================`);
 console.log(`ALL ${passedTests}/${totalTests} TESTS PASSED CLEANLY.`);

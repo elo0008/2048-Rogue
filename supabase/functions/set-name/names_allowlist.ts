@@ -165,5 +165,20 @@ export const ALLOWLIST: string[] = [
   'poornima',
   'dickens',
   'dickson',
+
+  // P0 genuine proper nouns
+  'brandi',
+  'brandice',
+  'brandie',
+  'brandise',
+  'tatiana',
+  'tatiania',
+  'claudelle',
+  'claudetta',
+  'domeniga',
+  'querida',
+  'salaidh',
+  'ursala',
+  'kikelia',
 ];
 

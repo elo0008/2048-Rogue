@@ -100,7 +100,7 @@ function generateLegalRun(movesCount = 30) {
     ctrl.recordInput('swipe', valid[0]);
     ctrl.submitMove(valid[0]);
   }
-  ctrl.endRun();
+  if (!ctrl.isGameOver()) ctrl.endRun();
   const runLog = ctrl.getRunLog({ rulesVersion, replayVersion });
   runLog.startTimestamp = new Date(`${todayUtc}T12:00:00.000Z`).getTime();
   return { runLog, todayUtc };

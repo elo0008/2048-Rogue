@@ -414,48 +414,71 @@ This runs:
 - `test_edge_security.js`: Tests RLS denials, view column projections, 6 tamper rejections, config mismatch, wrong-day seeds, rate limits, duplicate idempotence, and payload bounds with self-check proof.
 - `test_edge_rank.js`: Asserts `daily_best` and `weekly_best` SQL window ordering against an independent JS reference calculation with self-check proof.
 
-### 7. Live Hosted Verification Test Suite
-Execute live integration tests against your linked hosted Supabase project and deployed Edge Function:
+### 7. Production Setup & Live Verification (Owner Guide)
+
+This section provides the end-to-end instructions for the project owner to bring up and deploy the production Supabase backend.
+
+#### Step 1: Create Supabase Project in Mumbai
+1. In the [Supabase Dashboard](https://supabase.com/dashboard), create a new project named e.g. `rogue2048-prod`.
+2. **Region:** Select **Mumbai (`ap-south-1`)** for optimal latency to Indian players.
+3. Note your project reference ID (e.g. `csdb...`).
+
+#### Step 2: Authenticate and Link Project
+From the repository root on your local machine:
 ```bash
-npm run test:live
+npx supabase login
+npx supabase link --project-ref <your-mumbai-project-ref>
 ```
+*(Verified: `supabase link` associates the local workspace migrations and edge functions with your remote project).*
+
+#### Step 3: Push Database Schema Migrations
+Deploy the complete schema directly from repository migration files:
+```bash
+npx supabase db push --include-all --yes
+```
+This sequentially applies migrations `0001_leaderboard.sql` through `0008_quota_race_fix.sql`, establishing:
+- Zero-trust RLS on base tables (`devices`, `daily_runs`, `abuse_rate_limits`) with table access revoked from `public`/`anon`.
+- Public read RPCs (`daily_best`, `weekly_best`, `my_daily_rank`, `my_weekly_rank`) granted to `anon` and `authenticated`.
+- Internal atomic RPCs (`consume_rate_limit`, `precheck_submission`, `record_submission`, `set_display_name_limited`, `cleanup_rate_limits`) granted exclusively to `service_role`.
+
+#### Step 4: Build Edge Vendors and Deploy Functions
+Bundle verification dependencies and deploy both Edge Functions:
+```bash
+# 1. Bundle verification vendors and compute manifest hashes
+node scripts/build_edge.js
+
+# 2. Deploy submit-run Edge Function
+npx supabase functions deploy submit-run --no-verify-jwt --use-api
+
+# 3. Deploy set-name Edge Function
+npx supabase functions deploy set-name --no-verify-jwt --use-api
+```
+*(Uses `--no-verify-jwt` because authentication is handled via custom device IDs and anti-abuse checks, and `--use-api` to deploy without requiring a local Docker daemon).*
+
+#### Step 5: Platform Secret Injection (Nothing to Configure)
 > [!NOTE]
-> `npm run test:live` requires a linked hosted Supabase project and credentials configured in `.env.test` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`). It is **NOT** part of the offline `npm test` suite.
+> **No secret configuration is required for edge functions.**
+> As documented in Supabase Edge Runtime platform specifications, Supabase automatically injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` directly into every Edge Function invocation environment.
 
-#### Manual Setup Steps (By Developer):
-1. **Link Project (Supabase CLI):**
-   ```bash
-   supabase link --project-ref <your-project-ref>
-   ```
-2. **Push Schema Migration:**
-   ```bash
-   supabase db push
-   ```
-   Pushes [`supabase/migrations/0001_leaderboard.sql`](supabase/migrations/0001_leaderboard.sql), enabling zero-trust RLS on base tables and granting access to `service_role` and public RPC functions `daily_best` and `weekly_best`.
-3. **Bundle Edge Vendors & Deploy Function:**
-   ```bash
-   node scripts/build_edge.js
-   supabase functions deploy submit-run --no-verify-jwt --use-api
-   ```
-   *(Uses `--use-api` to deploy without requiring local Docker daemon)*.
-4. **Local Test Environment (.env.test):**
-   Create `.env.test` at the repository root:
-   ```ini
-   SUPABASE_URL=https://<your-project-ref>.supabase.co
-   SUPABASE_ANON_KEY=<public-anon-key>
-   SUPABASE_SERVICE_ROLE_KEY=<service-role-secret-key>
-   ```
-   > [!CAUTION]
-   > **NEVER commit `.env.test` or service role keys.** Verify that `.env.test` is listed in `.gitignore`.
+#### Step 6: Client Configuration Placeholder
+During the upcoming client integration round:
+- The public `SUPABASE_URL` and `SUPABASE_ANON_KEY` will be wired into client configuration (placeholder location: e.g. `window.__LEADERBOARD_CONFIG__` or `game/config.js`).
+- > [!CAUTION]
+  > **NEVER expose the `SUPABASE_SERVICE_ROLE_KEY` in the client bundle.** The client only ever interacts with public edge functions and anon-granted read RPCs.
 
-#### Cloud Regions & Production Guidance:
-- **Hosted Database & Edge Regions:**
-  - Production environments should be provisioned in the region geographically closest to the players, which for this project is Mumbai (`ap-south-1`).
-  - When the database and the players' nearest edge are located in the same region, network round-trips remain entirely local and no `x-region` pinning header is needed.
-- **Database Migrations:**
-  - All migrations (`0001_leaderboard.sql` through `0008_quota_race_fix.sql`) are applied sequentially via `supabase db push`.
-- **Free-Tier Inactivity Pause:**
-  - Supabase projects on the free tier automatically pause after 1 week (7 consecutive days) of inactivity. Incoming requests to a paused project return HTTP 503. To restore service, unpause the project directly from the Supabase Dashboard under **Project Settings -> General -> Restore Project**.
+#### Step 7: Security & Repository Hygiene
+- **Never commit `.env*` files, `supabase/.temp`, or vendor folders.**
+- Ensure `.gitignore` continues to ignore `.env*`, `supabase/.temp`, and `node_modules/`.
+- Local verification tests read credentials strictly from gitignored `.env.test`.
+
+#### Step 8: Platform Inactivity Pause Warning
+> [!WARNING]
+> **Free-Tier 1-Week Inactivity Pause:**
+> As verified in the Supabase documentation, free-tier projects automatically pause after **1 week (7 consecutive days)** without database queries or incoming traffic.
+> While paused, incoming API requests return HTTP 503. To restore service, the owner can unpause the project at any time with one click in the Supabase Dashboard under **Project Settings > General > Restore Project**.
+
+#### Step 9: Manual Moderation SQL Pointer
+For player display name moderation, hiding offensive names, or resetting players to their generated handle, see the exact queries in [Exact SQL for Admin Moderation](#exact-sql-for-admin-moderation-paste-into-supabase-sql-editor) below.
 
 ### 8. Custom Display Names & Admin Moderation
 

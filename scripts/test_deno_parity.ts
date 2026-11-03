@@ -43,7 +43,9 @@ function generateDailyRun(dayStr: string, movesTarget: number, rulesVersion: str
     ctrl.recordInput('swipe', valid[0]);
     ctrl.submitMove(valid[0]);
   }
-  ctrl.endRun();
+  if (!ctrl.isGameOver()) {
+    ctrl.endRun();
+  }
   const runLog = ctrl.getRunLog({ rulesVersion, replayVersion });
   runLog.startTimestamp = new Date(`${dayStr}T12:00:00.000Z`).getTime();
   return runLog;
