@@ -4,6 +4,7 @@
 // token boundaries, leetspeak, allowlist bypass prevention, and affix-aware reserved names.
 
 import { validateName, validateNameDetailed, toSkeleton } from '../supabase/functions/set-name/names.ts';
+import { handleSetNameRequest } from '../supabase/functions/set-name/handler.ts';
 
 const failDemoMode = process.argv.includes('--fail-demonstration');
 
@@ -237,6 +238,80 @@ if (failDemoMode) {
   if (!deliberateCaught) {
     throw new Error('Self-check verification failed: deliberately wrong expectation was not caught!');
   }
+}
+
+// 16. P1 No Rule Leaks: Exact Response Body {"error":"NAME_NOT_ALLOWED"} for Rules 1-10
+console.log('\n--- 16. P1 No Rule Leaks: Exact HTTP Response Body for Rules 1-10 ---');
+const p1Cases = [
+  { rule: 1, name: 'Rule 1: Non-string input', input: 12345 },
+  { rule: 2, name: 'Rule 2: Length out of range', input: 'A' },
+  { rule: 3, name: 'Rule 3: Forbidden character', input: 'Cool@Player' },
+  { rule: 4, name: 'Rule 4: Invalid start/end boundary', input: '-CoolPlayer-' },
+  { rule: 5, name: 'Rule 5: Exceeded 4 digits', input: 'Player12345' },
+  { rule: 6, name: 'Rule 6: Run of 4+ identical characters', input: 'Plaaaayer' },
+  { rule: 7, name: 'Rule 7: Reserved name', input: 'admin' },
+  { rule: 8, name: 'Rule 8: Short token blocklist match', input: 'ass' },
+  { rule: 9, name: 'Rule 9: Short substring blocklist match', input: 'qzzx' },
+  { rule: 10, name: 'Rule 10: Long substring blocklist match', input: 'Salaidh' },
+];
+
+const mockDb = { consumeRateLimit: () => {}, setDisplayNameLimited: () => {} };
+
+for (const c of p1Cases) {
+  totalTests++;
+  const detailed = validateNameDetailed(c.input);
+  if (detailed.ruleNumber !== c.rule) {
+    throw new Error(`P1 Case for Rule ${c.rule} triggered unexpected Rule ${detailed.ruleNumber}`);
+  }
+  const req = new Request('http://localhost/functions/v1/set-name', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceId: 'test_device_p1_leak', name: c.input })
+  });
+  const res = await handleSetNameRequest(req, mockDb, {});
+  const bodyText = await res.text();
+  const expectedExact = JSON.stringify({ error: 'NAME_NOT_ALLOWED' });
+  if (res.status === 400 && bodyText === expectedExact) {
+    passedTests++;
+    console.log(`[PASS] Case ${totalTests}: ${c.name} -> HTTP 400 exact body: ${bodyText}`);
+  } else {
+    throw new Error(`P1 check failed for Rule ${c.rule}: status=${res.status}, body=${bodyText}`);
+  }
+}
+
+// 17. P4(b) Multi-Token Harmless Names Suite (>= 120 names)
+console.log('\n--- 17. P4(b) Multi-Token Harmless Names Suite ---');
+const multiTokenNames = [
+  'Dark Knight', 'Mr Cool', 'Night_Owl_77', 'xX_Sniper_Xx', 'ProGamer', 'Super Man 99',
+  'Fast As Light', 'FastAsLightning', 'Big Bad Wolf', 'Cat Lover', 'Pixel_Panda', 'Tea Time',
+  'Mallu Gamer', 'Kerala Boy', 'Chai Lover', 'Cricket Fan', 'SilentStorm', 'FoxyLady',
+  'Ninja Turtle', 'Space Cadet', 'Rock On',
+  'Cyber_Ninja', 'Quick_Silver', 'Star Gazer', 'Blue_Sky_42', 'Iron_Wolf', 'Speedy_Fox',
+  'Lunar_Echo', 'Golden_Hawk', 'Red_Panda_88', 'Thunder_Bolt', 'Shadow_Walker', 'Frost_Byte',
+  'Cosmic_Ray', 'Sun_Rider', 'Atomic_Ant', 'Neon_Tiger', 'Solar_Flare', 'Mystic_Mage',
+  'Storm_Chaser', 'Wild_Card_7', 'Alpha_Wolf', 'Brave_Heart', 'Quiet_Storm', 'Silver_Bullet',
+  'Ocean_Breeze', 'Desert_Fox', 'Forest_Runner', 'Eagle_Eye_01', 'Iron_Clad', 'Ghost_Rider',
+  'Zero_Cool', 'Quantum_Leap', 'Delta_Force', 'Titan_Gamer', 'Pixel_Knight', 'Star_Dust',
+  'Blaze_Fire', 'Crystal_Cave', 'Ruby_Gem', 'Emerald_Isle', 'Copper_Wire', 'Steel_Heart',
+  'Velvet_Sky', 'Diamond_Head', 'Crimson_Tide', 'Amber_Glow', 'Cobalt_Blue', 'Indigo_Night',
+  'Violet_Storm', 'Topaz_Flash', 'Onyx_Stone', 'Marble_Floor', 'Granite_Rock', 'Apex_Predator',
+  'Turbo_Boost', 'Hyper_Drive', 'Super_Sonic', 'Mega_Byte', 'Ultra_Violet', 'Omni_Slash',
+  'Vortex_Surfer', 'Zenith_Peak', 'Horizon_Gaze', 'Nebula_Drift', 'Pulsar_Beats', 'Quasar_Light',
+  'Astro_Boy_99', 'Orbit_Flyer', 'Comet_Tail', 'Meteor_Shower', 'Eclipse_Moon', 'Solstice_Sun',
+  'Equinox_Star', 'Aurora_Light', 'Zephyr_Wind', 'Monsoon_Rain', 'Cyclone_Eye', 'Tsunami_Wave',
+  'Volcano_Lava', 'Glacier_Peak', 'Avalanche_Snow', 'Tundra_Wolf', 'Savanna_Lion', 'Jungle_Cat',
+  'Oasis_Palm', 'Mirage_Sand', 'Canyon_Echo', 'Valley_Mist', 'Plateau_Sun', 'Summit_Climber',
+  'Ridge_Walker', 'Cliff_Hanger', 'Tide_Runner', 'Wave_Rider', 'Current_Flow', 'Reef_Diver',
+  'Abyss_Watcher', 'Zen_Master', 'Karma_Yogi', 'Mantra_Chant', 'Lotus_Flower', 'Banyan_Tree',
+  'Mango_Lassi', 'Masala_Dosa', 'Butter_Naan', 'Biryani_King', 'Samosa_Lover', 'Paneer_Tikka',
+  'Filter_Coffee', 'Sweet_Jalebi', 'Gulab_Jamun', 'Royal_Bengal', 'Ganga_Rider', 'Himalaya_Snow',
+  'Monk_Mind', 'Sage_Advice', 'Guru_Guide', 'Swami_Peace', 'Kavya_Poet', 'Raga_Music',
+  'Taal_Rhythm', 'Sur_Melody', 'Dhruva_Star', 'Agni_Fire', 'Vayu_Breeze', 'Jal_Water',
+  'Prithvi_Earth', 'Akash_Sky', 'Surya_Sun', 'Chandra_Moon', 'Mitra_Friend'
+];
+
+for (const name of multiTokenNames) {
+  assertName(`Multi-token harmless handle: ${name}`, name, true, name);
 }
 
 console.log(`\n================================================================================`);

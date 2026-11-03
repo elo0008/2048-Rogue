@@ -304,7 +304,7 @@ async function runTests(selfCheckMode = false) {
   const todayUtcStr = new Date().toISOString().slice(0, 10);
   const baseSeed = dailySeed(todayUtcStr);
   const baseCtrl = new GameController(baseSeed, CANONICAL_CONFIG);
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < 20; i++) {
     if (baseCtrl.hasPendingDecision()) {
       const dec = baseCtrl.getPendingDecision();
       if (dec.type === 'draft') {
@@ -318,7 +318,9 @@ async function runTests(selfCheckMode = false) {
     baseCtrl.recordInput('swipe', valid[0]);
     baseCtrl.submitMove(valid[0]);
   }
-  baseCtrl.endRun();
+  if (!baseCtrl.isGameOver()) {
+    baseCtrl.endRun();
+  }
   const canonicalDailyRun = baseCtrl.getRunLog({ rulesVersion, replayVersion });
 
   const tamperCases = [

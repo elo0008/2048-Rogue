@@ -12,4 +12,6 @@ sample_run_log.json
 test_output*.txt
 scripts/out/
 supabase/functions/*/vendor/
-.env.testsupabase/.temp/
+
+.env*
+supabase/.temp/

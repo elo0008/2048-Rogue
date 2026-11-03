@@ -38,7 +38,9 @@ function generateDailyRun(dayStr, movesTarget, rulesVersion, replayVersion) {
     ctrl.recordInput('swipe', valid[0]);
     ctrl.submitMove(valid[0]);
   }
-  ctrl.endRun();
+  if (!ctrl.isGameOver()) {
+    ctrl.endRun();
+  }
   const runLog = ctrl.getRunLog({ rulesVersion, replayVersion });
   runLog.startTimestamp = new Date(`${dayStr}T12:00:00.000Z`).getTime();
   return runLog;
@@ -96,7 +98,22 @@ async function run() {
       }),
     });
 
-    const edgeRes = await handleSubmissionRequest(req);
+    const mockDb = {
+      precheckSubmission: async () => ({ ok: true, reason: null, retry_scope: null }),
+      recordSubmission: async (params) => ({
+        status: 'ACCEPTED',
+        id: 1,
+        deviceId: params.deviceId,
+        displayName: params.displayName,
+        dayUtc: params.dayUtc,
+        points: params.points,
+        totalMoves: params.totalMoves,
+        maxTile: params.maxTile,
+        eventsHash: params.eventsHash,
+        isNewDevice: true,
+      }),
+    };
+    const edgeRes = await handleSubmissionRequest(req, mockDb);
     assert.strictEqual(edgeRes.status, 200, `Edge submission failed for ${tc.name}: ${edgeRes.status}`);
     const edgeBody = await edgeRes.json();
     const edgeVerdict = edgeBody.verdict;

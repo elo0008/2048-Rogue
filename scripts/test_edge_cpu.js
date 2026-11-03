@@ -163,6 +163,21 @@ async function runCpuBenchmark() {
   console.log('  Measuring Oversize Reject Path (20001 events) x 20...');
   const oversizeSamples = [];
   let oversizeResStatus = 0;
+  const mockDb = {
+    precheckSubmission: async () => ({ ok: true, reason: null, retry_scope: null }),
+    recordSubmission: async (params) => ({
+      status: 'ACCEPTED',
+      id: 1,
+      deviceId: params.deviceId,
+      displayName: params.displayName,
+      dayUtc: params.dayUtc,
+      points: params.points,
+      totalMoves: params.totalMoves,
+      maxTile: params.maxTile,
+      eventsHash: params.eventsHash,
+      isNewDevice: true,
+    }),
+  };
   for (let i = 0; i < 20; i++) {
     const req = new Request('http://localhost:54321/functions/v1/submit-run', {
       method: 'POST',
@@ -170,7 +185,7 @@ async function runCpuBenchmark() {
       body: JSON.stringify({ runLog: oversizeRunLog, deviceId: 'oversize_bench_dev', mode: 'any' }),
     });
     const t0 = performance.now();
-    const res = await handleSubmissionRequest(req);
+    const res = await handleSubmissionRequest(req, mockDb);
     oversizeSamples.push(performance.now() - t0);
     oversizeResStatus = res.status;
   }

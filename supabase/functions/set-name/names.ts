@@ -62,13 +62,18 @@ const SORTED_ALLOWLIST_SKELS = Array.from(new Set(
   ALLOWLIST.map(w => toSkeleton(w.toLowerCase().trim())).filter(s => s.length >= 3)
 )).sort((a, b) => b.length - a.length);
 
-export function toSkeleton(str: string): string {
+export function toLeetMapped(str: string): string {
   let mapped = '';
   const lower = str.toLowerCase();
   for (let i = 0; i < lower.length; i++) {
     const ch = lower[i];
     mapped += LEET_MAP[ch] || ch;
   }
+  return mapped;
+}
+
+export function toSkeleton(str: string): string {
+  const mapped = toLeetMapped(str);
   // Collapse repeated characters: 2+ identical adjacent characters -> 1 character
   return mapped.replace(/(.)\1+/g, '$1');
 }
@@ -121,7 +126,7 @@ export function stripAllowlistFromSkeleton(skel: string): string {
   return res;
 }
 
-export function validateNameDetailed(input: unknown): ValidateNameDetailedResult {
+export function validateNameDetailed(input: unknown, options?: { disableAllowlist?: boolean }): ValidateNameDetailedResult {
   // Rule 1: Must be string
   if (typeof input !== 'string') {
     return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 1, ruleDescription: 'Non-string input' };
@@ -208,29 +213,51 @@ export function validateNameDetailed(input: unknown): ValidateNameDetailedResult
   }
 
   // Rule 8: Short Token Matching (<= 4 letters)
-  // Blocked when the entry's skeleton EQUALS a token skeleton
+  // Check original token (lowercased) for exact matches,
+  // and check skeleton equality ONLY when the token contains leet substitutions, digits,
+  // or repeated characters that were actually collapsed.
   const tokens = tokeniseInput(trimmed);
-  const tokenSkels = tokens.map(t => toSkeleton(t));
-  // Include whole norm skeleton (for spaced-out whole names like 'Z z q')
-  tokenSkels.push(skeleton);
+  const candidateTokens = [...tokens];
+  // Include whole norm for spaced-out short words (e.g. 'a s s')
+  if (norm.length <= 4 || tokens.length > 1) {
+    candidateTokens.push(norm);
+  }
 
   for (const entry of TOKEN_BLOCKLIST_SHORT) {
+    const entryLower = entry.toLowerCase();
     const entrySkel = toSkeleton(entry);
-    for (const tSkel of tokenSkels) {
-      if (tSkel === entrySkel) {
+
+    for (const t of candidateTokens) {
+      const origLower = t.toLowerCase();
+      const tSkel = toSkeleton(t);
+      const hasLeetOrCollapse = origLower !== tSkel;
+
+      if (origLower === entryLower || (hasLeetOrCollapse && tSkel === entrySkel)) {
         return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 8, ruleDescription: 'Short token blocklist match' };
       }
     }
   }
 
-  // Prepare clean skeleton with allowlisted words stripped
-  const cleanSkeleton = stripAllowlistFromSkeleton(skeleton);
+  // Prepare clean skeleton with allowlisted words stripped (unless allowlist is disabled)
+  const cleanSkeleton = options?.disableAllowlist ? skeleton : stripAllowlistFromSkeleton(skeleton);
+  const leetNorm = toLeetMapped(norm);
 
   // Rule 9: Short Substring Matching (unambiguous short entries)
+  // For entries with repeated letters (e.g. 'qzzx'), require that repeated pattern
+  // in the un-collapsed leet-mapped norm so that harmless words (e.g. 'knight' / 'night')
+  // are not falsely matched by single-letter collapsed skeletons.
   for (const entry of SHORT_SUBSTRING) {
-    const entrySkel = toSkeleton(entry);
-    if (cleanSkeleton.includes(entrySkel)) {
-      return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 9, ruleDescription: 'Short substring blocklist match' };
+    const hasRepeated = /(.)\1/.test(entry);
+    if (hasRepeated) {
+      const entryLower = entry.toLowerCase();
+      if (leetNorm.includes(entryLower)) {
+        return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 9, ruleDescription: 'Short substring blocklist match' };
+      }
+    } else {
+      const entrySkel = toSkeleton(entry);
+      if (cleanSkeleton.includes(entrySkel)) {
+        return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 9, ruleDescription: 'Short substring blocklist match' };
+      }
     }
   }
 

@@ -399,9 +399,9 @@ A serverless, authoritative leaderboard backend spike powered by Supabase (free 
 > The client web application (`game/`) must only ever be configured with the public `anon` key. The base tables (`daily_runs`, `devices`, `abuse_rate_limits`) have **strict zero-trust RLS policies** enabled: direct `SELECT`, `INSERT`, `UPDATE`, or `DELETE` from the public `anon` role are completely denied (HTTP 401/403). Only the Edge Function possesses `service_role` access to write verified runs, and clients can only query public leaderboards via sanitized RPC views.
 
 ### 5. Free-Tier Platform Constraints & Caveats
-- **1-Week Inactivity Pause:** Free-tier Supabase projects are automatically paused after 7 days of inactivity. If paused, restore the project in the Supabase Dashboard.
+- **1-Week Inactivity Pause:** Free-tier Supabase projects automatically pause after 1 week (7 consecutive days) of inactivity. If paused, incoming requests return HTTP 503 until restored in the Supabase Dashboard.
 - **Edge Function 2-Second CPU Limit:** Edge Runtime functions on the free tier enforce a maximum CPU wall execution time of 2,000 ms.
-  - **Empirical Benchmarks:** In the verification suite (`scripts/out/edge_cpu.txt`), replaying the longest real corpus game (2,590 events) takes a median of **24.5 ms** (36x safety margin). A synthetic maximum run of 20,000 events takes a median of **26.3 ms** (62x safety margin). Both comfortably satisfy the 2-second limit.
+  - **Empirical Benchmarks:** In the verification suite (`scripts/out/edge_cpu.txt`), replaying the longest real corpus game (2,590 events) takes a median wall time of **23.52 ms** (85.0x safety margin under the 2,000 ms limit; cited from `scripts/out/edge_cpu.txt`). The bot marathon game (5,353 events) takes a median wall time of **41.11 ms** (48.6x safety margin; cited from `scripts/out/edge_cpu.txt`). An oversize payload (20,001 events) is rejected in **0.88 ms** (`scripts/out/edge_cpu.txt`), and module cold start takes a median of **13.53 ms** (`scripts/out/edge_cpu.txt`). All workloads comfortably satisfy the edge execution budget.
 
 ### 6. Edge Verification Test Suite
 Execute the offline, zero-dependency edge test suite:
@@ -448,22 +448,26 @@ npm run test:live
    > [!CAUTION]
    > **NEVER commit `.env.test` or service role keys.** Verify that `.env.test` is listed in `.gitignore`.
 
-#### Free-Tier Pause Warning:
-- Free-tier Supabase projects automatically pause after 7 consecutive days of inactivity.
-- If a project pauses, incoming Edge Function and API requests return HTTP 503.
-- Unpause the project with a single click in the Supabase Dashboard under **Project Settings -> General -> Restore Project**.
-
-#### Cloud Regions & Edge Performance Architecture:
-- **Hosted Database Region:** `eu-central-1` (Frankfurt, AWS).
-- **Function Region Behaviour (Default vs Pinned):**
-  - **Default Anycast Execution:** By default, Supabase Edge Functions execute in Cloudflare edge PoPs geographically closest to the client (e.g. Mumbai/Delhi for Indian players). When executing edge functions default-routed far from the database, the edge function makes multi-statement round-trip database queries over trans-continental WAN to Frankfurt, resulting in an average submission turnaround of ~620 ms.
-  - **Pinned Regional Execution (`x-region: eu-central-1`):** Supplying the `x-region: eu-central-1` header pins Edge Function execution directly to the Frankfurt edge region adjacent to the database. This eliminates trans-oceanic edge-to-db latency, slashing server execution and database round-trip latency to ~234 ms (a 62.2% reduction in end-to-end turnaround).
-- **Production Architecture Directive:**
-  Production environments should be provisioned in the cloud region geographically closest to the primary player base (e.g., `us-east-1` or `eu-west-1`), with all migrations (`0001` through `0007`) pushed sequentially from the migration files in this repository via `supabase db push`.
+#### Cloud Regions & Production Guidance:
+- **Hosted Database & Edge Regions:**
+  - Production environments should be provisioned in the region geographically closest to the players, which for this project is Mumbai (`ap-south-1`).
+  - When the database and the players' nearest edge are located in the same region, network round-trips remain entirely local and no `x-region` pinning header is needed.
+- **Database Migrations:**
+  - All migrations (`0001_leaderboard.sql` through `0008_quota_race_fix.sql`) are applied sequentially via `supabase db push`.
+- **Free-Tier Inactivity Pause:**
+  - Supabase projects on the free tier automatically pause after 1 week (7 consecutive days) of inactivity. Incoming requests to a paused project return HTTP 503. To restore service, unpause the project directly from the Supabase Dashboard under **Project Settings -> General -> Restore Project**.
 
 ### 8. Custom Display Names & Admin Moderation
 
 The backend supports custom player display names (validated and updated via the `set-name` Edge Function). Players can set names up to 16 characters matching ASCII alphanumeric and safe separator rules, or reset back to their deterministic `generated_name`.
+
+#### Name Pre-Check CLI Tool (Owner Diagnostic Use):
+For testing or pre-checking player names against the server validation rules locally before submitting, use the zero-dependency CLI tool `scripts/check_name.js`:
+```bash
+node scripts/check_name.js "Name 1" "Name2"
+```
+Prints `OK` or `BLOCKED(rule N)` per argument (e.g. `Cool Player: OK`, `admin: BLOCKED(rule 7)`).
+*Note: This tool is intended strictly for the project owner's local diagnostic use.*
 
 Moderation of free-text display names is manual after the fact. While the edge function strictly validates character sets and rejects known profanity, slurs, and reserved identities upon submission, any offensive or problematic names that evade automated checks must be reviewed and moderated manually by project administrators using the Supabase SQL editor.
 

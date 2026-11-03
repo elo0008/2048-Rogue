@@ -131,18 +131,27 @@ export async function handleSetNameRequest(
     });
   }
 
-  // 6. Validate name (null = clear to generated_name; string = validateNameDetailed)
-  const nameInput = body?.name;
+  // 6. Validate name (only explicit null resets; missing/undefined returns 400 INVALID_NAME_FIELD)
+  if (!body || !('name' in body) || body.name === undefined) {
+    return new Response(JSON.stringify({
+      error: 'INVALID_NAME_FIELD',
+      message: "Field 'name' is required (string to set, null to reset)"
+    }), {
+      status: 400,
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const nameInput = body.name;
   let validatedTargetName: string | null = null;
   let validatedTargetNorm: string | null = null;
 
-  if (nameInput !== null && nameInput !== undefined) {
+  if (nameInput !== null) {
     const v = validateNameDetailed(nameInput);
     if (!v.ok) {
+      // P1 NO RULE LEAKS: response body is exactly {"error":"NAME_NOT_ALLOWED"}
       return new Response(JSON.stringify({
         error: 'NAME_NOT_ALLOWED',
-        message: v.ruleDescription,
-        ruleNumber: v.ruleNumber,
       }), {
         status: 400,
         headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
