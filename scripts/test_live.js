@@ -20,6 +20,7 @@ import {
   IP_NEW_DEVICE_LIMIT_DAILY,
   DEVICE_SUBMISSION_LIMIT_DAILY
 } from '../supabase/functions/submit-run/handler.ts';
+import { assertDatabaseSafe } from './live_safety.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1119,16 +1120,41 @@ async function testRateLimitsAndConcurrency() {
   const todayUtc = now.toISOString().slice(0, 10);
   const currentHourKey = `${todayUtc}T${String(now.getUTCHours()).padStart(2, '0')}`;
 
-  // Detect authentic client IP assigned by Cloudflare edge
-  const { data: recentLimits } = await serviceClient.from('abuse_rate_limits').select('key').like('key', 'ip_req:%').order('window_start', { ascending: false }).limit(5);
+  // Detect authentic client IP assigned by Cloudflare edge via D1b probe
+  const probeDev = `probe_ip_${Date.now()}`;
+  await robustFetch(FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceId: probeDev, runLog: { events: [] } }),
+  });
+
+  const { data: probeMarker } = await serviceClient
+    .from('abuse_rate_limits')
+    .select('key')
+    .like('key', `ip_newdev_seen:%:${probeDev}`)
+    .maybeSingle();
+
   let clientIp = 'unknown';
-  for (const r of (recentLimits || [])) {
-    const parts = r.key.split(':');
-    if (parts.length >= 2 && !parts[1].startsWith('198.51.')) {
-      clientIp = parts[1];
-      break;
+  if (probeMarker?.key) {
+    const prefix = 'ip_newdev_seen:';
+    const suffix = `:${todayUtc}:${probeDev}`;
+    clientIp = probeMarker.key.slice(prefix.length, probeMarker.key.lastIndexOf(suffix));
+  } else {
+    const { data: latestIpReq } = await serviceClient
+      .from('abuse_rate_limits')
+      .select('key')
+      .like('key', 'ip_req:%')
+      .order('window_start', { ascending: false })
+      .limit(1);
+    if (latestIpReq?.[0]?.key) {
+      const k = latestIpReq[0].key;
+      clientIp = k.slice('ip_req:'.length, k.lastIndexOf(':'));
     }
   }
+
+  await serviceClient.from('abuse_rate_limits').delete().like('key', `%${probeDev}%`);
+  await serviceClient.from('devices').delete().eq('device_id', probeDev);
+
   log += `  Authentic Cloudflare Edge Client IP detected: ${clientIp}\n\n`;
 
   // 2. Real HTTP 429: Per-IP Request Limit (600 requests/hour)
@@ -1933,13 +1959,40 @@ async function testHygieneAudit() {
   console.log(log);
 }
 
+async function cleanupAllTestArtifacts() {
+  await serviceClient.from('daily_runs').delete().like('device_id', 'dev_%');
+  await serviceClient.from('daily_runs').delete().like('device_id', 'test_%');
+  await serviceClient.from('daily_runs').delete().like('device_id', 'anon_%');
+  await serviceClient.from('daily_runs').delete().like('device_id', 'probe_%');
+  await serviceClient.from('devices').delete().like('device_id', 'dev_%');
+  await serviceClient.from('devices').delete().like('device_id', 'test_%');
+  await serviceClient.from('devices').delete().like('device_id', 'anon_%');
+  await serviceClient.from('devices').delete().like('device_id', 'probe_%');
+  await serviceClient.from('abuse_rate_limits').delete().like('key', '%dev_%');
+  await serviceClient.from('abuse_rate_limits').delete().like('key', '%test_%');
+  await serviceClient.from('abuse_rate_limits').delete().like('key', '%probe_%');
+  await serviceClient.from('abuse_rate_limits').delete().like('key', 'ip_%');
+}
+
 async function runAllLiveTests() {
+  const simulate = process.argv.includes('--simulate-populated');
+  await assertDatabaseSafe(serviceClient, false, simulate);
+
+  const selfCheckFail = process.argv.includes('--self-check-fail');
   console.log('================================================================================');
   console.log('STARTING ROGUE 2048 LIVE HOSTED TEST SUITE (SUPABASE EDGE & POSTGRESQL)');
-  console.log(`Self-Check Mode: ${selfCheckMode}`);
+  console.log(`Self-Check Mode: ${selfCheckMode}, Self-Check Fail Mode: ${selfCheckFail}`);
   console.log('================================================================================');
 
+  let failedError = null;
   try {
+    if (selfCheckFail) {
+      console.log('\n[SELF-CHECK-FAIL] Deliberately seeding test artifacts and throwing error to verify finally cleanup...');
+      await serviceClient.from('devices').upsert({ device_id: 'test_deliberate_fail_dev', display_name: 'FailDev', generated_name: 'FailDev' });
+      await serviceClient.from('abuse_rate_limits').upsert({ key: 'test_deliberate_fail_key', count: 1, window_start: new Date().toISOString() });
+      throw new Error('DELIBERATE_TEST_FAILURE_FOR_SAFETY_PROOF');
+    }
+
     await testAnonSecurity();
     await testValidRunAndIdempotency();
     await testRejections();
@@ -1955,8 +2008,26 @@ async function runAllLiveTests() {
     console.log('✔ ALL LIVE HOSTED TESTS PASSED CLEANLY (100% SUCCESS)');
     console.log('================================================================================\n');
   } catch (err) {
+    failedError = err;
     console.error('\n✖ LIVE TEST SUITE FAILED:', err);
-    process.exit(1);
+  } finally {
+    console.log('\n[FINALLY] Cleaning up all test rows and counters from database...');
+    await cleanupAllTestArtifacts();
+
+    if (selfCheckFail) {
+      const { count: devCount } = await serviceClient.from('devices').select('*', { count: 'exact', head: true }).like('device_id', 'test_deliberate_%');
+      const { count: limitCount } = await serviceClient.from('abuse_rate_limits').select('*', { count: 'exact', head: true }).like('key', 'test_deliberate_%');
+      console.log(`[SELF-CHECK-FAIL PROOF] Leftover test devices: ${devCount}, Leftover test limits: ${limitCount} (Must both be 0)`);
+      if (devCount === 0 && limitCount === 0) {
+        console.log('✔ SELF-CHECK-FAIL VERIFICATION PASSED: Teardown finally block successfully purges state.');
+      } else {
+        console.error('✖ SELF-CHECK-FAIL VERIFICATION FAILED: Leftovers detected.');
+      }
+    }
+
+    if (failedError) {
+      process.exit(1);
+    }
   }
 }
 

@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js';
 import { GameController } from '../game/controller.js';
 import { computeRulesVersion, computeReplayVersion } from '../verify/version.js';
 import { dailySeed, CANONICAL_CONFIG } from '../verify/profile.js';
+import { assertDatabaseSafe } from './live_safety.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -111,6 +112,9 @@ async function cleanupTestArtifacts() {
   await serviceClient.from('devices').delete().like('device_id', 'test_fix_%');
   await serviceClient.from('abuse_rate_limits').delete().like('key', '%test_fix_%');
   await serviceClient.from('abuse_rate_limits').delete().like('key', '%198.51.100.42%');
+  if (detectedCallerIp && detectedCallerIp !== 'unknown') {
+    await serviceClient.from('abuse_rate_limits').delete().like('key', `%${detectedCallerIp}%`);
+  }
 }
 
 // =============================================================================
@@ -331,19 +335,42 @@ async function testA1NameClobber() {
 async function testA2NewDevCounter() {
   console.log('\n[A2] Testing Deduplicated New-Device Counter...');
 
-  // Probe to determine caller IP as forwarded by Cloudflare
+  // D1b Probe to discover exact caller IP recorded by the edge function
+  const probeDev = `test_fix_probe_${Date.now()}`;
   await robustFetch(SUBMIT_RUN_URL, {
     method: 'POST',
     headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ deviceId: 'test_fix_probe' }),
+    body: JSON.stringify({ deviceId: probeDev, runLog: { events: [] } }),
   });
-  const { data: latestIpReq } = await serviceClient
+
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const { data: probeMarker } = await serviceClient
     .from('abuse_rate_limits')
-    .select('*')
-    .like('key', 'ip_req:%')
-    .order('window_start', { ascending: false })
-    .limit(1);
-  detectedCallerIp = latestIpReq?.[0]?.key.split(':')[1] || '127.0.0.1';
+    .select('key')
+    .like('key', `ip_newdev_seen:%:${probeDev}`)
+    .maybeSingle();
+
+  if (probeMarker?.key) {
+    const prefix = 'ip_newdev_seen:';
+    const suffix = `:${todayUtc}:${probeDev}`;
+    detectedCallerIp = probeMarker.key.slice(prefix.length, probeMarker.key.lastIndexOf(suffix));
+  } else {
+    const { data: latestIpReq } = await serviceClient
+      .from('abuse_rate_limits')
+      .select('key')
+      .like('key', 'ip_req:%')
+      .order('window_start', { ascending: false })
+      .limit(1);
+    if (latestIpReq?.[0]?.key) {
+      const k = latestIpReq[0].key;
+      detectedCallerIp = k.slice('ip_req:'.length, k.lastIndexOf(':'));
+    } else {
+      detectedCallerIp = 'unknown';
+    }
+  }
+
+  await serviceClient.from('abuse_rate_limits').delete().like('key', `%${probeDev}%`);
+  await serviceClient.from('devices').delete().eq('device_id', probeDev);
 
   let log = '================================================================================\n';
   log += 'LIVE TEST REPORT: A2 NEW-DEVICE COUNTER DEDUPLICATION & LIMIT ENFORCEMENT\n';
@@ -352,7 +379,6 @@ async function testA2NewDevCounter() {
   log += `Timestamp: ${new Date().toISOString()}\n`;
   log += '================================================================================\n\n';
 
-  const todayUtc = new Date().toISOString().slice(0, 10);
   const ipDevKey = `ip_newdev:${detectedCallerIp}:${todayUtc}`;
   const tamperDev = 'test_fix_tamper_dev';
   const markerKey = `ip_newdev_seen:${detectedCallerIp}:${todayUtc}:${tamperDev}`;
@@ -556,14 +582,20 @@ async function testA4CorsPreflight() {
 }
 
 async function runAll() {
-  await cleanupTestArtifacts();
-  await testA1NameClobber();
-  await testA2NewDevCounter();
-  await testA4CorsPreflight();
-  await cleanupTestArtifacts();
-  console.log('\n================================================================================');
-  console.log('ALL HARDENING REGRESSION TESTS COMPLETED SUCCESSFULLY.');
-  console.log('================================================================================');
+  const simulate = process.argv.includes('--simulate-populated');
+  await assertDatabaseSafe(serviceClient, false, simulate);
+
+  try {
+    await cleanupTestArtifacts();
+    await testA1NameClobber();
+    await testA2NewDevCounter();
+    await testA4CorsPreflight();
+    console.log('\n================================================================================');
+    console.log('ALL HARDENING REGRESSION TESTS COMPLETED SUCCESSFULLY.');
+    console.log('================================================================================');
+  } finally {
+    await cleanupTestArtifacts();
+  }
 }
 
 runAll().catch(err => {

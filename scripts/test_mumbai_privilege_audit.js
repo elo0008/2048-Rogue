@@ -94,13 +94,13 @@ async function audit() {
     });
   }
 
-  // 2. Denied RPCs (both schema cache exclusion 404 and execution 401/403 qualify as denied)
+  // 2. Denied RPCs (D3d: 404 counts as FAIL; only 401/403 permission denied passes)
   const deniedRPCs = [
     { name: 'consume_rate_limit', body: { p_key: 'test', p_limit: 10 } },
-    { name: 'precheck_submission', body: { p_ip: '1.2.3.4', p_device_id: 'test', p_hour_key: 'h', p_day_key: 'd', p_ip_req_limit: 10, p_ip_newdev_limit: 5 } },
-    { name: 'record_submission', body: { p_device_id: 'test', p_display_name: 'test', p_day_utc: '2026-11-03', p_seed: 1, p_points: 1, p_total_moves: 1, p_max_tile: 2, p_relics_owned: [], p_replay_version: 'v', p_events_hash: 'h', p_sub_limit: 1, p_quota_keys: [], p_hour_key: 'h', p_day_limit: 1 } },
-    { name: 'set_display_name', body: { p_device_id: 'test', p_display_name: 'test', p_name_norm: 'test' } },
-    { name: 'set_display_name_limited', body: { p_device_id: 'test', p_display_name: 'test', p_name_norm: 'test', p_limit_key: 'k', p_daily_limit: 1 } },
+    { name: 'precheck_submission', body: { p_ip: '127.0.0.1', p_device_id: 'test_dev', p_hour_key: '2026-11-03T10', p_day_key: '2026-11-03', p_ip_req_limit: 600, p_ip_newdev_limit: 30 } },
+    { name: 'record_submission', body: { p_device_id: 'test_dev', p_display_name: 'test', p_day_utc: '2026-11-03', p_seed: 1, p_points: 0, p_total_moves: 0, p_max_tile: 2, p_relics: [], p_replay_version: '3C7C88F57E5B29A1DFA196A55C054F40D748CF948101C50E4E834FBFAD33EE98', p_events_hash: 'h', p_duration_ms: 100, p_flags: [], p_dev_key: 'k', p_dev_limit: 60 } },
+    { name: 'set_display_name', body: { p_device_id: 'test_dev', p_display_name: 'test', p_name_norm: 'test' } },
+    { name: 'set_display_name_limited', body: { p_device_id: 'test_dev', p_display_name: 'test', p_name_norm: 'test', p_limit_key: 'k', p_limit: 3 } },
     { name: 'cleanup_rate_limits', body: {} },
   ];
 
@@ -119,14 +119,14 @@ async function audit() {
       errorBody = parsed.message || parsed.error || bodyText;
     } catch {}
 
-    const denied = (res.status === 401 || res.status === 403 || res.status === 404);
-    const passed = denied && res.status !== 200;
+    // D3d: 404 counts as FAIL; only 401 or 403 passes
+    const passed = (res.status === 401 || res.status === 403) && errorBody.includes('permission denied');
     if (!passed) allPassed = false;
 
     results.push({
       target: `rpc: ${rpc.name}`,
       operation: 'CALL',
-      expected: 'DENIED (401/403/404)',
+      expected: '401/403 PERMISSION DENIED',
       status: res.status,
       result: passed ? 'PASS' : 'FAIL',
       details: errorBody.slice(0, 80).replace(/\r?\n/g, ' '),

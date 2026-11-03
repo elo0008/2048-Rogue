@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
+import { assertDatabaseSafe } from './live_safety.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,7 +64,7 @@ function redact(str) {
 async function robustFetch(url, options, maxRetries = 2) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch(url, options);
-    if ((res.status === 502 || res.status === 503) && attempt < maxRetries) {
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && attempt < maxRetries) {
       await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
       continue;
     }
@@ -79,6 +80,9 @@ async function cleanupTestData() {
 }
 
 async function runLiveNamesSuite() {
+  const simulate = process.argv.includes('--simulate-populated');
+  await assertDatabaseSafe(serviceClient, false, simulate);
+
   console.log('================================================================================');
   console.log('STARTING LIVE CUSTOM NAMES TEST SUITE (Hosted Supabase & Edge Function)');
   console.log(`Target: ${redact(SET_NAME_URL)}`);
@@ -91,7 +95,8 @@ async function runLiveNamesSuite() {
   log += `Timestamp: ${new Date().toISOString()}\n`;
   log += '================================================================================\n\n';
 
-  await cleanupTestData();
+  try {
+    await cleanupTestData();
 
   // -----------------------------------------------------------------------------
   // Test 1: Valid Name Change (200)
@@ -152,7 +157,7 @@ async function runLiveNamesSuite() {
     log += `    HTTP Status: ${res.status} (Expected: 400)\n`;
     log += `    Response:    ${JSON.stringify(body)}\n`;
     log += `    Result:      ${passed ? 'PASS' : 'FAIL'}\n`;
-    if (!passed) throw new Error(`Test 2 failed on ${item.label}`);
+    if (!passed) throw new Error(`Test 2 failed on ${item.label}: status=${res.status}, body=${JSON.stringify(body)}`);
   }
   log += '\n';
 
@@ -482,9 +487,12 @@ async function runLiveNamesSuite() {
 
   if (!cleanPass) throw new Error('Cleanup failed: leftover test rows detected');
 
-  fs.writeFileSync(path.join(outDir, 'live_names.txt'), log, 'utf8');
-  console.log('\n✔ scripts/out/live_names.txt written successfully.');
-  console.log('ALL LIVE NAMES TESTS COMPLETED AND VERIFIED.');
+    fs.writeFileSync(path.join(outDir, 'live_names.txt'), log, 'utf8');
+    console.log('\n✔ scripts/out/live_names.txt written successfully.');
+    console.log('ALL LIVE NAMES TESTS COMPLETED AND VERIFIED.');
+  } finally {
+    await cleanupTestData();
+  }
 }
 
 runLiveNamesSuite().catch(err => {

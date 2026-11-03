@@ -3,6 +3,7 @@
 // Web-standard types only (Request, Response, Headers) - zero Deno or Node specific globals
 
 import { validateNameDetailed } from './names.ts';
+import { normalizeIp } from './ip.ts';
 
 export interface SetNameResult {
   ok: boolean;
@@ -42,7 +43,7 @@ export function getClientIp(req: Request): string {
   // If absent, fall back to the shared bucket 'unknown' and set x-ip-source: missing.
   const cfIp = req.headers.get('cf-connecting-ip');
   if (cfIp && cfIp.trim()) {
-    return cfIp.trim();
+    return normalizeIp(cfIp);
   }
   console.warn('[getClientIp] cf-connecting-ip header missing; falling back to "unknown"');
   return 'unknown';

@@ -3,6 +3,7 @@
 // Web-standard types only (Request, Response, Headers) - zero Deno or Node specific globals
 
 import { verifyRun, extractSubmission } from './vendor/verify/verify_run.js';
+import { normalizeIp } from './ip.ts';
 
 let defaultManifest: any = null;
 try {
@@ -68,7 +69,7 @@ export function getClientIp(req: Request): string {
   // If absent, fall back to the shared bucket 'unknown' and log a warning.
   const cfIp = req.headers.get('cf-connecting-ip');
   if (cfIp && cfIp.trim()) {
-    return cfIp.trim();
+    return normalizeIp(cfIp);
   }
   console.warn('[getClientIp] cf-connecting-ip header missing; falling back to "unknown"');
   return 'unknown';

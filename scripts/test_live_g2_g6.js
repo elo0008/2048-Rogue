@@ -12,6 +12,7 @@ import { computeRulesVersion, computeReplayVersion } from '../verify/version.js'
 import { dailySeed, CANONICAL_CONFIG } from '../verify/profile.js';
 import { handleSubmissionRequest } from '../supabase/functions/submit-run/handler.ts';
 import { handleSetNameRequest } from '../supabase/functions/set-name/handler.ts';
+import { assertDatabaseSafe } from './live_safety.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,6 +53,7 @@ const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const SUBMIT_RUN_URL = `${SUPABASE_URL}/functions/v1/submit-run`;
 const SET_NAME_URL = `${SUPABASE_URL}/functions/v1/set-name`;
+let g4ObservedIp = '';
 
 function redactProjectRef(str) {
   if (!str) return '';
@@ -522,7 +524,13 @@ async function testG4RealIpEvidence() {
     .like('key', `%${probeDev}`)
     .maybeSingle();
 
-  const realObservedIp = probeMarker?.key.split(':')[1] || '';
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const prefix = 'ip_newdev_seen:';
+  const suffix = `:${todayUtc}:${probeDev}`;
+  const realObservedIp = probeMarker?.key?.startsWith(prefix)
+    ? probeMarker.key.slice(prefix.length, probeMarker.key.lastIndexOf(suffix))
+    : (probeMarker?.key?.split(':')[1] || '');
+  g4ObservedIp = realObservedIp;
   log += `1. Real Client IP Discovery via Edge Runtime:\n`;
   log += `   Probe HTTP Status:      ${probeRes.status}\n`;
   log += `   Observed IP from Edge:  ${realObservedIp}\n`;
@@ -533,7 +541,6 @@ async function testG4RealIpEvidence() {
   }
 
   // 2. Re-run A2 using the real observed IP
-  const todayUtc = new Date().toISOString().slice(0, 10);
   const ipDevKey = `ip_newdev:${realObservedIp}:${todayUtc}`;
   const tamperDev = 'test_g4_tamper_dev';
   const markerKey = `ip_newdev_seen:${realObservedIp}:${todayUtc}:${tamperDev}`;
@@ -978,15 +985,36 @@ async function testG6FailClosed() {
   console.log('  ✔ scripts/out/fail_closed.txt written.');
 }
 
+async function cleanupAllTestArtifacts() {
+  await serviceClient.from('daily_runs').delete().like('device_id', 'test_%');
+  await serviceClient.from('daily_runs').delete().like('device_id', 'g5_%');
+  await serviceClient.from('devices').delete().like('device_id', 'test_%');
+  await serviceClient.from('devices').delete().like('device_id', 'g5_%');
+  await serviceClient.from('abuse_rate_limits').delete().like('key', '%test_%');
+  await serviceClient.from('abuse_rate_limits').delete().like('key', '%g5_%');
+  await serviceClient.from('abuse_rate_limits').delete().like('key', '%127.0.0.1%');
+  if (g4ObservedIp) {
+    await serviceClient.from('abuse_rate_limits').delete().like('key', `%${g4ObservedIp}%`);
+  }
+}
+
 async function runAll() {
-  await testG2SetName();
-  await testG3CleanupLeak();
-  await testG4RealIpEvidence();
-  await testG5RealReadSuite();
-  await testG6FailClosed();
-  console.log('\n================================================================================');
-  console.log('ALL G2-G6 INTEGRATION TESTS COMPLETED SUCCESSFULLY.');
-  console.log('================================================================================');
+  const simulate = process.argv.includes('--simulate-populated');
+  await assertDatabaseSafe(serviceClient, false, simulate);
+
+  try {
+    await cleanupAllTestArtifacts();
+    await testG2SetName();
+    await testG3CleanupLeak();
+    await testG4RealIpEvidence();
+    await testG5RealReadSuite();
+    await testG6FailClosed();
+    console.log('\n================================================================================');
+    console.log('ALL G2-G6 INTEGRATION TESTS COMPLETED SUCCESSFULLY.');
+    console.log('================================================================================');
+  } finally {
+    await cleanupAllTestArtifacts();
+  }
 }
 
 runAll().catch(err => {

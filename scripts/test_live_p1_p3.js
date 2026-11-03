@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
+import { assertDatabaseSafe } from './live_safety.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,14 +63,24 @@ async function robustFetch(url, options, maxRetries = 2) {
   return fetch(url, options);
 }
 
+async function cleanupAllTestArtifacts() {
+  await serviceClient.from('daily_runs').delete().like('device_id', 'test_%');
+  await serviceClient.from('devices').delete().like('device_id', 'test_%');
+  await serviceClient.from('abuse_rate_limits').delete().like('key', '%test_%');
+}
+
 async function main() {
+  const simulate = process.argv.includes('--simulate-populated');
+  await assertDatabaseSafe(serviceClient, false, simulate);
+
   console.log('================================================================================');
   console.log('LIVE VERIFICATION SUITE: P1, P2, P3');
   console.log(`Endpoint: ${redact(SET_NAME_URL)}`);
   console.log(`Timestamp: ${new Date().toISOString()}`);
   console.log('================================================================================\n');
 
-  let report = '================================================================================\n';
+  try {
+    let report = '================================================================================\n';
   report += 'LIVE VERIFICATION SUITE REPORT: P1, P2, P3\n';
   report += `Endpoint: ${redact(SET_NAME_URL)}\n`;
   report += `Timestamp: ${new Date().toISOString()}\n`;
@@ -460,8 +471,11 @@ async function main() {
   report += '\nG2 Sequential Proofs Result: PASS. All 5 scenarios verified successfully.\n';
   report += '================================================================================\n';
 
-  fs.writeFileSync(path.join(outDir, 'live_p1_p3.txt'), report, 'utf8');
-  console.log(`\nAll live proofs completed! Report written to scripts/out/live_p1_p3.txt`);
+    fs.writeFileSync(path.join(outDir, 'live_p1_p3.txt'), report, 'utf8');
+    console.log(`\nAll live proofs completed! Report written to scripts/out/live_p1_p3.txt`);
+  } finally {
+    await cleanupAllTestArtifacts();
+  }
 }
 
 main().catch(err => {
