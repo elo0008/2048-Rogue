@@ -7,106 +7,53 @@ import { handleSubmissionRequest, DatabaseAdapter } from './handler.ts';
 
 export function createRealDatabaseAdapter(supabase: SupabaseClient): DatabaseAdapter {
   return {
-    async isDeviceRegistered(deviceId: string): Promise<boolean> {
-      const { data, error } = await supabase
-        .from('devices')
-        .select('device_id')
-        .eq('device_id', deviceId)
-        .maybeSingle();
-
-      if (error) {
-        throw new Error(`isDeviceRegistered failed: ${error.message}`);
-      }
-      return Boolean(data);
-    },
-
-    async registerDevice(deviceId: string, displayName: string): Promise<void> {
-      const { error } = await supabase
-        .from('devices')
-        .insert({
-          device_id: deviceId,
-          display_name: displayName,
-          created_at: new Date().toISOString(),
-          last_seen_at: new Date().toISOString(),
-        });
-
-      if (error) {
-        throw new Error(`registerDevice failed: ${error.message}`);
-      }
-    },
-
-    async updateDeviceSeen(deviceId: string): Promise<void> {
-      const { error } = await supabase
-        .from('devices')
-        .update({ last_seen_at: new Date().toISOString() })
-        .eq('device_id', deviceId);
-
-      if (error) {
-        throw new Error(`updateDeviceSeen failed: ${error.message}`);
-      }
-    },
-
-    async isDuplicateEvent(deviceId: string, eventsHash: string): Promise<boolean> {
-      const { data, error } = await supabase
-        .from('daily_runs')
-        .select('id')
-        .eq('device_id', deviceId)
-        .eq('events_hash', eventsHash)
-        .maybeSingle();
-
-      if (error) {
-        throw new Error(`isDuplicateEvent failed: ${error.message}`);
-      }
-      return Boolean(data);
-    },
-
-    async consumeRateLimit(key: string, limit: number): Promise<{ allowed: boolean; current: number }> {
-      // Single atomic statement via PostgreSQL security definer RPC
-      const { data, error } = await supabase.rpc('consume_rate_limit', {
-        p_key: key,
-        p_limit: limit,
+    async precheckSubmission(
+      ip: string,
+      deviceId: string,
+      hourKey: string,
+      dayKey: string,
+      ipReqLimit: number,
+      ipNewDevLimit: number
+    ) {
+      const { data, error } = await supabase.rpc('precheck_submission', {
+        p_ip: ip,
+        p_device_id: deviceId,
+        p_hour_key: hourKey,
+        p_day_key: dayKey,
+        p_ip_req_limit: ipReqLimit,
+        p_ip_newdev_limit: ipNewDevLimit,
       });
 
       if (error) {
-        throw new Error(`consumeRateLimit RPC failed: ${error.message}`);
+        throw new Error(`precheck_submission RPC failed: ${error.message}`);
       }
 
-      const row = Array.isArray(data) ? data[0] : data;
-      return {
-        allowed: Boolean(row?.allowed),
-        current: Number(row?.current_count ?? 0),
-      };
+      return data as any;
     },
 
-    async recordAcceptedRun(submission): Promise<{ id: number | string }> {
-      const payload: any = {
-        device_id: submission.deviceId,
-        day_utc: submission.dayUtc,
-        seed: submission.seed.toString(),
-        points: submission.points,
-        total_moves: submission.totalMoves,
-        max_tile: submission.maxTile,
-        relics_owned: submission.relicsOwned,
-        replay_version: submission.replayVersion,
-        events_hash: submission.eventsHash,
-        duration_ms: submission.durationMs,
-        flags: submission.flags,
-      };
-
-      if (submission.receivedAt) {
-        payload.received_at = submission.receivedAt;
-      }
-
-      const { data, error } = await supabase
-        .from('daily_runs')
-        .insert(payload)
-        .select('id')
-        .single();
+    async recordSubmission(params) {
+      const { data, error } = await supabase.rpc('record_submission', {
+        p_device_id: params.deviceId,
+        p_display_name: params.displayName,
+        p_day_utc: params.dayUtc,
+        p_seed: params.seed.toString(),
+        p_points: params.points,
+        p_total_moves: params.totalMoves,
+        p_max_tile: params.maxTile,
+        p_relics: params.relics,
+        p_replay_version: params.replayVersion,
+        p_events_hash: params.eventsHash,
+        p_duration_ms: params.durationMs,
+        p_flags: params.flags,
+        p_dev_key: params.devKey,
+        p_dev_limit: params.devLimit,
+      });
 
       if (error) {
-        throw new Error(`recordAcceptedRun failed: ${error.message}`);
+        throw new Error(`record_submission RPC failed: ${error.message}`);
       }
-      return { id: data.id };
+
+      return data as any;
     },
   };
 }

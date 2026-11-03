@@ -76,6 +76,72 @@ export class SecurityDatabaseEngine {
     return { id };
   }
 
+  async precheckSubmission(ip, deviceId, hourKey, dayKey, ipReqLimit, ipNewDevLimit) {
+    const ipReqKey = `ip_req:${ip}:${hourKey}`;
+    const ipCheck = await this.consumeRateLimit(ipReqKey, ipReqLimit);
+    if (!ipCheck.allowed) {
+      return { ok: false, reason: 'RATE_LIMIT_EXCEEDED', retry_scope: 'hour' };
+    }
+
+    const isRegistered = await this.isDeviceRegistered(deviceId);
+    if (!isRegistered) {
+      const ipDevKey = `ip_newdev:${ip}:${dayKey}`;
+      const devCheck = await this.consumeRateLimit(ipDevKey, ipNewDevLimit);
+      if (!devCheck.allowed) {
+        return { ok: false, reason: 'DEVICE_CREATION_LIMIT', retry_scope: 'day' };
+      }
+    }
+
+    return { ok: true, reason: null, retry_scope: null };
+  }
+
+  async recordSubmission(params) {
+    // 1. Upsert device
+    if (!this.devices.has(params.deviceId)) {
+      this.devices.set(params.deviceId, {
+        deviceId: params.deviceId,
+        displayName: params.displayName,
+        createdAt: new Date().toISOString(),
+        lastSeenAt: new Date().toISOString(),
+      });
+    } else {
+      const dev = this.devices.get(params.deviceId);
+      dev.lastSeenAt = new Date().toISOString();
+    }
+
+    // 2. Duplicate check (events_hash per device)
+    const isDup = await this.isDuplicateEvent(params.deviceId, params.eventsHash);
+    if (isDup) {
+      return { status: 'ALREADY_SUBMITTED', id: null };
+    }
+
+    // 3. Consume device counter
+    const devCheck = await this.consumeRateLimit(params.devKey, params.devLimit);
+    if (!devCheck.allowed) {
+      return { status: 'DEVICE_LIMIT', id: null };
+    }
+
+    // 4. Record run
+    const id = this.dailyRuns.length + 1;
+    this.dailyRuns.push({
+      id,
+      deviceId: params.deviceId,
+      dayUtc: params.dayUtc,
+      seed: params.seed,
+      points: params.points,
+      totalMoves: params.totalMoves,
+      maxTile: params.maxTile,
+      relicsOwned: params.relics,
+      replayVersion: params.replayVersion,
+      eventsHash: params.eventsHash,
+      durationMs: params.durationMs,
+      flags: params.flags,
+      receivedAt: new Date().toISOString(),
+    });
+
+    return { status: 'ACCEPTED', id };
+  }
+
   // Direct client simulation (Anon role context)
   anonQuery(table, action, payload = {}) {
     // Mock simulation of Postgres RLS enforcement based on 0001_leaderboard.sql
@@ -489,6 +555,34 @@ async function runTests(selfCheckMode = false) {
   assert.strictEqual(bodyF2_4.error, 'SERVER_CONFIGURATION_ERROR');
   assert.strictEqual(db.dailyRuns.length, rowsBeforeF2_4);
   log(`  ✔ [F2 FAIL-CLOSED] Loader throwing ENOENT -> HTTP 500 ("${bodyF2_4.error}"), 0 rows stored`);
+
+  // --------------------------------------------------------------------------
+  // (e2.b) A3: FAIL CLOSED IF DATABASE ADAPTER OR METHODS ARE MISSING (HTTP 500)
+  // --------------------------------------------------------------------------
+  log('\n(e2.b) A3: Fail closed database adapter validation (HTTP 500):');
+  const rowsBeforeA3_1 = db.dailyRuns.length;
+  const resA3_1 = await handleSubmissionRequest(new Request('http://localhost:54321/functions/v1/submit-run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ runLog: validDailyRun, deviceId: 'anon_orhdnvl4' }),
+  }), null);
+  const bodyA3_1 = await resA3_1.json();
+  assert.strictEqual(resA3_1.status, 500);
+  assert.strictEqual(bodyA3_1.error, 'SERVER_CONFIGURATION_ERROR');
+  assert.strictEqual(db.dailyRuns.length, rowsBeforeA3_1);
+  log(`  ✔ [A3 FAIL-CLOSED] Missing db adapter (null) -> HTTP 500 ("${bodyA3_1.error}"), 0 rows stored`);
+
+  const rowsBeforeA3_2 = db.dailyRuns.length;
+  const resA3_2 = await handleSubmissionRequest(new Request('http://localhost:54321/functions/v1/submit-run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ runLog: validDailyRun, deviceId: 'anon_orhdnvl4' }),
+  }), { precheckSubmission: async () => ({ ok: true, reason: null, retry_scope: null }) });
+  const bodyA3_2 = await resA3_2.json();
+  assert.strictEqual(resA3_2.status, 500);
+  assert.strictEqual(bodyA3_2.error, 'SERVER_CONFIGURATION_ERROR');
+  assert.strictEqual(db.dailyRuns.length, rowsBeforeA3_2);
+  log(`  ✔ [A3 FAIL-CLOSED] Missing recordSubmission method -> HTTP 500 ("${bodyA3_2.error}"), 0 rows stored`);
 
   // --------------------------------------------------------------------------
   // (e3) F3: STRICT DEVICE ID REGEX VALIDATION (/^[a-z0-9_]{8,64}$/)

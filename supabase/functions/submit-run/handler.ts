@@ -49,7 +49,7 @@ export function getCorsHeaders(req: Request): HeadersInit {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-region',
     'Vary': 'Origin',
   };
 }
@@ -74,26 +74,46 @@ export function getClientIp(req: Request): string {
   return 'unknown';
 }
 
+export interface PrecheckResult {
+  ok: boolean;
+  reason: string | null;
+  retry_scope: 'hour' | 'day' | null;
+}
+
+export interface RecordSubmissionParams {
+  deviceId: string;
+  displayName: string;
+  dayUtc: string;
+  seed: bigint;
+  points: number;
+  totalMoves: number;
+  maxTile: number;
+  relics: any;
+  replayVersion: string;
+  eventsHash: string;
+  durationMs: number | null;
+  flags: string[];
+  devKey: string;
+  devLimit: number;
+}
+
+export interface RecordSubmissionResult {
+  status: 'ACCEPTED' | 'ALREADY_SUBMITTED' | 'DEVICE_LIMIT';
+  id?: number | string | null;
+}
+
+// A3: Fail Closed DatabaseAdapter interface - strictly requires precheckSubmission and recordSubmission
 export interface DatabaseAdapter {
-  isDeviceRegistered(deviceId: string): Promise<boolean>;
-  registerDevice(deviceId: string, displayName: string): Promise<void>;
-  updateDeviceSeen(deviceId: string): Promise<void>;
-  isDuplicateEvent(deviceId: string, eventsHash: string): Promise<boolean>;
-  consumeRateLimit(key: string, limit: number): Promise<{ allowed: boolean; current: number }>;
-  recordAcceptedRun(submission: {
-    deviceId: string;
-    dayUtc: string;
-    seed: bigint;
-    points: number;
-    totalMoves: number;
-    maxTile: number;
-    relicsOwned: string[];
-    replayVersion: string;
-    eventsHash: string;
-    durationMs: number | null;
-    flags: string[];
-    receivedAt?: string;
-  }): Promise<{ id: number | string }>;
+  precheckSubmission(
+    ip: string,
+    deviceId: string,
+    hourKey: string,
+    dayKey: string,
+    ipReqLimit: number,
+    ipNewDevLimit: number
+  ): Promise<PrecheckResult>;
+
+  recordSubmission(params: RecordSubmissionParams): Promise<RecordSubmissionResult>;
 }
 
 export async function handleSubmissionRequest(
@@ -102,16 +122,37 @@ export async function handleSubmissionRequest(
   manifestOverride?: any
 ): Promise<Response> {
   const corsHeaders = getCorsHeaders(req);
+  const clientIp = getClientIp(req);
+  const ipSourceHeaders: Record<string, string> = {};
+  if (clientIp === 'unknown') {
+    ipSourceHeaders['x-ip-source'] = 'missing';
+  }
 
   // 1. Handle CORS Preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    return new Response(null, { status: 204, headers: { ...corsHeaders, ...ipSourceHeaders } });
   }
 
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'METHOD_NOT_ALLOWED' }), {
       status: 405,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // A3 FAIL CLOSED: If the adapter is missing, or either method is missing,
+  // return 500 SERVER_CONFIGURATION_ERROR before doing anything (no verification, no ACCEPTED).
+  if (
+    !db ||
+    typeof db.precheckSubmission !== 'function' ||
+    typeof db.recordSubmission !== 'function'
+  ) {
+    return new Response(JSON.stringify({
+      error: 'SERVER_CONFIGURATION_ERROR',
+      message: 'Database adapter or required methods missing',
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
     });
   }
 
@@ -122,7 +163,7 @@ export async function handleSubmissionRequest(
   } catch (err: any) {
     return new Response(JSON.stringify({ error: 'BODY_READ_FAILED', message: err.message }), {
       status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
     });
   }
 
@@ -130,7 +171,7 @@ export async function handleSubmissionRequest(
   if (contentLength > 1048576 || rawBodyText.length > 1048576) {
     return new Response(JSON.stringify({ error: 'PAYLOAD_TOO_LARGE', message: 'Body exceeds 1 MB limit' }), {
       status: 413,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
     });
   }
 
@@ -140,20 +181,20 @@ export async function handleSubmissionRequest(
   } catch {
     return new Response(JSON.stringify({ error: 'INVALID_JSON', message: 'Malformed JSON payload' }), {
       status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
     });
   }
 
-  // 3. Pre-Verification Validation: Device ID (F3: reject everything else with 400 before any other work)
+  // 3. Pre-Verification Validation: Device ID
   const deviceId = body?.deviceId;
   if (!deviceId || typeof deviceId !== 'string' || !/^[a-z0-9_]{8,64}$/.test(deviceId)) {
     return new Response(JSON.stringify({ error: 'INVALID_DEVICE_ID', message: 'deviceId must match /^[a-z0-9_]{8,64}$/' }), {
       status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
     });
   }
 
-  // F1: Never read mode from the request body. Verification mode is strictly constant 'daily' in submit-run.
+  // Verification mode is strictly constant 'daily' in submit-run
   const mode = 'daily';
   const runLog = body?.runLog;
 
@@ -161,64 +202,56 @@ export async function handleSubmissionRequest(
   if (!runLog || typeof runLog !== 'object' || !Array.isArray(runLog.events)) {
     return new Response(JSON.stringify({ error: 'INVALID_RUN_LOG', message: 'runLog.events array required' }), {
       status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
     });
   }
 
   if (runLog.events.length > 20000) {
     return new Response(JSON.stringify({ error: 'EVENTS_LIMIT_EXCEEDED', message: 'Max 20000 events permitted' }), {
       status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
     });
   }
 
-  // 5. Abuse Limits (Rate limiting)
-  const clientIp = getClientIp(req);
+  // 5. Abuse Limits & Precheck (Atomic RPC via required precheckSubmission)
   const now = new Date();
   const todayUtc = now.toISOString().slice(0, 10);
   const currentHourKey = `${todayUtc}T${String(now.getUTCHours()).padStart(2, '0')}`;
 
-  // Dynamic Retry-After calculations (seconds to next UTC hour / next UTC midnight)
   const nextHourMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours() + 1, 0, 0, 0);
   const retryAfterHour = Math.max(1, Math.ceil((nextHourMs - now.getTime()) / 1000));
   const nextMidnightMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0);
   const retryAfterMidnight = Math.max(1, Math.ceil((nextMidnightMs - now.getTime()) / 1000));
 
-  if (db) {
-    // 5a. IP request limit (600 requests per IP per hour)
-    const ipReqKey = `ip_req:${clientIp}:${currentHourKey}`;
-    const ipCheck = await db.consumeRateLimit(ipReqKey, IP_REQUEST_LIMIT_HOURLY);
-    if (!ipCheck.allowed) {
-      return new Response(JSON.stringify({ error: 'RATE_LIMIT_EXCEEDED', message: `Too many requests from this IP (limit: ${IP_REQUEST_LIMIT_HOURLY}/hour)` }), {
-        status: 429,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-          'Retry-After': String(retryAfterHour),
-        },
-      });
-    }
+  const precheck = await db.precheckSubmission(
+    clientIp,
+    deviceId,
+    currentHourKey,
+    todayUtc,
+    IP_REQUEST_LIMIT_HOURLY,
+    IP_NEW_DEVICE_LIMIT_DAILY
+  );
 
-    // 5b. New devices per IP per day (max 30)
-    const isRegistered = await db.isDeviceRegistered(deviceId);
-    if (!isRegistered) {
-      const ipDevKey = `ip_newdev:${clientIp}:${todayUtc}`;
-      const devCheck = await db.consumeRateLimit(ipDevKey, IP_NEW_DEVICE_LIMIT_DAILY);
-      if (!devCheck.allowed) {
-        return new Response(JSON.stringify({ error: 'DEVICE_CREATION_LIMIT', message: `Max ${IP_NEW_DEVICE_LIMIT_DAILY} new devices per IP per day` }), {
-          status: 429,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-            'Retry-After': String(retryAfterMidnight),
-          },
-        });
-      }
-    }
+  if (!precheck.ok) {
+    const isDayLimit = precheck.retry_scope === 'day';
+    const retryAfter = isDayLimit ? retryAfterMidnight : retryAfterHour;
+    const message = isDayLimit
+      ? `Max ${IP_NEW_DEVICE_LIMIT_DAILY} new devices per IP per day`
+      : `Too many requests from this IP (limit: ${IP_REQUEST_LIMIT_HOURLY}/hour)`;
+    const error = precheck.reason || (isDayLimit ? 'DEVICE_CREATION_LIMIT' : 'RATE_LIMIT_EXCEEDED');
+
+    return new Response(JSON.stringify({ error, message }), {
+      status: 429,
+      headers: {
+        ...corsHeaders,
+        ...ipSourceHeaders,
+        'Content-Type': 'application/json',
+        'Retry-After': String(retryAfter),
+      },
+    });
   }
 
   // 6. Day Boundary Rule
-  // day_utc is the UTC date of the run's start timestamp from the run log, and must equal the day the server computed the seed for
   let dayUTC: string | null = null;
   if (runLog.startTimestamp) {
     const d = new Date(runLog.startTimestamp);
@@ -234,24 +267,23 @@ export async function handleSubmissionRequest(
     if (!dayUTC || !/^\d{4}-\d{2}-\d{2}$/.test(dayUTC)) {
       return new Response(JSON.stringify({ error: 'DAY_UTC_REQUIRED', message: 'daily mode requires valid startTimestamp or dayUTC' }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     const yesterdayUtc = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
-    // Grace period: allow today and yesterday UTC (handles runs spanning midnight)
     if (dayUTC !== todayUtc && dayUTC !== yesterdayUtc) {
       return new Response(JSON.stringify({
         error: 'DAY_OUT_OF_BOUNDS',
         message: `Run start day (${dayUTC}) must be today (${todayUtc}) or yesterday (${yesterdayUtc}) UTC`
       }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
       });
     }
   }
 
-  // F2. Fail closed: if the vendored manifest cannot be loaded, or rulesVersion/replayVersion are missing, return HTTP 500 and verify nothing.
+  // Fail closed: manifest validation
   let activeManifest: any = null;
   try {
     activeManifest = manifestOverride !== undefined
@@ -280,7 +312,7 @@ export async function handleSubmissionRequest(
       message: 'Failed to load authoritative rules/replay manifest'
     }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
     });
   }
 
@@ -302,7 +334,6 @@ export async function handleSubmissionRequest(
 
   let verifyCpuMs: number | null = null;
   if (cpuStart && cpuEnd) {
-    // Deno.cpuUsage() returns cumulative { user: number, system: number } in microseconds
     verifyCpuMs = ((cpuEnd.user - cpuStart.user) + (cpuEnd.system - cpuStart.system)) / 1000;
   }
 
@@ -322,71 +353,64 @@ export async function handleSubmissionRequest(
       flags: verdict.flags || [],
     }), {
       status: 422,
-      headers: { ...corsHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...ipSourceHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
     });
   }
 
-  // 8. Extract Trusted Replay Submission (Server-trust contract Z3)
+  // 8. Extract Trusted Replay Submission
   const submission = await extractSubmission(runLog, verdict);
   if (!submission) {
     return new Response(JSON.stringify({ error: 'SUBMISSION_EXTRACTION_FAILED' }), {
       status: 500,
-      headers: { ...corsHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...ipSourceHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
     });
   }
 
-  // 9. Idempotency Check & Abuse Limit per device/day (max 60 accepted submissions)
-  if (db) {
-    // Idempotent: same events_hash from same device is not stored twice
-    const isDuplicate = await db.isDuplicateEvent(deviceId, submission.eventsHash);
-    if (isDuplicate) {
-      return new Response(JSON.stringify({
-        status: 'ALREADY_SUBMITTED',
-        message: 'This exact run was already recorded.',
-        eventsHash: submission.eventsHash,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+  // 9. Atomic Recording & Idempotency / Device Limit Check via required recordSubmission
+  const devSubKey = `dev_sub:${deviceId}:${dayUTC || todayUtc}`;
+  const displayName = generateDisplayName(deviceId);
 
-    // Max 60 accepted submissions per device per day
-    const devSubKey = `dev_sub:${deviceId}:${dayUTC || todayUtc}`;
-    const devSubCheck = await db.consumeRateLimit(devSubKey, DEVICE_SUBMISSION_LIMIT_DAILY);
-    if (!devSubCheck.allowed) {
-      return new Response(JSON.stringify({ error: 'DEVICE_DAILY_LIMIT_EXCEEDED', message: `Max ${DEVICE_SUBMISSION_LIMIT_DAILY} submissions per device per day` }), {
-        status: 429,
-        headers: {
-          ...corsHeaders,
-          ...timingHeaders,
-          'Content-Type': 'application/json',
-          'Retry-After': String(retryAfterMidnight),
-        },
-      });
-    }
+  const recordResult = await db.recordSubmission({
+    deviceId,
+    displayName,
+    dayUtc: dayUTC || todayUtc,
+    seed: BigInt(submission.seed),
+    points: submission.points,
+    totalMoves: submission.moves,
+    maxTile: submission.maxTile,
+    relics: submission.relicsOwned,
+    replayVersion: submission.replayVersion,
+    eventsHash: submission.eventsHash,
+    durationMs: typeof runLog.durationMs === 'number' ? runLog.durationMs : (typeof runLog.activeMs === 'number' ? runLog.activeMs : null),
+    flags: verdict.flags || [],
+    devKey: devSubKey,
+    devLimit: DEVICE_SUBMISSION_LIMIT_DAILY,
+  });
 
-    // Register device if not exists
-    const isDeviceKnown = await db.isDeviceRegistered(deviceId);
-    if (!isDeviceKnown) {
-      const generatedName = generateDisplayName(deviceId);
-      await db.registerDevice(deviceId, generatedName);
-    } else {
-      await db.updateDeviceSeen(deviceId);
-    }
-
-    // Store verified run
-    await db.recordAcceptedRun({
-      deviceId,
-      dayUtc: dayUTC || todayUtc,
-      seed: BigInt(submission.seed),
-      points: submission.points,
-      totalMoves: submission.moves,
-      maxTile: submission.maxTile,
-      relicsOwned: submission.relicsOwned,
-      replayVersion: submission.replayVersion,
+  if (recordResult.status === 'ALREADY_SUBMITTED') {
+    return new Response(JSON.stringify({
+      status: 'ALREADY_SUBMITTED',
+      message: 'This exact run was already recorded.',
       eventsHash: submission.eventsHash,
-      durationMs: typeof runLog.durationMs === 'number' ? runLog.durationMs : (typeof runLog.activeMs === 'number' ? runLog.activeMs : null),
-      flags: verdict.flags || [],
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, ...ipSourceHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (recordResult.status === 'DEVICE_LIMIT') {
+    return new Response(JSON.stringify({
+      error: 'DEVICE_DAILY_LIMIT_EXCEEDED',
+      message: `Max ${DEVICE_SUBMISSION_LIMIT_DAILY} submissions per device per day`,
+    }), {
+      status: 429,
+      headers: {
+        ...corsHeaders,
+        ...ipSourceHeaders,
+        ...timingHeaders,
+        'Content-Type': 'application/json',
+        'Retry-After': String(retryAfterMidnight),
+      },
     });
   }
 
@@ -402,6 +426,6 @@ export async function handleSubmissionRequest(
     }
   }), {
     status: 200,
-    headers: { ...corsHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders, ...ipSourceHeaders, ...timingHeaders, 'Content-Type': 'application/json' },
   });
 }

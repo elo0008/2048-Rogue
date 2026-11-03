@@ -453,6 +453,76 @@ npm run test:live
 - If a project pauses, incoming Edge Function and API requests return HTTP 503.
 - Unpause the project with a single click in the Supabase Dashboard under **Project Settings -> General -> Restore Project**.
 
+#### Cloud Regions & Edge Performance Architecture:
+- **Hosted Database Region:** `eu-central-1` (Frankfurt, AWS).
+- **Function Region Behaviour (Default vs Pinned):**
+  - **Default Anycast Execution:** By default, Supabase Edge Functions execute in Cloudflare edge PoPs geographically closest to the client (e.g. Mumbai/Delhi for Indian players). When executing edge functions default-routed far from the database, the edge function makes multi-statement round-trip database queries over trans-continental WAN to Frankfurt, resulting in an average submission turnaround of ~620 ms.
+  - **Pinned Regional Execution (`x-region: eu-central-1`):** Supplying the `x-region: eu-central-1` header pins Edge Function execution directly to the Frankfurt edge region adjacent to the database. This eliminates trans-oceanic edge-to-db latency, slashing server execution and database round-trip latency to ~234 ms (a 62.2% reduction in end-to-end turnaround).
+- **Production Architecture Directive:**
+  Production environments should be provisioned in the cloud region geographically closest to the primary player base (e.g., `us-east-1` or `eu-west-1`), with all migrations (`0001` through `0006`) pushed sequentially from the migration files in this repository via `supabase db push`.
+
+### 8. Custom Display Names & Admin Moderation
+
+The backend supports custom player display names (validated and updated via the `set-name` Edge Function). Players can set names up to 16 characters matching ASCII alphanumeric and safe separator rules, or reset back to their deterministic `generated_name`.
+
+Moderation of free-text display names is manual after the fact. While the edge function strictly validates character sets and rejects known profanity, slurs, and reserved identities upon submission, any offensive or problematic names that evade automated checks must be reviewed and moderated manually by project administrators using the Supabase SQL editor.
+
+#### Exact SQL for Admin Moderation (Paste into Supabase SQL Editor):
+
+1. **List Recent Devices with Names and Activity:**
+   ```sql
+   select
+     device_id,
+     display_name,
+     generated_name,
+     name_norm,
+     name_hidden,
+     name_changed_at,
+     last_seen_at
+   from public.devices
+   order by last_seen_at desc
+   limit 50;
+   ```
+
+2. **Find Names by Pattern (Case-Insensitive Search):**
+   ```sql
+   select
+     device_id,
+     display_name,
+     generated_name,
+     name_norm,
+     name_hidden,
+     name_changed_at,
+     last_seen_at
+   from public.devices
+   where display_name ilike '%pattern%' or name_norm ilike '%pattern%'
+   order by last_seen_at desc;
+   ```
+
+3. **Hide a Device's Name (Leaderboards immediately display their generated name instead):**
+   ```sql
+   update public.devices
+   set name_hidden = true
+   where device_id = 'target_device_id';
+   ```
+
+4. **Unhide a Device's Name:**
+   ```sql
+   update public.devices
+   set name_hidden = false
+   where device_id = 'target_device_id';
+   ```
+
+5. **Reset a Name Back to Generated Name (Releases `name_norm` for other players):**
+   ```sql
+   update public.devices
+   set display_name = generated_name,
+       name_norm = null,
+       name_hidden = false,
+       name_changed_at = now()
+   where device_id = 'target_device_id';
+   ```
+
 
 
 
