@@ -2,21 +2,24 @@
 // Pure HTTP request handler for Rogue 2048 Custom Display Names
 // Web-standard types only (Request, Response, Headers) - zero Deno or Node specific globals
 
-import { validateName, ValidateNameResult } from './names.ts';
+import { validateNameDetailed } from './names.ts';
 
 export interface SetNameResult {
   ok: boolean;
   status: number;
   error?: string;
+  message?: string;
   display_name?: string;
 }
 
 export interface SetNameDatabaseAdapter {
   consumeRateLimit(key: string, limit: number): Promise<{ allowed: boolean; current: number }>;
-  setDisplayName(
+  setDisplayNameLimited(
     deviceId: string,
     displayName: string | null,
-    nameNorm: string | null
+    nameNorm: string | null,
+    limitKey: string,
+    limit: number
   ): Promise<SetNameResult>;
 }
 
@@ -71,7 +74,22 @@ export async function handleSetNameRequest(
     });
   }
 
-  // 2. Body size check (<= 2 KB = 2048 bytes)
+  // 2. FAIL CLOSED: If database adapter or required methods are missing, return 500 SERVER_CONFIGURATION_ERROR
+  if (
+    !db ||
+    typeof db.consumeRateLimit !== 'function' ||
+    typeof db.setDisplayNameLimited !== 'function'
+  ) {
+    return new Response(JSON.stringify({
+      error: 'SERVER_CONFIGURATION_ERROR',
+      message: 'Database adapter or required methods missing',
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // 3. Body size check (<= 2 KB = 2048 bytes)
   let rawBodyText: string;
   try {
     rawBodyText = await req.text();
@@ -90,7 +108,7 @@ export async function handleSetNameRequest(
     });
   }
 
-  // 3. Parse JSON
+  // 4. Parse JSON
   let body: any;
   try {
     body = JSON.parse(rawBodyText);
@@ -101,7 +119,7 @@ export async function handleSetNameRequest(
     });
   }
 
-  // 4. Validate deviceId regex: /^[a-z0-9_]{8,64}$/
+  // 5. Validate deviceId regex: /^[a-z0-9_]{8,64}$/
   const deviceId = body?.deviceId;
   if (!deviceId || typeof deviceId !== 'string' || !/^[a-z0-9_]{8,64}$/.test(deviceId)) {
     return new Response(JSON.stringify({
@@ -113,15 +131,19 @@ export async function handleSetNameRequest(
     });
   }
 
-  // 5. Validate name (null = clear to generated_name; string = validateName)
+  // 6. Validate name (null = clear to generated_name; string = validateNameDetailed)
   const nameInput = body?.name;
   let validatedTargetName: string | null = null;
   let validatedTargetNorm: string | null = null;
 
-  if (nameInput !== null) {
-    const v: ValidateNameResult = validateName(nameInput);
+  if (nameInput !== null && nameInput !== undefined) {
+    const v = validateNameDetailed(nameInput);
     if (!v.ok) {
-      return new Response(JSON.stringify({ error: 'NAME_NOT_ALLOWED' }), {
+      return new Response(JSON.stringify({
+        error: 'NAME_NOT_ALLOWED',
+        message: v.ruleDescription,
+        ruleNumber: v.ruleNumber,
+      }), {
         status: 400,
         headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
       });
@@ -130,7 +152,7 @@ export async function handleSetNameRequest(
     validatedTargetNorm = v.norm;
   }
 
-  // 6. Rate limit checks
+  // 7. Rate limit timing keys
   const now = new Date();
   const todayUtc = now.toISOString().slice(0, 10);
   const currentHourKey = `${todayUtc}T${String(now.getUTCHours()).padStart(2, '0')}`;
@@ -141,90 +163,84 @@ export async function handleSetNameRequest(
   const nextMidnightMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0);
   const retryAfterMidnight = Math.max(1, Math.ceil((nextMidnightMs - now.getTime()) / 1000));
 
-  if (db) {
-    // 6a. IP request limit: reuse 600/hour
-    const ipReqKey = `ip_req:${clientIp}:${currentHourKey}`;
-    const ipCheck = await db.consumeRateLimit(ipReqKey, IP_REQUEST_LIMIT_HOURLY);
-    if (!ipCheck.allowed) {
-      return new Response(JSON.stringify({
-        error: 'RATE_LIMIT_EXCEEDED',
-        message: `Too many requests from this IP (limit: ${IP_REQUEST_LIMIT_HOURLY}/hour)`
-      }), {
-        status: 429,
-        headers: {
-          ...corsHeaders,
-          ...ipSourceHeaders,
-          'Content-Type': 'application/json',
-          'Retry-After': String(retryAfterHour),
-        },
-      });
-    }
-
-    // 6b. Per device 3 name changes per UTC day
-    const devNameKey = `dev_name:${deviceId}:${todayUtc}`;
-    const devCheck = await db.consumeRateLimit(devNameKey, DEVICE_NAME_CHANGE_LIMIT_DAILY);
-    if (!devCheck.allowed) {
-      return new Response(JSON.stringify({
-        error: 'DEVICE_DAILY_LIMIT_EXCEEDED',
-        message: `Max ${DEVICE_NAME_CHANGE_LIMIT_DAILY} name changes per device per day`
-      }), {
-        status: 429,
-        headers: {
-          ...corsHeaders,
-          ...ipSourceHeaders,
-          'Content-Type': 'application/json',
-          'Retry-After': String(retryAfterMidnight),
-        },
-      });
-    }
-
-    // 7. Atomic RPC set_display_name
-    const result = await db.setDisplayName(deviceId, validatedTargetName, validatedTargetNorm);
-
-    if (result.status === 404 || result.error === 'DEVICE_NOT_FOUND') {
-      return new Response(JSON.stringify({
-        error: 'DEVICE_NOT_FOUND',
-        message: 'Device must be registered through gameplay before setting a custom name'
-      }), {
-        status: 404,
-        headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (result.status === 409 || result.error === 'NAME_TAKEN') {
-      return new Response(JSON.stringify({
-        error: 'NAME_TAKEN',
-        message: 'Display name is already taken'
-      }), {
-        status: 409,
-        headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (result.status === 200 || result.ok) {
-      return new Response(JSON.stringify({
-        status: nameInput === null ? 'RESET' : 'UPDATED',
-        displayName: result.display_name,
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
+  // 8. IP request rate limit (600/hour)
+  const ipReqKey = `ip_req:${clientIp}:${currentHourKey}`;
+  const ipCheck = await db.consumeRateLimit(ipReqKey, IP_REQUEST_LIMIT_HOURLY);
+  if (!ipCheck.allowed) {
     return new Response(JSON.stringify({
-      error: result.error || 'UPDATE_FAILED'
+      error: 'RATE_LIMIT_EXCEEDED',
+      message: `Too many requests from this IP (limit: ${IP_REQUEST_LIMIT_HOURLY}/hour)`
     }), {
-      status: result.status || 500,
+      status: 429,
+      headers: {
+        ...corsHeaders,
+        ...ipSourceHeaders,
+        'Content-Type': 'application/json',
+        'Retry-After': String(retryAfterHour),
+      },
+    });
+  }
+
+  // 9. Atomic RPC set_display_name_limited
+  const devNameKey = `dev_name:${deviceId}:${todayUtc}`;
+  const result = await db.setDisplayNameLimited(
+    deviceId,
+    validatedTargetName,
+    validatedTargetNorm,
+    devNameKey,
+    DEVICE_NAME_CHANGE_LIMIT_DAILY
+  );
+
+  if (result.status === 404 || result.error === 'DEVICE_NOT_FOUND') {
+    return new Response(JSON.stringify({
+      error: 'DEVICE_NOT_FOUND',
+      message: 'Device must be registered through gameplay before setting a custom name'
+    }), {
+      status: 404,
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (result.status === 409 || result.error === 'NAME_TAKEN') {
+    return new Response(JSON.stringify({
+      error: 'NAME_TAKEN',
+      message: 'Display name is already taken'
+    }), {
+      status: 409,
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (result.status === 429 || result.error === 'DEVICE_DAILY_LIMIT_EXCEEDED') {
+    return new Response(JSON.stringify({
+      error: 'DEVICE_DAILY_LIMIT_EXCEEDED',
+      message: `Max ${DEVICE_NAME_CHANGE_LIMIT_DAILY} name changes per device per day`
+    }), {
+      status: 429,
+      headers: {
+        ...corsHeaders,
+        ...ipSourceHeaders,
+        'Content-Type': 'application/json',
+        'Retry-After': String(retryAfterMidnight),
+      },
+    });
+  }
+
+  if (result.status === 200 || result.ok) {
+    return new Response(JSON.stringify({
+      status: (nameInput === null || nameInput === undefined) ? 'RESET' : 'UPDATED',
+      displayName: result.display_name,
+    }), {
+      status: 200,
       headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
     });
   }
 
   return new Response(JSON.stringify({
-    status: nameInput === null ? 'RESET' : 'UPDATED',
-    displayName: validatedTargetName || 'Generated-Player-100',
+    error: result.error || 'UPDATE_FAILED',
+    message: result.message || 'Name update failed',
   }), {
-    status: 200,
+    status: result.status || 500,
     headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
   });
 }
-

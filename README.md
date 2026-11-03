@@ -459,7 +459,7 @@ npm run test:live
   - **Default Anycast Execution:** By default, Supabase Edge Functions execute in Cloudflare edge PoPs geographically closest to the client (e.g. Mumbai/Delhi for Indian players). When executing edge functions default-routed far from the database, the edge function makes multi-statement round-trip database queries over trans-continental WAN to Frankfurt, resulting in an average submission turnaround of ~620 ms.
   - **Pinned Regional Execution (`x-region: eu-central-1`):** Supplying the `x-region: eu-central-1` header pins Edge Function execution directly to the Frankfurt edge region adjacent to the database. This eliminates trans-oceanic edge-to-db latency, slashing server execution and database round-trip latency to ~234 ms (a 62.2% reduction in end-to-end turnaround).
 - **Production Architecture Directive:**
-  Production environments should be provisioned in the cloud region geographically closest to the primary player base (e.g., `us-east-1` or `eu-west-1`), with all migrations (`0001` through `0006`) pushed sequentially from the migration files in this repository via `supabase db push`.
+  Production environments should be provisioned in the cloud region geographically closest to the primary player base (e.g., `us-east-1` or `eu-west-1`), with all migrations (`0001` through `0007`) pushed sequentially from the migration files in this repository via `supabase db push`.
 
 ### 8. Custom Display Names & Admin Moderation
 

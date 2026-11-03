@@ -24,15 +24,23 @@ export function createRealSetNameAdapter(supabase: SupabaseClient): SetNameDatab
       };
     },
 
-    async setDisplayName(deviceId: string, displayName: string | null, nameNorm: string | null) {
-      const { data, error } = await supabase.rpc('set_display_name', {
+    async setDisplayNameLimited(
+      deviceId: string,
+      displayName: string | null,
+      nameNorm: string | null,
+      limitKey: string,
+      limit: number
+    ) {
+      const { data, error } = await supabase.rpc('set_display_name_limited', {
         p_device_id: deviceId,
         p_display_name: displayName,
         p_name_norm: nameNorm,
+        p_limit_key: limitKey,
+        p_limit: limit,
       });
 
       if (error) {
-        throw new Error(`set_display_name RPC failed: ${error.message}`);
+        throw new Error(`set_display_name_limited RPC failed: ${error.message}`);
       }
 
       return data as any;
@@ -59,4 +67,3 @@ const databaseAdapter = createRealSetNameAdapter(supabase);
 Deno.serve(async (req: Request) => {
   return handleSetNameRequest(req, databaseAdapter);
 });
-

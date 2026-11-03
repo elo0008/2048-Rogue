@@ -1,12 +1,37 @@
-// names_blocklist.ts: Production blocklist of forbidden terms (profanity, slurs, sexual terms, Hindi/Hinglish abuse)
-// Note: Handled via whole-word match for <= 4 letters, substring match for > 4 letters against skeleton.
-// Must include test sentinel 'zzbadword'.
+// names_blocklist.ts: Production blocklists for Rogue 2048 display name validation
+// Partitioned according to specification G1:
+// 1. TOKEN_BLOCKLIST_SHORT: Entries <= 4 letters matched when token skeleton EQUALS entry skeleton
+// 2. SHORT_SUBSTRING: Unambiguous short entries matched as substring of whole skeleton
+// 3. BLOCKLIST_LONG: Entries 5+ letters matched as substring of whole skeleton
 
-export const BLOCKLIST: string[] = [
-  // Test sentinel
-  'zzbadword',
+// =============================================================================
+// TEST-ONLY SENTINELS (Clearly marked per specification G1(e))
+// =============================================================================
+// 'zzq': Token-only short sentinel
+// 'qzzx': Short substring list sentinel
+// 'zzbadword': Long substring sentinel
+// =============================================================================
 
-  // 4 letters or fewer (whole-word matched)
+export const SHORT_SUBSTRING: string[] = [
+  // TEST-ONLY sentinel
+  'qzzx',
+
+  // Unambiguous short entries blocked as substring of whole skeleton
+  'cunt',
+  'fuck',
+  'fuk',
+  'kike',
+  'nigg',
+  'fcuk',
+  'fock',
+  'fux',
+];
+
+export const TOKEN_BLOCKLIST_SHORT: string[] = [
+  // TEST-ONLY sentinel
+  'zzq',
+
+  // 4 letters or fewer (matched on token skeleton equality)
   'anal',
   'anus',
   'arse',
@@ -16,7 +41,6 @@ export const BLOCKLIST: string[] = [
   'cock',
   'coon',
   'crap',
-  'cunt',
   'damn',
   'dick',
   'dink',
@@ -24,21 +48,14 @@ export const BLOCKLIST: string[] = [
   'dyke',
   'fag',
   'fags',
-  'fcuk',
-  'fock',
-  'fuck',
-  'fuk',
-  'fux',
   'gook',
   'hell',
   'homo',
   'jerk',
   'jism',
   'jizz',
-  'kike',
   'muff',
   'nazi',
-  'nigg',
   'nuts',
   'paki',
   'piss',
@@ -70,20 +87,19 @@ export const BLOCKLIST: string[] = [
   'chod',
   'chut',
   'gand',
-  'harami',
-  'kamina',
-  'lauda',
   'loda',
   'lodu',
   'lund',
   'muth',
   'rand',
-  'randi',
-  'saala',
   'suar',
-  'tatti',
+];
 
-  // Longer English profanity, slurs, sexual terms (> 4 letters, substring matched)
+export const BLOCKLIST_LONG: string[] = [
+  // TEST-ONLY sentinel
+  'zzbadword',
+
+  // English profanity, slurs, sexual terms (> 4 letters, substring matched)
   'asshole',
   'bastard',
   'beaner',
@@ -198,16 +214,22 @@ export const BLOCKLIST: string[] = [
   'gaandmasti',
   'gandmara',
   'gandu',
+  'harami',
   'harampai',
+  'kamina',
   'kaminey',
   'kutteya',
+  'lauda',
   'laude',
   'lavde',
   'madarchod',
   'madarchodh',
   'mcbc',
   'mutthal',
+  'randi',
   'randibaaz',
+  'saala',
   'suarer',
+  'tatti',
   'tere-baap',
 ];

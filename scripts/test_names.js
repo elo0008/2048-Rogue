@@ -1,8 +1,9 @@
 // scripts/test_names.js
 // Node unit test suite for Rogue 2048 Display Name Validation (names.ts)
-// Covers > 60 cases across every validation rule and evasion technique.
+// Covers > 130 cases across every validation rule, sentinel, evasion technique,
+// token boundaries, leetspeak, allowlist bypass prevention, and affix-aware reserved names.
 
-import { validateName, toSkeleton } from '../supabase/functions/set-name/names.ts';
+import { validateName, validateNameDetailed, toSkeleton } from '../supabase/functions/set-name/names.ts';
 
 const failDemoMode = process.argv.includes('--fail-demonstration');
 
@@ -16,7 +17,7 @@ let passedTests = 0;
 
 function assertName(description, input, expectedOk, expectedNameOrError) {
   totalTests++;
-  const res = validateName(input);
+  const res = validateNameDetailed(input);
   const okMatches = res.ok === expectedOk;
   let valMatches = false;
   if (expectedOk) {
@@ -29,12 +30,12 @@ function assertName(description, input, expectedOk, expectedNameOrError) {
   if (passed) {
     passedTests++;
     console.log(`[PASS] Case ${totalTests}: ${description}`);
-    console.log(`       Input: ${JSON.stringify(input)} -> ok=${res.ok}, ${res.ok ? 'name=' + res.name : 'error=' + res.error}`);
+    console.log(`       Input: ${JSON.stringify(input)} -> ok=${res.ok}, ${res.ok ? 'name=' + res.name : 'error=' + res.error + ' (Rule ' + res.ruleNumber + ': ' + res.ruleDescription + ')'}`);
   } else {
     console.error(`[FAIL] Case ${totalTests}: ${description}`);
     console.error(`       Input: ${JSON.stringify(input)}`);
     console.error(`       Expected: ok=${expectedOk}, value=${expectedNameOrError}`);
-    console.error(`       Actual:   ok=${res.ok}, value=${res.ok ? res.name : res.error}`);
+    console.error(`       Actual:   ok=${res.ok}, value=${res.ok ? res.name : res.error + ' (Rule ' + res.ruleNumber + ': ' + res.ruleDescription + ')'}`);
     throw new Error(`Test failed: ${description}`);
   }
 }
@@ -136,8 +137,8 @@ assertName('Reserved: anon followed by digits', 'anon123', false, 'NAME_NOT_ALLO
 assertName('Reserved: anon followed by underscore and digits', 'anon_456', false, 'NAME_NOT_ALLOWED');
 assertName('Reserved: Anon_99', 'Anon_99', false, 'NAME_NOT_ALLOWED');
 
-// 10. Sentinel and Evasion Variants
-console.log('\n--- 10. Sentinel and Evasion Variants (Must REJECT) ---');
+// 10. Sentinel Long Evasion Variants
+console.log('\n--- 10. Sentinel Long Evasion Variants (Must REJECT) ---');
 assertName('Sentinel: exact', 'zzbadword', false, 'NAME_NOT_ALLOWED');
 assertName('Sentinel: mixed-case', 'ZzBadWord', false, 'NAME_NOT_ALLOWED');
 assertName('Sentinel: leetspeak 0 for o', 'zzbadw0rd', false, 'NAME_NOT_ALLOWED');
@@ -148,8 +149,77 @@ assertName('Sentinel: hyphenated', 'zz-bad-word', false, 'NAME_NOT_ALLOWED');
 assertName('Sentinel: repeated letters', 'zzbaaaadword', false, 'NAME_NOT_ALLOWED');
 assertName('Sentinel: multiple z', 'zzzbadword', false, 'NAME_NOT_ALLOWED');
 
-// 11. Deliberate Failure Demonstration
-console.log('\n--- 11. Deliberate Failure Demonstration ---');
+// 11. Short Token Matching with Sentinel 'zzq' (Rule 8)
+console.log('\n--- 11. Short Token Matching with Sentinel zzq (G1.e Required) ---');
+assertName('Token sentinel exact: Zzq', 'Zzq', false, 'NAME_NOT_ALLOWED');
+assertName('Token sentinel with prefix: Mr Zzq', 'Mr Zzq', false, 'NAME_NOT_ALLOWED');
+assertName('Token sentinel underscore: Big_Zzq', 'Big_Zzq', false, 'NAME_NOT_ALLOWED');
+assertName('Token sentinel camelCase: BigZzq', 'BigZzq', false, 'NAME_NOT_ALLOWED');
+assertName('Token sentinel spaced digits: zzq 99', 'zzq 99', false, 'NAME_NOT_ALLOWED');
+assertName('Token sentinel digit boundary: zzq99', 'zzq99', false, 'NAME_NOT_ALLOWED');
+assertName('Token sentinel leading digits: 99zzq', '99zzq', false, 'NAME_NOT_ALLOWED');
+assertName('Token sentinel spaced letters: Z z q', 'Z z q', false, 'NAME_NOT_ALLOWED');
+assertName('Token sentinel leetspeak: Zz9', 'Zz9', false, 'NAME_NOT_ALLOWED');
+assertName('Token sentinel hyphen: Pro-Zzq', 'Pro-Zzq', false, 'NAME_NOT_ALLOWED');
+assertName('Token sentinel repeated z: Zzzzq', 'Zzzzq', false, 'NAME_NOT_ALLOWED');
+assertName('Token sentinel suffix: QueenZzq', 'QueenZzq', false, 'NAME_NOT_ALLOWED');
+assertName('Harmless word with zzq prefix: Zzqueen (Must PASS)', 'Zzqueen', true, 'Zzqueen');
+assertName('Harmless word with zzq suffix: Buzzqueen (Must PASS)', 'Buzzqueen', true, 'Buzzqueen');
+
+// 12. Short Substring Matching with Sentinel 'qzzx' (Rule 9)
+console.log('\n--- 12. Short Substring Matching with Sentinel qzzx (G1.e Required) ---');
+assertName('Short substring exact: qzzx', 'qzzx', false, 'NAME_NOT_ALLOWED');
+assertName('Short substring inside camelCase: MyQzzxPro', 'MyQzzxPro', false, 'NAME_NOT_ALLOWED');
+assertName('Short substring prefix: Qzzxylophone (BLOCKED per design)', 'Qzzxylophone', false, 'NAME_NOT_ALLOWED');
+assertName('Short substring with trailing digits: qzzx123', 'qzzx123', false, 'NAME_NOT_ALLOWED');
+assertName('Short substring with underscores: pro_qzzx_dev', 'pro_qzzx_dev', false, 'NAME_NOT_ALLOWED');
+assertName('Short substring uppercase: QZZX', 'QZZX', false, 'NAME_NOT_ALLOWED');
+assertName('Short substring leetspeak: q22x', 'qzzx', false, 'NAME_NOT_ALLOWED');
+
+// 13. Affix-Aware Reserved Names & Digits (Rule 7)
+console.log('\n--- 13. Affix-Aware Reserved Names & Digits (G1.e Required) ---');
+assertName('Reserved leetspeak: Adm1n', 'Adm1n', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved leetspeak: 0fficial', '0fficial', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved leetspeak: Cl4ude', 'Cl4ude', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with trailing digit: admin7', 'admin7', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with leading digit: 7admin', '7admin', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with prefix "The": TheAdmin', 'TheAdmin', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with prefix "Real": RealClaude', 'RealClaude', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with prefix "Official": OfficialAdmin', 'OfficialAdmin', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with prefix "Bot": BotClaude', 'BotClaude', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with prefix "Team": TeamAdmin', 'TeamAdmin', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with prefix "Staff": StaffClaude', 'StaffClaude', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with prefix "Mod": ModAdmin', 'ModAdmin', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with prefix "Support": SupportClaude', 'SupportClaude', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with prefix "Im": ImAdmin', 'ImAdmin', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with suffix "The": ClaudeThe', 'ClaudeThe', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved with suffix "Bot": AdminBot', 'AdminBot', false, 'NAME_NOT_ALLOWED');
+assertName('Reserved system impersonation: Administrator', 'Administrator', false, 'NAME_NOT_ALLOWED');
+assertName('Harmless name containing claude prefix: Claudette (Must PASS)', 'Claudette', true, 'Claudette');
+assertName('Harmless name containing claude prefix: Claudia (Must PASS)', 'Claudia', true, 'Claudia');
+assertName('Harmless name containing claude prefix: Claudio (Must PASS)', 'Claudio', true, 'Claudio');
+
+// 14. Allowlisted Harmless Words (G1.c Required)
+console.log('\n--- 14. Allowlisted Harmless Words (G1.c Required) ---');
+assertName('Allowlisted word: Scunthorpe', 'Scunthorpe', true, 'Scunthorpe');
+assertName('Allowlisted word: Penistone', 'Penistone', true, 'Penistone');
+assertName('Allowlisted word: Cumberland', 'Cumberland', true, 'Cumberland');
+assertName('Allowlisted word: Dickinson', 'Dickinson', true, 'Dickinson');
+assertName('Allowlisted word: Hancock', 'Hancock', true, 'Hancock');
+assertName('Allowlisted word: Assam', 'Assam', true, 'Assam');
+assertName('Allowlisted word: Bassett', 'Bassett', true, 'Bassett');
+assertName('Allowlisted word: classic', 'classic', true, 'classic');
+assertName('Allowlisted word: glasses', 'glasses', true, 'glasses');
+assertName('Allowlisted word: cockpit', 'cockpit', true, 'cockpit');
+assertName('Allowlisted word: peacock', 'peacock', true, 'peacock');
+assertName('Allowlisted word: analyst', 'analyst', true, 'analyst');
+assertName('Allowlisted word: Cassandra', 'Cassandra', true, 'Cassandra');
+assertName('Allowlisted word: Arsenal', 'Arsenal', true, 'Arsenal');
+assertName('Allowlisted word: Sussex', 'Sussex', true, 'Sussex');
+assertName('Allowlisted word: Middlesex', 'Middlesex', true, 'Middlesex');
+
+// 15. Deliberate Failure Demonstration
+console.log('\n--- 15. Deliberate Failure Demonstration ---');
 if (failDemoMode) {
   console.log('Triggering intentional unhandled assertion failure for --fail-demonstration...');
   assertName('Deliberate failure: assert reserved "admin" is valid', 'admin', true, 'admin');
@@ -172,4 +242,3 @@ if (failDemoMode) {
 console.log(`\n================================================================================`);
 console.log(`ALL ${passedTests}/${totalTests} TESTS PASSED CLEANLY.`);
 console.log(`================================================================================`);
-

@@ -1,14 +1,26 @@
-// names.ts: Pure name validation for Rogue 2048 custom display names
-// Web-standard / Node-importable TypeScript, zero Deno-specific globals
+// names.ts: Display name validation and sanitization for Rogue 2048
+// Implements G1 tokenisation, short token matching, allowlist skeleton stripping,
+// short substring matching, long substring matching, and affix-aware reserved names.
+// Web-standard / Node-importable TypeScript, zero Deno-specific globals.
 
-import { BLOCKLIST } from './names_blocklist.ts';
+import {
+  TOKEN_BLOCKLIST_SHORT,
+  SHORT_SUBSTRING,
+  BLOCKLIST_LONG,
+} from './names_blocklist.ts';
+import { ALLOWLIST } from './names_allowlist.ts';
 
 export type ValidateNameResult =
   | { ok: true; name: string; norm: string }
   | { ok: false; error: 'NAME_NOT_ALLOWED' };
 
-const RESERVED_NAMES = new Set([
+export type ValidateNameDetailedResult =
+  | { ok: true; name: string; norm: string }
+  | { ok: false; error: 'NAME_NOT_ALLOWED'; ruleNumber: number; ruleDescription: string };
+
+const RESERVED_WORDS = new Set([
   'admin',
+  'administrator',
   'moderator',
   'support',
   'official',
@@ -21,6 +33,18 @@ const RESERVED_NAMES = new Set([
   'undefined',
 ]);
 
+const RESERVED_AFFIXES = [
+  'the',
+  'real',
+  'official',
+  'bot',
+  'team',
+  'staff',
+  'mod',
+  'support',
+  'im',
+];
+
 const LEET_MAP: Record<string, string> = {
   '0': 'o',
   '1': 'i',
@@ -28,92 +52,203 @@ const LEET_MAP: Record<string, string> = {
   '4': 'a',
   '5': 's',
   '7': 't',
+  '9': 'q',
   '@': 'a',
   '$': 's',
 };
 
+// Sort allowlist by length descending so longer compounds are stripped first
+const SORTED_ALLOWLIST_SKELS = Array.from(new Set(
+  ALLOWLIST.map(w => toSkeleton(w.toLowerCase().trim())).filter(s => s.length >= 3)
+)).sort((a, b) => b.length - a.length);
+
 export function toSkeleton(str: string): string {
   let mapped = '';
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
+  const lower = str.toLowerCase();
+  for (let i = 0; i < lower.length; i++) {
+    const ch = lower[i];
     mapped += LEET_MAP[ch] || ch;
   }
   // Collapse repeated characters: 2+ identical adjacent characters -> 1 character
   return mapped.replace(/(.)\1+/g, '$1');
 }
 
-export function validateName(input: unknown): ValidateNameResult {
-  // 1. Must be string
+/**
+ * Tokenise input into discrete tokens split by:
+ * - spaces, underscores, hyphens
+ * - digit/letter boundaries
+ * - lower->Upper camelCase boundaries
+ */
+export function tokeniseInput(input: string): string[] {
+  const tokens: string[] = [];
+  // 1. Split on spaces, underscores, hyphens
+  const baseChunks = input.trim().split(/[\s_\-]+/);
+
+  for (const chunk of baseChunks) {
+    if (!chunk) continue;
+    // 2. Split on camelCase (lower to Upper)
+    const camelParts = chunk.split(/(?<=[a-z])(?=[A-Z])/);
+    for (const cp of camelParts) {
+      if (!cp) continue;
+      tokens.push(cp);
+
+      // 3. Sub-split on digit/letter boundaries if present
+      const digitParts = cp.split(/(?<=[a-zA-Z])(?=[0-9])|(?<=[0-9])(?=[a-zA-Z])/);
+      if (digitParts.length > 1) {
+        for (const dp of digitParts) {
+          if (dp && dp !== cp) {
+            tokens.push(dp);
+          }
+        }
+      }
+    }
+  }
+
+  return tokens;
+}
+
+/**
+ * Strip allowlisted harmless words from skeleton before substring matching.
+ * Replaces allowlisted substrings with a space delimiter to prevent accidental character fusion.
+ */
+export function stripAllowlistFromSkeleton(skel: string): string {
+  let res = skel;
+  for (const allowSkel of SORTED_ALLOWLIST_SKELS) {
+    if (res.includes(allowSkel)) {
+      res = res.replaceAll(allowSkel, ' ');
+    }
+  }
+  return res;
+}
+
+export function validateNameDetailed(input: unknown): ValidateNameDetailedResult {
+  // Rule 1: Must be string
   if (typeof input !== 'string') {
-    return { ok: false, error: 'NAME_NOT_ALLOWED' };
+    return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 1, ruleDescription: 'Non-string input' };
   }
 
-  // 2. Trim and collapse internal whitespace to a single space
+  // Rule 2: Trim and collapse internal whitespace to single space
   const trimmed = input.trim().replace(/\s+/g, ' ');
-
-  // 3. Length must be 3..16
   if (trimmed.length < 3 || trimmed.length > 16) {
-    return { ok: false, error: 'NAME_NOT_ALLOWED' };
+    return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 2, ruleDescription: 'Length out of 3..16 range' };
   }
 
-  // 4. ONLY ASCII letters, digits, space, underscore, hyphen
+  // Rule 3: ONLY ASCII letters, digits, space, underscore, hyphen
   if (!/^[a-zA-Z0-9 _-]+$/.test(trimmed)) {
-    return { ok: false, error: 'NAME_NOT_ALLOWED' };
+    return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 3, ruleDescription: 'Forbidden characters' };
   }
 
-  // 5. Must start and end with a letter or digit
+  // Rule 4: Must start and end with letter or digit
   if (!/^[a-zA-Z0-9]/.test(trimmed) || !/[a-zA-Z0-9]$/.test(trimmed)) {
-    return { ok: false, error: 'NAME_NOT_ALLOWED' };
+    return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 4, ruleDescription: 'Invalid start/end boundary' };
   }
 
-  // 6. At most 4 digit characters in total
+  // Rule 5: At most 4 digit characters in total
   const digitMatches = trimmed.match(/\d/g);
   if (digitMatches && digitMatches.length > 4) {
-    return { ok: false, error: 'NAME_NOT_ALLOWED' };
+    return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 5, ruleDescription: 'Exceeded 4 digits' };
   }
 
-  // 7. No run of 4+ identical characters (case-insensitive)
+  // Rule 6: No run of 4+ identical characters (case-insensitive)
   if (/(.)\1{3,}/i.test(trimmed)) {
-    return { ok: false, error: 'NAME_NOT_ALLOWED' };
+    return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 6, ruleDescription: 'Run of 4+ identical characters' };
   }
 
-  // 8. Compute norm: lowercase with spaces/underscores/hyphens removed
+  // Compute normalised form: lowercase with spaces, underscores, hyphens removed
   const norm = trimmed.toLowerCase().replace(/[\s_\-]+/g, '');
   if (!norm) {
-    return { ok: false, error: 'NAME_NOT_ALLOWED' };
+    return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 2, ruleDescription: 'Empty norm' };
   }
 
-  // 9. Reserved check (after norm):
-  // admin, moderator, support, official, system, anthropic, claude, synera, rogue2048, null, undefined,
-  // and names that start with 'anon' followed by digits or underscore
-  if (RESERVED_NAMES.has(norm)) {
-    return { ok: false, error: 'NAME_NOT_ALLOWED' };
-  }
-
-  if (/^anon(?:\d+|_.*|$)/.test(norm) || /^anon(?:[\d_]+|$)/i.test(trimmed)) {
-    return { ok: false, error: 'NAME_NOT_ALLOWED' };
-  }
-
-  // 10. Blocklist check against skeleton
   const skeleton = toSkeleton(norm);
 
-  for (let i = 0; i < BLOCKLIST.length; i++) {
-    const entry = BLOCKLIST[i].toLowerCase();
-    const entrySkel = toSkeleton(entry);
+  // Rule 7: Reserved names / impersonation check
+  // Check equality on norm AND skeleton, ignoring leading/trailing digits,
+  // and check reserved words with affixes: the, real, official, bot, team, staff, mod, support, im.
+  const normNoDigits = norm.replace(/^\d+/, '').replace(/\d+$/, '');
+  const skelNoDigits = skeleton.replace(/^\d+/, '').replace(/\d+$/, '');
 
-    if (entry.length <= 4) {
-      // Whole-word match for entries of 4 letters or fewer
-      if (norm === entry || skeleton === entry || skeleton === entrySkel) {
-        return { ok: false, error: 'NAME_NOT_ALLOWED' };
+  for (const reserved of RESERVED_WORDS) {
+    const resSkel = toSkeleton(reserved);
+    if (
+      norm === reserved ||
+      normNoDigits === reserved ||
+      skeleton === resSkel ||
+      skelNoDigits === resSkel
+    ) {
+      return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 7, ruleDescription: 'Reserved name' };
+    }
+
+    for (const affix of RESERVED_AFFIXES) {
+      const affixSkel = toSkeleton(affix);
+      // Prefix match
+      if (
+        norm === affix + reserved ||
+        normNoDigits === affix + reserved ||
+        skeleton === affixSkel + resSkel ||
+        skelNoDigits === affixSkel + resSkel
+      ) {
+        return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 7, ruleDescription: 'Reserved name with prefix' };
       }
-    } else {
-      // Substring match for longer entries
-      if (norm.includes(entry) || skeleton.includes(entry) || skeleton.includes(entrySkel)) {
-        return { ok: false, error: 'NAME_NOT_ALLOWED' };
+      // Suffix match
+      if (
+        norm === reserved + affix ||
+        normNoDigits === reserved + affix ||
+        skeleton === resSkel + affixSkel ||
+        skelNoDigits === resSkel + affixSkel
+      ) {
+        return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 7, ruleDescription: 'Reserved name with suffix' };
       }
+    }
+  }
+
+  // System anonymous placeholder check
+  if (/^anon(?:\d+|_.*|$)/.test(norm) || /^anon(?:[\d_]+|$)/i.test(trimmed)) {
+    return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 7, ruleDescription: 'Reserved anon prefix' };
+  }
+
+  // Rule 8: Short Token Matching (<= 4 letters)
+  // Blocked when the entry's skeleton EQUALS a token skeleton
+  const tokens = tokeniseInput(trimmed);
+  const tokenSkels = tokens.map(t => toSkeleton(t));
+  // Include whole norm skeleton (for spaced-out whole names like 'Z z q')
+  tokenSkels.push(skeleton);
+
+  for (const entry of TOKEN_BLOCKLIST_SHORT) {
+    const entrySkel = toSkeleton(entry);
+    for (const tSkel of tokenSkels) {
+      if (tSkel === entrySkel) {
+        return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 8, ruleDescription: 'Short token blocklist match' };
+      }
+    }
+  }
+
+  // Prepare clean skeleton with allowlisted words stripped
+  const cleanSkeleton = stripAllowlistFromSkeleton(skeleton);
+
+  // Rule 9: Short Substring Matching (unambiguous short entries)
+  for (const entry of SHORT_SUBSTRING) {
+    const entrySkel = toSkeleton(entry);
+    if (cleanSkeleton.includes(entrySkel)) {
+      return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 9, ruleDescription: 'Short substring blocklist match' };
+    }
+  }
+
+  // Rule 10: Long Substring Matching (5+ letters)
+  for (const entry of BLOCKLIST_LONG) {
+    const entrySkel = toSkeleton(entry);
+    if (cleanSkeleton.includes(entrySkel)) {
+      return { ok: false, error: 'NAME_NOT_ALLOWED', ruleNumber: 10, ruleDescription: 'Long substring blocklist match' };
     }
   }
 
   return { ok: true, name: trimmed, norm };
 }
 
+export function validateName(input: unknown): ValidateNameResult {
+  const res = validateNameDetailed(input);
+  if (!res.ok) {
+    return { ok: false, error: 'NAME_NOT_ALLOWED' };
+  }
+  return { ok: true, name: res.name, norm: res.norm };
+}
