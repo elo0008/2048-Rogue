@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Rogue 2048 — Global Leaderboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    /* =====================================================================
+       ROGUE 2048 DESIGN SYSTEM TOKENS
+       Extracted strictly from the provided visual references
+       ===================================================================== */
+    :root {
+      --bg-void: #100E0E;
+      --bg-game: #191616;
+      --bg-modal: #251E1C;
+      --bg-surface: #302522;
+      --bg-surface-elevated: #3A2E2A;
+      --bg-surface-subtle: #241C1A;
+      --border-subtle: #44352F;
+      --border-highlight: #5A473E;
+      --gold-primary: #F4C879;
+      --gold-secondary: #DDAA5E;
+      --gold-glow: rgba(244, 200, 121, 0.28);
+      --silver-accent: #D2D7DF;
+      --silver-glow: rgba(210, 215, 223, 0.2);
+      --bronze-accent: #E2A06E;
+      --bronze-glow: rgba(226, 160, 110, 0.2);
+      --text-primary: #F5F0E9;
+      --text-secondary: #A99A90;
+      --text-muted: #766A64;
+      --font-stack: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-void);
+      color: var(--text-primary);
+      font-family: var(--font-stack);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ambient radial glow to recreate dark room indie arcade vibe */
+    .viewport-glow {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 50% 45%, rgba(68, 53, 47, 0.16) 0%, rgba(16, 14, 14, 0.95) 75%);
+      z-index: 0;
+    }
+
+    /* ---------------------------------------------------------------------
+       CENTRAL GAME CHASSIS
+       Matches the ~400px centered mobile viewport on desktop
+       --------------------------------------------------------------------- */
+    .game-device-frame {
+      position: relative;
+      width: 100%;
+      max-width: 412px;
+      height: 100vh;
+      max-height: 870px;
+      background-color: var(--bg-game);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(68, 53, 47, 0.35);
+      border-radius: 28px;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    @media (max-width: 480px) {
+      .game-device-frame {
+        max-width: 100%;
+        height: 100vh;
+        max-height: 100vh;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+
+    /* =====================================================================
+       UNDERLYING SCREEN: ACCURATE ROGUE 2048 LANDING & GAMEPLAY MOCKUP
+       ===================================================================== */
+    .game-canvas-bg {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px 20px 20px 20px;
+      position: relative;
+      background: linear-gradient(180deg, #1A1717 0%, #161313 100%);
+    }
+
+    /* Top bar of game */
+    .mock-topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 6px;
+    }
+
+    .mock-brand {
+      font-weight: 900;
+      font-size: 20px;
+      letter-spacing: 0.5px;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .mock-brand-badge {
+      background: var(--gold-primary);
+      color: #100E0E;
+      font-weight: 900;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 5px;
+      letter-spacing: 0;
+    }
+
+    .mock-header-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .mock-icon-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--gold-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.15s, background-color 0.15s;
+    }
+
+    .mock-icon-btn:hover {
+      background-color: var(--bg-surface-elevated);
+      transform: translateY(-1px);
+    }
+
+    .mock-icon-btn.leaderboard-trigger {
+      position: relative;
+      border-color: rgba(244, 200, 121, 0.4);
+      box-shadow: 0 0 14px var(--gold-glow);
+    }
+
+    /* Pulse dot on leaderboard button */
+    .pulse-dot {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--gold-primary);
+      box-shadow: 0 0 8px var(--gold-primary);
+      animation: pulseAnim 2s infinite ease-in-out;
+    }
+
+    @keyframes pulseAnim {
+      0%, 100% { opacity: 0.6; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    /* Gameplay mini-stats bar */
+    .mock-stats-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin: 18px 0;
+    }
+
+    .mock-stat-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .mock-stat-label {
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
+    .mock-stat-val {
+      font-size: 19px;
+      font-weight: 800;
+      color: var(--text-primary);
+    }
+
+    .mock-stat-val.gold {
+      color: var(--gold-primary);
+    }
+
+    /* Game 4x4 Grid */
+    .mock-grid-container {
+      background: #141111;
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 10px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      aspect-ratio: 1;
+      width: 100%;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.4);
+    }
+
+    .mock-tile {
+      background: #231B19;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 22px;
+      color: var(--text-primary);
+      box-shadow: inset 0 -2px 0 rgba(0,0,0,0.3);
+    }
+
+    .mock-tile.t-2 { background: #2E2522; color: #D5C9BE; font-size: 20px; }
+    .mock-tile.t-4 { background: #352B28; color: #E7DBD0; font-size: 20px; }
+    .mock-tile.t-8 { background: #4D3325; color: #F5EAE0; }
+    .mock-tile.t-16 { background: #613B28; color: #FFF1E6; }
+    .mock-tile.t-64 { background: #7C4524; color: #FFF8F0; }
+    .mock-tile.t-512 {
+      background: var(--gold-primary);
+      color: #1A1308;
+      box-shadow: 0 4px 14px var(--gold-glow);
+      font-weight: 900;
+    }
+
+    /* Actions bar bottom */
+    .mock-bottom-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .mock-btn-main {
+      background: var(--gold-primary);
+      color: #120F0D;
+      font-weight: 800;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 18px var(--gold-glow);
+      transition: filter 0.15s, transform 0.15s;
+    }
+
+    .mock-btn-main:hover {
+      filter: brightness(1.06);
+      transform: translateY(-1px);
+    }
+
+    .mock-tip {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      letter-spacing: 0.4px;
+    }
+
+    /* =====================================================================
+       GLOBAL LEADERBOARD MODAL (THE CORE DELIVERABLE)
+       Exact visual fidelity with Rogue 2048 'Best Runs' overlay
+       ===================================================================== */
+    .leaderboard-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(10, 8, 8, 0.78);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .leaderboard-backdrop.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .leaderboard-modal {
+      width: 100%;
+      height: 100%;
+      max-height: 840px;
+      background-color: var(--bg-modal);
+      border: 1px solid var(--border-subtle);
+      border-radius: 22px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 24px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(244, 200, 121, 0.08);
+      transform: scale(0.95) translateY(14px);
+      transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+    }
+
+    .leaderboard-backdrop.active .leaderboard-modal {
+      transform: scale(1) translateY(0);
+    }
+
+    /* Header component */
+    .modal-header {
+      padding: 20px 20px 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      position: relative;
+      border-bottom: 1px solid rgba(68, 53, 47, 0.35);
+    }
+
+    .header-text-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .header-eyebrow {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: var(--gold-primary);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .header-eyebrow svg {
+      width: 13px;
+      height: 13px;
+      fill: var(--gold-primary);
+    }
+
+    .header-title {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 0.6px;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+
+    .header-subtitle {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      margin-top: 1px;
+    }
+
+    .close-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+
+    .close-btn:hover {
+      background: var(--bg-surface-elevated);
+      color: var(--text-primary);
+      border-color: var(--gold-secondary);
+      transform: scale(1.05);
+    }
+
+    /* Category Navigation Tabs */
+    .category-tabs-wrapper {
+      padding: 10px 18px 8px 18px;
+      background: rgba(25, 22, 22, 0.4);
+    }
+
+    .category-tabs {
+      display: flex;
+      background: #1B1514;
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 3px;
+      gap: 4px;
+    }
+
+    .category-tab-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: var(--font-stack);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      padding: 8px 6px;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      text-transform: uppercase;
+    }
+
+    .category-tab-btn:hover:not(.active) {
+      color: var(--text-secondary);
+      background: rgba(68, 53, 47, 0.25);
+    }
+
+    .category-tab-btn.active {
+      background: var(--bg-surface-elevated);
+      color: var(--gold-primary);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(244, 200, 121, 0.3);
+    }
+
+    /* =====================================================================
+       PODIUM (TOP 3 PLAYERS)
+       Compact, restrained indie arcade aesthetic
+       ===================================================================== */
+    .podium-section {
+      padding: 16px 16px 8px 16px;
+      display: grid;
+      grid-template-columns: 1fr 1.15fr 1fr;
+      gap: 8px;
+      align-items: flex-end;
+      position: relative;
+    }
+
+    .podium-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 12px 8px 10px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      position: relative;
+      transition: transform 0.25s ease, border-color 0.25s ease, background-color 0.25s ease;
+      overflow: hidden; /* Keeps the colored accent strip & shimmer clipped cleanly inside */
+    }
+
+    /* Original internal top accent line strictly flush inside card boundary */
+    .podium-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--border-subtle);
+      z-index: 2;
+    }
+
+    /* Card 1 container wrapper to allow badge to rise outside without clipping */
+    .podium-slot-1 {
+      position: relative;
+      overflow: visible;
+    }
+
+    /* Periodic glass shimmer sweep strictly within card boundary */
+    .podium-shimmer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+      border-radius: 13px;
+    }
+
+    .podium-shimmer::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -130%;
+      width: 60%;
+      height: 200%;
+      background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.04) 20%,
+        rgba(255, 255, 255, 0.16) 50%,
+        rgba(255, 255, 255, 0.04) 80%,
+        rgba(255, 255, 255, 0) 100%
+      );
+      transform: rotate(25deg);
+      animation: glassShimmer 5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+
+    .podium-card.rank-1 .podium-shimmer::after {
+      background: linear-gradient(
+        90deg,
+        rgba(244, 200, 121, 0) 0%,
+        rgba(244, 200, 121, 0.06) 20%,
+        rgba(255, 245, 215, 0.25) 50%,
+        rgba(244, 200, 121, 0.06) 80%,
+        rgba(244, 200, 121, 0) 100%
+      );
+      animation-delay: 0.2s;
+    }
+
+    .podium-card.rank-2 .podium-shimmer::after {
+      animation-delay: 0.8s;
+    }
+
+    .podium-card.rank-3 .podium-shimmer::after {
+      animation-delay: 1.4s;
+    }
+
+    @keyframes glassShimmer {
+      0% {
+        left: -130%;
+      }
+      25% {
+        left: 170%;
+      }
+      100% {
+        left: 170%;
+      }
+    }
+
+    /* Content layers stay above shimmer */
+    .avatar-wrapper,
+    .podium-name,
+    .podium-score,
+    .podium-tile-pill,
+    .podium-rank-tag {
+      position: relative;
+      z-index: 3;
+    }
+
+    /* #1 Champion Card */
+    .podium-card.rank-1 {
+      background: linear-gradient(180deg, #372A24 0%, #291F1C 100%);
+      border-color: rgba(244, 200, 121, 0.45);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 20px rgba(244, 200, 121, 0.12);
+      padding-top: 14px;
+      padding-bottom: 12px;
+    }
+
+    .podium-slot-1 {
+      transform: translateY(-4px);
+    }
+
+    .podium-card.rank-1::before {
+      background: linear-gradient(90deg, #DDAA5E, #F4C879, #DDAA5E);
+    }
+
+    /* Crown / Trophy badge: elevated above the card without clipping */
+    .trophy-badge {
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #F4C879, #C8923B);
+      color: #19140C;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 10px rgba(244, 200, 121, 0.3);
+      border: 1.5px solid #201A18;
+      z-index: 10;
+    }
+
+    .trophy-badge svg {
+      width: 12px;
+      height: 12px;
+      fill: #19140C;
+    }
+
+    /* Rank 2 & 3 original top accents */
+    .podium-card.rank-2::before {
+      background: var(--silver-accent);
+    }
+
+    .podium-card.rank-3::before {
+      background: var(--bronze-accent);
+    }
+
+    .avatar-wrapper {
+      position: relative;
+      margin-bottom: 6px;
+    }
+
+    .podium-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #231C1A;
+      border: 2px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 13px;
+      color: var(--text-primary);
+      position: relative;
+    }
+
+    .rank-1 .podium-avatar {
+      width: 48px;
+      height: 48px;
+      border-color: var(--gold-primary);
+      font-size: 15px;
+      color: var(--gold-primary);
+      box-shadow: 0 0 12px var(--gold-glow);
+    }
+
+    .rank-2 .podium-avatar {
+      border-color: var(--silver-accent);
+      color: var(--silver-accent);
+    }
+
+    .rank-3 .podium-avatar {
+      border-color: var(--bronze-accent);
+      color: var(--bronze-accent);
+    }
+
+    .podium-flag {
+      position: absolute;
+      bottom: -3px;
+      right: -3px;
+      font-size: 12px;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.7));
+      line-height: 1;
+    }
+
+    .podium-name {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 90px;
+      letter-spacing: -0.2px;
+      margin-bottom: 2px;
+    }
+
+    .podium-card.rank-1 .podium-name {
+      color: #FFF6EC;
+      max-width: 104px;
+      font-size: 13px;
+    }
+
+    .podium-score {
+      font-size: 15px;
+      font-weight: 900;
+      color: var(--gold-primary);
+      letter-spacing: -0.3px;
+      line-height: 1.1;
+      margin-bottom: 4px;
+    }
+
+    .podium-card.rank-1 .podium-score {
+      font-size: 18px;
+      text-shadow: 0 0 12px rgba(244, 200, 121, 0.4);
+    }
+
+    .podium-tile-pill {
+      background: #231C1A;
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--text-secondary);
+      padding: 2px 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .rank-1 .podium-tile-pill {
+      background: rgba(244, 200, 121, 0.15);
+      border-color: rgba(244, 200, 121, 0.35);
+      color: var(--gold-primary);
+    }
+
+    /* Small badge at card bottom */
+    .podium-rank-tag {
+      font-size: 10px;
+      font-weight: 900;
+      margin-top: 4px;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    .rank-1 .podium-rank-tag { color: var(--gold-primary); }
+    .rank-2 .podium-rank-tag { color: var(--silver-accent); }
+    .rank-3 .podium-rank-tag { color: var(--bronze-accent); }
+
+    /* =====================================================================
+       RANKINGS LIST (RANK #4 ONWARDS)
+       Independently scrollable with custom sleek scrollbar
+       ===================================================================== */
+    .list-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 18px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      border-top: 1px solid rgba(68, 53, 47, 0.3);
+      border-bottom: 1px solid rgba(68, 53, 47, 0.3);
+      background: rgba(25, 22, 22, 0.6);
+    }
+
+    .rankings-scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 8px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .rankings-scroll-area::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    .rankings-scroll-area::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .rankings-scroll-area::-webkit-scrollbar-thumb {
+      background-color: var(--border-subtle);
+      border-radius: 10px;
+    }
+
+    .rankings-scroll-area::-webkit-scrollbar-thumb:hover {
+      background-color: var(--border-highlight);
+    }
+
+    /* Individual Player Row */
+    .ranking-row {
+      display: grid;
+      grid-template-columns: 32px 34px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+      cursor: default;
+    }
+
+    .ranking-row:hover {
+      background: var(--bg-surface-elevated);
+      border-color: var(--border-highlight);
+      transform: translateX(2px);
+    }
+
+    /* If row belongs to the current user */
+    .ranking-row.is-current-user {
+      background: rgba(244, 200, 121, 0.08);
+      border-color: rgba(244, 200, 121, 0.5);
+    }
+
+    .rank-number {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--text-muted);
+      letter-spacing: -0.3px;
+    }
+
+    .row-avatar-box {
+      position: relative;
+      width: 32px;
+      height: 32px;
+    }
+
+    .row-avatar {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: #251D1B;
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--text-secondary);
+    }
+
+    .row-flag {
+      position: absolute;
+      bottom: -3px;
+      right: -3px;
+      font-size: 10px;
+      line-height: 1;
+    }
+
+    .player-meta {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .player-username {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .you-pill {
+      font-size: 9px;
+      font-weight: 900;
+      background: var(--gold-primary);
+      color: #120F0D;
+      padding: 1px 4px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .player-subdetails {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 1px;
+    }
+
+    .sub-dot {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+
+    .player-score-block {
+      text-align: right;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+    }
+
+    .player-score-val {
+      font-size: 15px;
+      font-weight: 900;
+      color: var(--gold-primary);
+      letter-spacing: -0.2px;
+    }
+
+    .player-tile-tag {
+      font-size: 9px;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: #251D1A;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-subtle);
+    }
+
+    /* Staggered entrance animation for rows */
+    .ranking-row {
+      animation: rowEntrance 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes rowEntrance {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* =====================================================================
+       BOTTOM PINNED: CURRENT PLAYER'S RANK ("YOUR RANK")
+       Remains accessible regardless of scroll position
+       ===================================================================== */
+    .current-user-pinned {
+      background: linear-gradient(180deg, #2D2320 0%, #251D1B 100%);
+      border-top: 1px solid rgba(244, 200, 121, 0.28);
+      padding: 10px 16px;
+      box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.45);
+      z-index: 10;
+    }
+
+    .pinned-eyebrow {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .pinned-label {
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 1.2px;
+      color: var(--gold-primary);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .pinned-sync {
+      font-size: 10px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .sync-indicator {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #68B06B;
+    }
+
+    .pinned-row-card {
+      background: #342824;
+      border: 1px solid rgba(244, 200, 121, 0.35);
+      border-radius: 12px;
+      padding: 9px 12px;
+      display: grid;
+      grid-template-columns: 46px 32px 1fr auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pinned-rank-badge {
+      font-size: 13px;
+      font-weight: 900;
+      color: var(--gold-primary);
+      letter-spacing: -0.3px;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    /* Floating subtle highlight shimmer */
+    .shimmer-text {
+      background: linear-gradient(90deg, #F4C879 0%, #FFFFFF 50%, #F4C879 100%);
+      background-size: 200% auto;
+      color: transparent;
+      -webkit-background-clip: text;
+      background-clip: text;
+      animation: shimmer 4s linear infinite;
+    }
+
+    @keyframes shimmer {
+      to {
+        background-position: 200% center;
+      }
+    }
+
+    /* Accessibility: Respect Reduced Motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, ::before, ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient background glow for desktop void presentation -->
+  <div class="viewport-glow"></div>
+
+  <!-- Central Phone Chassis matching Rogue 2048's centered container -->
+  <main class="game-device-frame" id="deviceFrame" aria-label="Rogue 2048 Game Container">
+
+    <!-- Screen 1: Underlying Game State / Landing Simulation -->
+    <div class="game-canvas-bg" id="gameScreen">
+      
+      <!-- Top header bar with branding and actions -->
+      <header class="mock-topbar">
+        <div class="mock-brand">
+          <span>ROGUE 2048</span>
+          <span class="mock-brand-badge">R•2</span>
+        </div>
+        
+        <nav class="mock-header-actions" aria-label="Game navigation">
+          <!-- Main Leaderboard Trigger Button -->
+          <button class="mock-icon-btn leaderboard-trigger" id="openLeaderboardBtn" title="Open Global Leaderboard" aria-label="Global Leaderboard">
+            <span class="pulse-dot"></span>
+            <!-- Trophy SVG -->
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 4h-2V3a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1H5a3 3 0 0 0-3 3v2a6 6 0 0 0 5.2 5.92A6 6 0 0 0 11 18.9V20H8a1 1 0 0 0 0 2h8a1 1 0 0 0 0-2h-3v-1.1a6 6 0 0 0 3.8-4 6 6 0 0 0 5.2-5.9V7a3 3 0 0 0-3-3zM5 9V7h2v4.7A4 4 0 0 1 5 9zm14 0a4 4 0 0 1-2 2.7V7h2z"/>
+            </svg>
+          </button>
+
+          <!-- Settings / Sound mock button -->
+          <button class="mock-icon-btn" title="Sound and settings" aria-label="Settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0v17.54l-5-5H2v-7.54h3l5-5z"/>
+            </svg>
+          </button>
+        </nav>
+      </header>
+
+      <!-- Run stats preview -->
+      <section class="mock-stats-row" aria-label="Game stats">
+        <div class="mock-stat-card">
+          <div class="mock-stat-label">SCORE</div>
+          <div class="mock-stat-val gold">7,624</div>
+        </div>
+        <div class="mock-stat-card">
+          <div class="mock-stat-label">MOVES</div>
+          <div class="mock-stat-val">319</div>
+        </div>
+        <div class="mock-stat-card">
+          <div class="mock-stat-label">MAX TILE</div>
+          <div class="mock-stat-val">512</div>
+        </div>
+      </section>
+
+      <!-- 4x4 Puzzle grid preview -->
+      <div class="mock-grid-container" aria-hidden="true">
+        <div class="mock-tile t-4">4</div>
+        <div class="mock-tile t-2">2</div>
+        <div class="mock-tile t-4">4</div>
+        <div class="mock-tile t-2">2</div>
+        <div class="mock-tile t-8">8</div>
+        <div class="mock-tile t-4">4</div>
+        <div class="mock-tile t-64">64</div>
+        <div class="mock-tile"></div>
+        <div class="mock-tile t-4">4</div>
+        <div class="mock-tile t-512">512</div>
+        <div class="mock-tile"></div>
+        <div class="mock-tile t-2">2</div>
+        <div class="mock-tile"></div>
+        <div class="mock-tile"></div>
+        <div class="mock-tile t-2">2</div>
+        <div class="mock-tile t-16">16</div>
+      </div>
+
+      <!-- Action buttons -->
+      <footer class="mock-bottom-bar">
+        <button class="mock-btn-main" id="openLeaderboardBtn2">
+          <!-- Globe icon -->
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm7.93 9h-3.18a15.7 15.7 0 0 0-1.39-5.1A8.04 8.04 0 0 1 19.93 11zM12 4.07c.97 1.48 1.83 3.8 2.05 6.93H9.95C10.17 7.87 11.03 5.55 12 4.07zm-4.36 1.83A15.7 15.7 0 0 0 6.25 11H3.07a8.04 8.04 0 0 1 4.57-5.1zM3.07 13h3.18a15.7 15.7 0 0 0 1.39 5.1A8.04 8.04 0 0 1 3.07 13zm8.93 6.93c-.97-1.48-1.83-3.8-2.05-6.93h4.1c-.22 3.13-1.08 5.45-2.05 6.93zm4.36-1.83A15.7 15.7 0 0 0 17.75 13h3.18a8.04 8.04 0 0 1-4.57 5.1z"/>
+          </svg>
+          VIEW GLOBAL LEADERBOARD
+        </button>
+        <div class="mock-tip">Swipe grid to play • Outlast the board</div>
+      </footer>
+    </div>
+
+    <!-- =====================================================================
+         GLOBAL LEADERBOARD MODAL CONTAINER
+         ===================================================================== -->
+    <div class="leaderboard-backdrop active" id="leaderboardBackdrop" role="dialog" aria-modal="true" aria-labelledby="leaderboardTitle">
+      <div class="leaderboard-modal" id="leaderboardModal">
+        
+        <!-- Header -->
+        <div class="modal-header">
+          <div class="header-text-group">
+            <div class="header-eyebrow">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+              </svg>
+              GLOBAL RANKINGS
+            </div>
+            <h1 class="header-title shimmer-text" id="leaderboardTitle">LEADERBOARD</h1>
+            <p class="header-subtitle">Compete with players worldwide</p>
+          </div>
+          
+          <button class="close-btn" id="closeLeaderboardBtn" title="Close Leaderboard (Esc)" aria-label="Close modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Category Selector Native Tabs -->
+        <nav class="category-tabs-wrapper" aria-label="Leaderboard timeframe">
+          <div class="category-tabs" role="tablist">
+            <button class="category-tab-btn active" role="tab" aria-selected="true" data-category="allTime">ALL TIME</button>
+            <button class="category-tab-btn" role="tab" aria-selected="false" data-category="thisWeek">THIS WEEK</button>
+            <button class="category-tab-btn" role="tab" aria-selected="false" data-category="today">TODAY</button>
+          </div>
+        </nav>
+
+        <!-- Top 3 Podium Section -->
+        <section class="podium-section" id="podiumContainer" aria-label="Top 3 players podium">
+          <!-- Dynamically generated via renderPodium() -->
+        </section>
+
+        <!-- Subheading for rankings table -->
+        <div class="list-header-bar">
+          <span>RANK &amp; PLAYER</span>
+          <span>SCORE / TILE</span>
+        </div>
+
+        <!-- Independently Scrollable Rankings List (#4 onward) -->
+        <div class="rankings-scroll-area" id="rankingsScrollList" role="feed" aria-label="Global player rankings list">
+          <!-- Dynamically generated via renderRankingRows() -->
+        </div>
+
+        <!-- Bottom Pinned Card: Current Player's Standing -->
+        <section class="current-user-pinned" aria-label="Your ranking">
+          <div class="pinned-eyebrow">
+            <span class="pinned-label">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+              </svg>
+              YOUR CURRENT RANK
+            </span>
+            <span class="pinned-sync">
+              <span class="sync-indicator"></span> Live Synced
+            </span>
+          </div>
+
+          <div class="pinned-row-card" id="currentUserCard">
+            <!-- Dynamically populated to reflect category stats -->
+          </div>
+        </section>
+
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    /* =====================================================================
+       MOCK DATASETS FOR EACH TIMEFRAME CATEGORY
+       Over 20+ realistic competitors per category with proper stats
+       ===================================================================== */
+    const LEADERBOARD_DATA = {
+      allTime: {
+        currentUser: {
+          rank: 247,
+          username: "Madhav",
+          score: 7624,
+          maxTile: 512,
+          moves: 319,
+          country: "🇮🇳",
+          initials: "MD"
+        },
+        players: [
+          { rank: 1, username: "TileValkyrie", score: 28450, maxTile: 4096, moves: 1420, country: "🇰🇷", initials: "TV" },
+          { rank: 2, username: "AetherMerge", score: 24190, maxTile: 2048, moves: 1215, country: "🇯🇵", initials: "AM" },
+          { rank: 3, username: "GridNomad", score: 22088, maxTile: 2048, moves: 1132, country: "🇺🇸", initials: "GN" },
+          { rank: 4, username: "TileMaster", score: 18420, maxTile: 2048, moves: 948, country: "🇩🇪", initials: "TM" },
+          { rank: 5, username: "MergeKing", score: 16890, maxTile: 1024, moves: 882, country: "🇨🇦", initials: "MK" },
+          { rank: 6, username: "RoguePlayer", score: 15240, maxTile: 1024, moves: 790, country: "🇫🇷", initials: "RP" },
+          { rank: 7, username: "NumberSmith", score: 13850, maxTile: 1024, moves: 712, country: "🇬🇧", initials: "NS" },
+          { rank: 8, username: "GridHunter", score: 12460, maxTile: 512, moves: 645, country: "🇧🇷", initials: "GH" },
+          { rank: 9, username: "MergeWizard", score: 11920, maxTile: 512, moves: 618, country: "🇦🇺", initials: "MW" },
+          { rank: 10, username: "PixelRogue", score: 10850, maxTile: 512, moves: 580, country: "🇸🇪", initials: "PR" },
+          { rank: 11, username: "ZenithTile", score: 10244, maxTile: 512, moves: 540, country: "🇪🇸", initials: "ZT" },
+          { rank: 12, username: "VortexDrift", score: 9840, maxTile: 512, moves: 512, country: "🇸🇬", initials: "VD" },
+          { rank: 13, username: "CipherForge", score: 9420, maxTile: 512, moves: 489, country: "🇳🇴", initials: "CF" },
+          { rank: 14, username: "ArcadeEcho", score: 9110, maxTile: 512, moves: 465, country: "🇳🇱", initials: "AE" },
+          { rank: 15, username: "ShiftMatrix", score: 8750, maxTile: 512, moves: 440, country: "🇮🇹", initials: "SM" },
+          { rank: 16, username: "OmniGrid", score: 8430, maxTile: 512, moves: 428, country: "🇫🇮", initials: "OG" },
+          { rank: 17, username: "EchoRunner", score: 8304, maxTile: 512, moves: 403, country: "🇲🇽", initials: "ER" },
+          { rank: 18, username: "FluxKnight", score: 7980, maxTile: 512, moves: 382, country: "🇵🇱", initials: "FK" },
+          { rank: 19, username: "Solaris_9", score: 7710, maxTile: 512, moves: 360, country: "🇨🇭", initials: "S9" },
+          { rank: 20, username: "QuantumFold", score: 7550, maxTile: 512, moves: 345, country: "🇳🇿", initials: "QF" },
+          { rank: 21, username: "CosmicTile", score: 7210, maxTile: 512, moves: 320, country: "🇦🇹", initials: "CT" },
+          { rank: 22, username: "RuneSolver", score: 6940, maxTile: 256, moves: 304, country: "🇩🇰", initials: "RS" }
+        ]
+      },
+      thisWeek: {
+        currentUser: {
+          rank: 82,
+          username: "Madhav",
+          score: 7624,
+          maxTile: 512,
+          moves: 319,
+          country: "🇮🇳",
+          initials: "MD"
+        },
+        players: [
+          { rank: 1, username: "AetherMerge", score: 21450, maxTile: 2048, moves: 1092, country: "🇯🇵", initials: "AM" },
+          { rank: 2, username: "GridHunter", score: 17300, maxTile: 2048, moves: 914, country: "🇧🇷", initials: "GH" },
+          { rank: 3, username: "VortexDrift", score: 15920, maxTile: 1024, moves: 825, country: "🇸🇬", initials: "VD" },
+          { rank: 4, username: "TileMaster", score: 14210, maxTile: 1024, moves: 760, country: "🇩🇪", initials: "TM" },
+          { rank: 5, username: "PixelRogue", score: 13450, maxTile: 1024, moves: 710, country: "🇸🇪", initials: "PR" },
+          { rank: 6, username: "NumberSmith", score: 12100, maxTile: 1024, moves: 642, country: "🇬🇧", initials: "NS" },
+          { rank: 7, username: "ShiftMatrix", score: 11480, maxTile: 512, moves: 590, country: "🇮🇹", initials: "SM" },
+          { rank: 8, username: "TileValkyrie", score: 10900, maxTile: 512, moves: 540, country: "🇰🇷", initials: "TV" },
+          { rank: 9, username: "ArcadeEcho", score: 10250, maxTile: 512, moves: 510, country: "🇳🇱", initials: "AE" },
+          { rank: 10, username: "QuantumFold", score: 9810, maxTile: 512, moves: 480, country: "🇳🇿", initials: "QF" },
+          { rank: 11, username: "MergeWizard", score: 9420, maxTile: 512, moves: 450, country: "🇦🇺", initials: "MW" },
+          { rank: 12, username: "GridNomad", score: 9100, maxTile: 512, moves: 430, country: "🇺🇸", initials: "GN" },
+          { rank: 13, username: "EchoRunner", score: 8650, maxTile: 512, moves: 410, country: "🇲🇽", initials: "ER" },
+          { rank: 14, username: "Solaris_9", score: 8320, maxTile: 512, moves: 390, country: "🇨🇭", initials: "S9" },
+          { rank: 15, username: "RoguePlayer", score: 8100, maxTile: 512, moves: 375, country: "🇫🇷", initials: "RP" },
+          { rank: 16, username: "ZenithTile", score: 7950, maxTile: 512, moves: 350, country: "🇪🇸", initials: "ZT" },
+          { rank: 17, username: "CosmicTile", score: 7800, maxTile: 512, moves: 340, country: "🇦🇹", initials: "CT" },
+          { rank: 18, username: "FluxKnight", score: 7550, maxTile: 512, moves: 320, country: "🇵🇱", initials: "FK" },
+          { rank: 19, username: "CipherForge", score: 7200, maxTile: 512, moves: 305, country: "🇳🇴", initials: "CF" },
+          { rank: 20, username: "OmniGrid", score: 6890, maxTile: 256, moves: 290, country: "🇫🇮", initials: "OG" }
+        ]
+      },
+      today: {
+        currentUser: {
+          rank: 14,
+          username: "Madhav",
+          score: 7624,
+          maxTile: 512,
+          moves: 319,
+          country: "🇮🇳",
+          initials: "MD"
+        },
+        players: [
+          { rank: 1, username: "NeonCipher", score: 14890, maxTile: 1024, moves: 760, country: "🇰🇷", initials: "NC" },
+          { rank: 2, username: "TileMaster", score: 12540, maxTile: 1024, moves: 642, country: "🇩🇪", initials: "TM" },
+          { rank: 3, username: "MergeWizard", score: 11200, maxTile: 512, moves: 580, country: "🇦🇺", initials: "MW" },
+          { rank: 4, username: "AetherMerge", score: 10450, maxTile: 512, moves: 512, country: "🇯🇵", initials: "AM" },
+          { rank: 5, username: "GridHunter", score: 9870, maxTile: 512, moves: 470, country: "🇧🇷", initials: "GH" },
+          { rank: 6, username: "PixelRogue", score: 9420, maxTile: 512, moves: 440, country: "🇸🇪", initials: "PR" },
+          { rank: 7, username: "QuantumFold", score: 8950, maxTile: 512, moves: 410, country: "🇳🇿", initials: "QF" },
+          { rank: 8, username: "ArcadeEcho", score: 8710, maxTile: 512, moves: 395, country: "🇳🇱", initials: "AE" },
+          { rank: 9, username: "GridNomad", score: 8520, maxTile: 512, moves: 380, country: "🇺🇸", initials: "GN" },
+          { rank: 10, username: "NumberSmith", score: 8300, maxTile: 512, moves: 365, country: "🇬🇧", initials: "NS" },
+          { rank: 11, username: "VortexDrift", score: 8050, maxTile: 512, moves: 345, country: "🇸🇬", initials: "VD" },
+          { rank: 12, username: "ShiftMatrix", score: 7920, maxTile: 512, moves: 335, country: "🇮🇹", initials: "SM" },
+          { rank: 13, username: "ZenithTile", score: 7780, maxTile: 512, moves: 328, country: "🇪🇸", initials: "ZT" },
+          { rank: 14, username: "Madhav", score: 7624, maxTile: 512, moves: 319, country: "🇮🇳", initials: "MD", isYou: true },
+          { rank: 15, username: "EchoRunner", score: 7410, maxTile: 512, moves: 310, country: "🇲🇽", initials: "ER" },
+          { rank: 16, username: "FluxKnight", score: 7120, maxTile: 512, moves: 295, country: "🇵🇱", initials: "FK" },
+          { rank: 17, username: "Solaris_9", score: 6840, maxTile: 256, moves: 280, country: "🇨🇭", initials: "S9" },
+          { rank: 18, username: "RuneSolver", score: 6510, maxTile: 256, moves: 265, country: "🇩🇰", initials: "RS" },
+          { rank: 19, username: "CosmicTile", score: 6200, maxTile: 256, moves: 248, country: "🇦🇹", initials: "CT" },
+          { rank: 20, username: "OmniGrid", score: 5890, maxTile: 256, moves: 230, country: "🇫🇮", initials: "OG" }
+        ]
+      }
+    };
+
+    let currentCategory = 'allTime';
+
+    /* Format numerical score with commas */
+    function formatScore(num) {
+      return num.toLocaleString();
+    }
+
+    /* ---------------------------------------------------------------------
+       RENDER: TOP 3 PODIUM
+       Arranged in arcade hierarchy: #2 Left, #1 Center (Elevated), #3 Right
+       --------------------------------------------------------------------- */
+    function renderPodium(categoryKey) {
+      const podiumContainer = document.getElementById('podiumContainer');
+      const top3 = LEADERBOARD_DATA[categoryKey].players.slice(0, 3);
+      
+      const p1 = top3[0];
+      const p2 = top3[1];
+      const p3 = top3[2];
+
+      podiumContainer.innerHTML = `
+        <!-- Rank #2 (Left) -->
+        <div class="podium-card rank-2">
+          <div class="podium-shimmer" aria-hidden="true"></div>
+          <div class="avatar-wrapper">
+            <div class="podium-avatar">${p2.initials}</div>
+            <span class="podium-flag">${p2.country}</span>
+          </div>
+          <div class="podium-name" title="${p2.username}">${p2.username}</div>
+          <div class="podium-score">${formatScore(p2.score)}</div>
+          <span class="podium-tile-pill">Tile ${p2.maxTile}</span>
+          <div class="podium-rank-tag">#2 SILVER</div>
+        </div>
+
+        <!-- Rank #1 (Center Champion) -->
+        <div class="podium-slot-1">
+          <div class="trophy-badge" title="Champion Crown">
+            <svg viewBox="0 0 24 24">
+              <path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z"/>
+            </svg>
+          </div>
+          <div class="podium-card rank-1">
+            <div class="podium-shimmer" aria-hidden="true"></div>
+            <div class="avatar-wrapper">
+              <div class="podium-avatar">${p1.initials}</div>
+              <span class="podium-flag">${p1.country}</span>
+            </div>
+            <div class="podium-name" title="${p1.username}">${p1.username}</div>
+            <div class="podium-score">${formatScore(p1.score)}</div>
+            <span class="podium-tile-pill">Tile ${p1.maxTile}</span>
+            <div class="podium-rank-tag">#1 CHAMPION</div>
+          </div>
+        </div>
+
+        <!-- Rank #3 (Right) -->
+        <div class="podium-card rank-3">
+          <div class="podium-shimmer" aria-hidden="true"></div>
+          <div class="avatar-wrapper">
+            <div class="podium-avatar">${p3.initials}</div>
+            <span class="podium-flag">${p3.country}</span>
+          </div>
+          <div class="podium-name" title="${p3.username}">${p3.username}</div>
+          <div class="podium-score">${formatScore(p3.score)}</div>
+          <span class="podium-tile-pill">Tile ${p3.maxTile}</span>
+          <div class="podium-rank-tag">#3 BRONZE</div>
+        </div>
+      `;
+    }
+
+    /* ---------------------------------------------------------------------
+       RENDER: RANKINGS LIST (#4 ONWARD)
+       Staggered entrance and accurate metadata
+       --------------------------------------------------------------------- */
+    function renderRankingRows(categoryKey) {
+      const listContainer = document.getElementById('rankingsScrollList');
+      const remainingPlayers = LEADERBOARD_DATA[categoryKey].players.slice(3);
+
+      listContainer.innerHTML = remainingPlayers.map((player, index) => {
+        const isCurrent = player.isYou || player.username === "Madhav";
+        const delayMs = Math.min(index * 30, 300);
+
+        return `
+          <div class="ranking-row ${isCurrent ? 'is-current-user' : ''}" style="animation-delay: ${delayMs}ms">
+            <div class="rank-number">#${player.rank}</div>
+            
+            <div class="row-avatar-box">
+              <div class="row-avatar">${player.initials}</div>
+              <span class="row-flag">${player.country}</span>
+            </div>
+
+            <div class="player-meta">
+              <div class="player-username">
+                ${player.username}
+                ${isCurrent ? '<span class="you-pill">YOU</span>' : ''}
+              </div>
+              <div class="player-subdetails">
+                <span>${player.moves} moves</span>
+                <span class="sub-dot"></span>
+                <span>Max ${player.maxTile}</span>
+              </div>
+            </div>
+
+            <div class="player-score-block">
+              <span class="player-score-val">${formatScore(player.score)}</span>
+              <span class="player-tile-tag">${player.maxTile}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    /* ---------------------------------------------------------------------
+       RENDER: PINNED CURRENT PLAYER CARD
+       --------------------------------------------------------------------- */
+    function renderCurrentUser(categoryKey) {
+      const userCard = document.getElementById('currentUserCard');
+      const userData = LEADERBOARD_DATA[categoryKey].currentUser;
+
+      userCard.innerHTML = `
+        <div class="pinned-rank-badge">
+          #${userData.rank}
+        </div>
+
+        <div class="row-avatar-box">
+          <div class="row-avatar" style="border-color: var(--gold-primary); color: var(--gold-primary);">
+            ${userData.initials}
+          </div>
+          <span class="row-flag">${userData.country}</span>
+        </div>
+
+        <div class="player-meta">
+          <div class="player-username" style="color: #FFF;">
+            ${userData.username}
+            <span class="you-pill">YOU</span>
+          </div>
+          <div class="player-subdetails">
+            <span>${userData.moves} moves</span>
+            <span class="sub-dot"></span>
+            <span>Max Tile ${userData.maxTile}</span>
+          </div>
+        </div>
+
+        <div class="player-score-block">
+          <span class="player-score-val" style="font-size: 16px;">${formatScore(userData.score)}</span>
+          <span class="player-tile-tag" style="background: rgba(244, 200, 121, 0.15); color: var(--gold-primary); border-color: rgba(244, 200, 121, 0.4);">
+            ${userData.maxTile}
+          </span>
+        </div>
+      `;
+    }
+
+    /* Update full leaderboard content */
+    function updateLeaderboard(categoryKey) {
+      renderPodium(categoryKey);
+      renderRankingRows(categoryKey);
+      renderCurrentUser(categoryKey);
+      // Reset scroll position to top on category change
+      document.getElementById('rankingsScrollList').scrollTop = 0;
+    }
+
+    /* ---------------------------------------------------------------------
+       MODAL CONTROLS & EVENT LISTENERS
+       --------------------------------------------------------------------- */
+    const backdrop = document.getElementById('leaderboardBackdrop');
+    const modal = document.getElementById('leaderboardModal');
+    const openBtn1 = document.getElementById('openLeaderboardBtn');
+    const openBtn2 = document.getElementById('openLeaderboardBtn2');
+    const closeBtn = document.getElementById('closeLeaderboardBtn');
+    const tabButtons = document.querySelectorAll('.category-tab-btn');
+
+    function openLeaderboard() {
+      backdrop.classList.add('active');
+    }
+
+    function closeLeaderboard() {
+      backdrop.classList.remove('active');
+    }
+
+    // Open triggers
+    openBtn1.addEventListener('click', openLeaderboard);
+    openBtn2.addEventListener('click', openLeaderboard);
+
+    // Close triggers
+    closeBtn.addEventListener('click', closeLeaderboard);
+
+    // Click outside modal inside backdrop to close
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) {
+        closeLeaderboard();
+      }
+    });
+
+    // Keyboard support: Escape key closes modal
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && backdrop.classList.contains('active')) {
+        closeLeaderboard();
+      }
+    });
+
+    // Category Tabs Switching
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabButtons.forEach(b => {
+          b.classList.remove('active');
+          b.setAttribute('aria-selected', 'false');
+        });
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected', 'true');
+
+        const selectedCategory = btn.dataset.category;
+        currentCategory = selectedCategory;
+        updateLeaderboard(selectedCategory);
+      });
+    });
+
+    // Initialize initial state
+    updateLeaderboard('allTime');
+  </script>
+</body>
+</html>

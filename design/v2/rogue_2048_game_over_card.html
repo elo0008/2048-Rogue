@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ROGUE 2048 - Game Over & Global Ranking Mockup</title>
+  <!-- Google Fonts matching ROGUE 2048 geometric bold styling -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    /* -------------------------------------------------------------
+       1. COLOR SYSTEM & CSS VARIABLES
+       Based directly on ROGUE 2048 Screenshots & Spec
+    -------------------------------------------------------------- */
+    :root {
+      --bg-page: #100E0F;
+      --bg-overlay: rgba(0, 0, 0, 0.65);
+      --card-bg: #261F22;
+      --card-inner: #1C1618;
+      --card-inner-alt: #2D2427;
+      --border-subtle: #3D3134;
+      --border-accent: #785A32;
+      
+      --accent-gold: #F4C77F;
+      --accent-gold-hover: #fcd99a;
+      --accent-gold-dark: #DDA95F;
+      --accent-gold-dim: rgba(244, 199, 127, 0.15);
+      
+      --text-primary: #F5F0E9;
+      --text-secondary: #A39389;
+      --text-muted: #6B5E59;
+      --text-gold: #F4C77F;
+
+      --tile-empty: #1A1517;
+      --tile-2: #383134;
+      --tile-4: #4A4044;
+      --tile-8: #5D4F4F;
+      --tile-16: #78665E;
+      --tile-64: #EAD8C7;
+      --tile-512: #F4C77F;
+      
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 24px;
+      --radius-full: 9999px;
+      
+      --font-display: 'Fredoka', 'Inter', -apple-system, sans-serif;
+      --font-body: 'Inter', -apple-system, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 16px 12px 64px 12px;
+      position: relative;
+      overflow-x: hidden;
+      background-image: radial-gradient(circle at 50% 20%, #2b1f23 0%, #100E0F 80%);
+    }
+
+    /* -------------------------------------------------------------
+       PROTOTYPE STATE CONTROL TOOLBAR (TOP)
+    -------------------------------------------------------------- */
+    .proto-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+      z-index: 50;
+      background: rgba(26, 21, 23, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border-subtle);
+      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .proto-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-secondary);
+      font-weight: 700;
+    }
+
+    .proto-buttons {
+      display: flex;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .proto-btn {
+      flex: 1;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-family: var(--font-body);
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background: #151113;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .proto-btn:hover {
+      background: #231c1f;
+      color: var(--text-primary);
+      border-color: #554448;
+    }
+
+    .proto-btn.active {
+      background: var(--accent-gold);
+      color: #171112;
+      border-color: var(--accent-gold);
+      font-weight: 700;
+      box-shadow: 0 0 10px rgba(244, 199, 127, 0.3);
+    }
+
+    /* -------------------------------------------------------------
+       MAIN GAME OVER CARD CONTAINER
+    -------------------------------------------------------------- */
+    .gameover-card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--card-bg);
+      border: 1.5px solid var(--border-subtle);
+      border-radius: 28px;
+      padding: 24px 20px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+      position: relative;
+    }
+
+    /* Top Row: RUN COMPLETE · SCORE & CLEAN SLATE badge */
+    .card-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .run-complete-tag {
+      font-family: var(--font-display);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      color: var(--accent-gold);
+      text-transform: uppercase;
+    }
+
+    .modifier-badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--accent-gold);
+      border: 1px solid rgba(244, 199, 127, 0.4);
+      background: rgba(244, 199, 127, 0.07);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      text-transform: uppercase;
+    }
+
+    /* Final Score Number */
+    .score-display {
+      font-family: var(--font-display);
+      font-size: 52px;
+      font-weight: 700;
+      line-height: 1.05;
+      text-align: center;
+      color: var(--text-primary);
+      margin: 2px 0 16px 0;
+      letter-spacing: -0.02em;
+    }
+
+    /* Miniature 4x4 Board */
+    .mini-board-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 18px;
+    }
+
+    .mini-board {
+      width: 124px;
+      height: 124px;
+      background: #141012;
+      border-radius: 12px;
+      padding: 5px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 4px;
+      border: 1px solid #33282b;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.6);
+    }
+
+    .mini-tile {
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 10px;
+      user-select: none;
+    }
+
+    .tile-empty {
+      background: var(--tile-empty);
+    }
+
+    .tile-2 {
+      background: var(--tile-2);
+      color: var(--text-primary);
+    }
+
+    .tile-4 {
+      background: var(--tile-4);
+      color: var(--text-primary);
+    }
+
+    .tile-8 {
+      background: var(--tile-8);
+      color: var(--text-primary);
+    }
+
+    .tile-16 {
+      background: var(--tile-16);
+      color: var(--text-primary);
+    }
+
+    .tile-64 {
+      background: var(--tile-64);
+      color: #21191a;
+      font-size: 9px;
+    }
+
+    .tile-512 {
+      background: var(--tile-512);
+      color: #1a1207;
+      font-size: 8px;
+      box-shadow: 0 0 6px rgba(244, 199, 127, 0.4);
+    }
+
+    /* -------------------------------------------------------------
+       RUN STATISTICS GRID
+    -------------------------------------------------------------- */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin-bottom: 14px;
+    }
+
+    .stat-cell {
+      background: var(--card-inner);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 9px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .stat-cell.span-full {
+      grid-column: span 2;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-secondary);
+      margin-bottom: 2px;
+    }
+
+    .stat-value {
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: 0.02em;
+    }
+
+    /* -------------------------------------------------------------
+       RELICS COLLECTED SECTION
+    -------------------------------------------------------------- */
+    .relics-section {
+      text-align: center;
+      margin-bottom: 14px;
+    }
+
+    .relics-title {
+      font-family: var(--font-display);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      color: var(--accent-gold);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .relics-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .relic-slot {
+      width: 44px;
+      height: 44px;
+      background: var(--card-inner);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-gold);
+      position: relative;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+      cursor: pointer;
+    }
+
+    .relic-slot:hover {
+      border-color: var(--accent-gold);
+      transform: translateY(-2px);
+    }
+
+    .relic-slot svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+    }
+
+    .relic-slot .relic-badge-sub {
+      position: absolute;
+      bottom: 2px;
+      right: 3px;
+      font-size: 8px;
+      font-weight: 800;
+      color: var(--text-secondary);
+    }
+
+    /* -------------------------------------------------------------
+       GLOBAL RANKING PANEL & PERIODIC GLASS SHIMMER EFFECT
+    -------------------------------------------------------------- */
+    .global-ranking-panel {
+      background: linear-gradient(175deg, #302629 0%, #1f181a 100%);
+      border: 1px solid var(--border-accent);
+      border-radius: 14px;
+      padding: 13px 14px 11px 14px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(244, 199, 127, 0.2);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    /* Ambient warm glow in top right */
+    .global-ranking-panel::after {
+      content: '';
+      position: absolute;
+      top: -20px;
+      right: -20px;
+      width: 80px;
+      height: 80px;
+      background: radial-gradient(circle, rgba(244, 199, 127, 0.18) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Glass Shimmer Overlay element - active only in State A */
+    .glass-shimmer {
+      position: absolute;
+      top: -50%;
+      left: -160%;
+      width: 60%;
+      height: 200%;
+      background: linear-gradient(
+        115deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.03) 25%,
+        rgba(244, 199, 127, 0.16) 50%,
+        rgba(255, 255, 255, 0.22) 53%,
+        rgba(244, 199, 127, 0.16) 56%,
+        rgba(255, 255, 255, 0.03) 75%,
+        rgba(255, 255, 255, 0) 100%
+      );
+      transform: rotate(25deg);
+      pointer-events: none;
+      display: none;
+      z-index: 2;
+    }
+
+    /* Periodic shimmer animation only when active */
+    .global-ranking-panel.shimmer-active .glass-shimmer {
+      display: block;
+      animation: glassSweep 5s ease-in-out infinite;
+    }
+
+    @keyframes glassSweep {
+      0% {
+        left: -160%;
+        opacity: 0;
+      }
+      8% {
+        opacity: 1;
+      }
+      38% {
+        left: 200%;
+        opacity: 1;
+      }
+      40% {
+        opacity: 0;
+        left: 200%;
+      }
+      100% {
+        left: 200%;
+        opacity: 0;
+      }
+    }
+
+    .ranking-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      position: relative;
+      z-index: 3;
+    }
+
+    .ranking-header-title {
+      font-family: var(--font-display);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      color: var(--accent-gold);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      text-transform: uppercase;
+    }
+
+    .ranking-header-title svg {
+      width: 13px;
+      height: 13px;
+      fill: var(--accent-gold);
+    }
+
+    .ranking-meta-pill {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: var(--radius-sm);
+      background: rgba(0,0,0,0.3);
+      color: var(--text-secondary);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .ranking-share-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 3px 8px;
+      height: 24px;
+      border-radius: var(--radius-sm);
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(244, 199, 127, 0.35);
+      color: var(--accent-gold);
+      font-family: var(--font-body);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+    }
+
+    .ranking-share-btn:hover {
+      background: rgba(244, 199, 127, 0.15);
+      border-color: var(--accent-gold);
+      color: var(--accent-gold-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(244, 199, 127, 0.2);
+    }
+
+    .ranking-share-btn:active {
+      transform: translateY(1px);
+    }
+
+    .ranking-share-btn svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+    }
+
+    /* Main rank presentation */
+    .ranking-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 52px;
+      position: relative;
+      z-index: 3;
+    }
+
+    .rank-left {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .rank-number {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--accent-gold);
+      letter-spacing: -0.01em;
+      text-shadow: 0 2px 8px rgba(244, 199, 127, 0.25);
+    }
+
+    .rank-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .rank-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      text-align: right;
+    }
+
+    .percentile-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(244, 199, 127, 0.16);
+      border: 1px solid rgba(244, 199, 127, 0.4);
+      color: var(--accent-gold);
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      letter-spacing: 0.02em;
+    }
+
+    .total-players-text {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    /* Ranking Footer Status Line */
+    .ranking-footer-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 9px;
+      padding-top: 7px;
+      border-top: 1px dashed rgba(255, 255, 255, 0.08);
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      position: relative;
+      z-index: 3;
+    }
+
+    .status-ranked {
+      color: #9fe29f;
+    }
+
+    .status-ranked svg {
+      fill: #9fe29f;
+      width: 11px;
+      height: 11px;
+      flex-shrink: 0;
+    }
+
+    /* STATE B: Pending Specifics */
+    .pending-loader {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(244, 199, 127, 0.3);
+      border-top-color: var(--accent-gold);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .status-pending {
+      color: var(--accent-gold);
+    }
+
+    /* STATE C: Ineligible Specifics */
+    .status-unranked {
+      color: var(--text-secondary);
+    }
+
+    .status-unranked svg {
+      fill: var(--text-muted);
+      width: 11px;
+      height: 11px;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* -------------------------------------------------------------
+       PRIMARY & SECONDARY ACTION BUTTONS
+    -------------------------------------------------------------- */
+    .action-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .btn-play-again {
+      width: 100%;
+      background: var(--accent-gold);
+      color: #171113;
+      border: none;
+      border-radius: 12px;
+      padding: 13px 16px;
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(244, 199, 127, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      transition: all 0.15s ease;
+    }
+
+    .btn-play-again:hover {
+      background: var(--accent-gold-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px rgba(244, 199, 127, 0.35);
+    }
+
+    .btn-play-again:active {
+      transform: translateY(1px);
+      box-shadow: 0 2px 6px rgba(244, 199, 127, 0.2);
+    }
+
+    /* Split Secondary Action Row: Home & Copy Run Log */
+    .secondary-action-row {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .btn-home,
+    .btn-copy-log-half {
+      flex: 1;
+      background: #362C30;
+      color: var(--text-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 11px 10px;
+      font-family: var(--font-display);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+
+    .btn-home svg,
+    .btn-copy-log-half svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+      flex-shrink: 0;
+    }
+
+    .btn-home:hover,
+    .btn-copy-log-half:hover {
+      background: #413539;
+      border-color: #554448;
+    }
+
+    .btn-home:active,
+    .btn-copy-log-half:active {
+      background: #2b2326;
+      transform: translateY(1px);
+    }
+
+    /* -------------------------------------------------------------
+       TOAST FEEDBACK NOTIFICATION
+    -------------------------------------------------------------- */
+    .toast-notice {
+      position: fixed;
+      bottom: 24px;
+      background: #241D20;
+      color: var(--accent-gold);
+      border: 1px solid var(--accent-gold);
+      padding: 10px 18px;
+      border-radius: var(--radius-full);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      transform: translateY(100px);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 0.25s cubic-bezier(0.18, 0.89, 0.32, 1.28), opacity 0.2s ease;
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toast-notice.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* -------------------------------------------------------------
+       SUBTLE AMBIENT SPEC DETAILS & WATERMARK
+    -------------------------------------------------------------- */
+    .footer-build-tag {
+      margin-top: 18px;
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      font-family: monospace;
+      text-align: center;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 380px) {
+      .gameover-card {
+        padding: 18px 14px 16px 14px;
+        border-radius: 20px;
+      }
+      .score-display {
+        font-size: 44px;
+      }
+      .rank-number {
+        font-size: 28px;
+      }
+      .mini-board {
+        width: 112px;
+        height: 112px;
+      }
+      .btn-home,
+      .btn-copy-log-half {
+        font-size: 11px;
+        padding: 10px 6px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==============================================================
+       PROTOTYPE STATE SWITCHER
+       Provides instant preview of the 3 scenarios specified in prompt
+  ============================================================== -->
+  <div class="proto-controls">
+    <span class="proto-label">Leaderboard Mockup Scenarios:</span>
+    <div class="proto-buttons">
+      <button class="proto-btn active" id="btn-state-a" onclick="switchRankingState('RANKED')">
+        State A: Ranked
+      </button>
+      <button class="proto-btn" id="btn-state-b" onclick="switchRankingState('PENDING')">
+        State B: Pending
+      </button>
+      <button class="proto-btn" id="btn-state-c" onclick="switchRankingState('UNRANKED')">
+        State C: Not Ranked
+      </button>
+    </div>
+  </div>
+
+  <!-- ==============================================================
+       REDESIGNED ROGUE 2048 GAME OVER CARD
+  ============================================================== -->
+  <main class="gameover-card" role="region" aria-label="Game Over Summary">
+    
+    <!-- 1. Header Row -->
+    <header class="card-header-row">
+      <span class="run-complete-tag">RUN COMPLETE · SCORE</span>
+      <span class="modifier-badge" title="Run modifier applied">CLEAN SLATE × 1</span>
+    </header>
+
+    <!-- 2. Final Score -->
+    <div class="score-display" id="display-score">7,624</div>
+
+    <!-- 3. Miniature 2048 Board (Faithful to gameplay grid) -->
+    <div class="mini-board-wrapper" aria-label="Final 4 by 4 board snapshot">
+      <div class="mini-board" id="mini-board">
+        <!-- Row 1 -->
+        <div class="mini-tile tile-4">4</div>
+        <div class="mini-tile tile-2">2</div>
+        <div class="mini-tile tile-4">4</div>
+        <div class="mini-tile tile-2">2</div>
+        <!-- Row 2 -->
+        <div class="mini-tile tile-8">8</div>
+        <div class="mini-tile tile-4">4</div>
+        <div class="mini-tile tile-64">64</div>
+        <div class="mini-tile tile-empty"></div>
+        <!-- Row 3 -->
+        <div class="mini-tile tile-4">4</div>
+        <div class="mini-tile tile-512">512</div>
+        <div class="mini-tile tile-empty"></div>
+        <div class="mini-tile tile-2">2</div>
+        <!-- Row 4 -->
+        <div class="mini-tile tile-empty"></div>
+        <div class="mini-tile tile-empty"></div>
+        <div class="mini-tile tile-2">2</div>
+        <div class="mini-tile tile-16">16</div>
+      </div>
+    </div>
+
+    <!-- 4. Existing Run Statistics Grid -->
+    <section class="stats-grid" aria-label="Run Statistics">
+      <div class="stat-cell">
+        <span class="stat-label">TIME</span>
+        <span class="stat-value" id="stat-time">04:18</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-label">MOVES SURVIVED</span>
+        <span class="stat-value" id="stat-moves">319</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-label">MAX TILE</span>
+        <span class="stat-value" id="stat-maxtile">512</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-label">DRAFTS SEEN</span>
+        <span class="stat-value" id="stat-drafts">4</span>
+      </div>
+      <div class="stat-cell span-full">
+        <span class="stat-label">RUN SEED</span>
+        <span class="stat-value" id="stat-seed" style="font-family: monospace; font-size: 14px; letter-spacing: 0.05em;">632557647</span>
+      </div>
+    </section>
+
+    <!-- 5. Relics Collected Section -->
+    <section class="relics-section" aria-label="Relics Collected">
+      <h3 class="relics-title">RELICS COLLECTED</h3>
+      <div class="relics-row" id="relics-container">
+        <!-- Relic 1: Diagonal Merge (Matching Screen 3/4) -->
+        <div class="relic-slot" title="Diagonal Merge: Merges also trigger diagonally">
+          <svg viewBox="0 0 24 24">
+            <path d="M5 5h6v2H7.41L17 16.59V13h2v6h-6v-2h3.59L7 7.41V11H5V5z"/>
+          </svg>
+          <span class="relic-badge-sub">MAX</span>
+        </div>
+        <!-- Relic 2: Rewind (Matching Screen 3/4) -->
+        <div class="relic-slot" title="Rewind: Undo last critical mistake">
+          <svg viewBox="0 0 24 24">
+            <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C20.91 11.08 17.06 8 12.5 8z"/>
+          </svg>
+          <span class="relic-badge-sub">MAX</span>
+        </div>
+        <!-- Relic 3: Aegis Shield -->
+        <div class="relic-slot" title="Stone Ward: Prevents stone tile lockups">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 2.18l7 3.12v4.7c0 4.54-3.04 8.79-7 9.94-3.96-1.15-7-5.4-7-9.94v-4.7l7-3.12z"/>
+          </svg>
+        </div>
+        <!-- Relic 4: Catalyst -->
+        <div class="relic-slot" title="Draft Surge: Extra draft options">
+          <svg viewBox="0 0 24 24">
+            <path d="M7 2v11h3v9l7-12h-4l4-8H7z"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. GLOBAL RANKING PANEL (With glass shimmer effect in State A) -->
+    <section class="global-ranking-panel shimmer-active" id="global-ranking-panel" aria-label="Global Ranking">
+      
+      <!-- Glass Shimmer Sweeping Overlay -->
+      <div class="glass-shimmer" aria-hidden="true"></div>
+
+      <!-- Panel Header -->
+      <div class="ranking-header">
+        <span class="ranking-header-title">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+          </svg>
+          GLOBAL RANKING
+        </span>
+        <div id="ranking-header-action">
+          <!-- Injected via JavaScript renderRankingState() -->
+        </div>
+      </div>
+
+      <!-- Dynamic Content Injection Zone based on State -->
+      <div class="ranking-content" id="ranking-content-body">
+        <!-- Injected via JavaScript renderRankingState() -->
+      </div>
+
+      <!-- Dynamic Status Indicator -->
+      <div class="ranking-footer-status" id="ranking-footer-status">
+        <!-- Injected via JavaScript renderRankingState() -->
+      </div>
+
+    </section>
+
+    <!-- 7 & 8. Action Buttons -->
+    <footer class="action-buttons">
+      <!-- Main Action: Play Again -->
+      <button class="btn-play-again" onclick="handlePlayAgain()">
+        <span>PLAY AGAIN</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M6 4h12v2H6V4zm0 14h12v2H6v-2zm10.59-8.41L12 14.17l-4.59-4.58L6 11l6 6 6-6-1.41-1.41z" transform="rotate(-90 12 12)"/>
+        </svg>
+      </button>
+
+      <!-- Secondary Split Action Row: Home & Copy Run Log -->
+      <div class="secondary-action-row">
+        <!-- Home Button -->
+        <button class="btn-home" onclick="handleGoHome()" title="Return to Main Menu">
+          <svg viewBox="0 0 24 24">
+            <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+          </svg>
+          <span>HOME</span>
+        </button>
+
+        <!-- Half-size Copy Run Log Button -->
+        <button class="btn-copy-log-half" onclick="handleCopyRunLog()" title="Copy run log summary">
+          <svg viewBox="0 0 24 24">
+            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+          </svg>
+          <span>COPY LOG</span>
+        </button>
+      </div>
+    </footer>
+
+  </main>
+
+  <div class="footer-build-tag">
+    BUILD: rogue_2026-11-02_rank_v2.4
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-notice" id="toast-notice">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+    </svg>
+    <span id="toast-message">Run log copied to clipboard!</span>
+  </div>
+
+  <!-- ==============================================================
+       VANILLA JAVASCRIPT LOGIC & STATE HANDLING
+  ============================================================== -->
+  <script>
+    /**
+     * MOCK RUN & RANKING DATA
+     * Designed to be easily replaced with live API payload
+     */
+    const RUN_DATA = {
+      score: "7,624",
+      time: "04:18",
+      movesSurvived: 319,
+      maxTile: 512,
+      draftsSeen: 4,
+      runSeed: "632557647",
+      modifier: "CLEAN SLATE × 1",
+      relics: [
+        { name: "Diagonal Merge", tier: "MAX" },
+        { name: "Rewind", tier: "MAX" },
+        { name: "Stone Ward", tier: "" },
+        { name: "Draft Surge", tier: "" }
+      ]
+    };
+
+    const RANKING_STATES = {
+      RANKED: {
+        type: "RANKED",
+        rank: "#247",
+        percentile: "Top 12%",
+        totalRankedPlayers: "18,420",
+        season: "SEASON 1",
+        statusText: "RUN SUBMITTED TO GLOBAL LEADERBOARD",
+        verified: true
+      },
+      PENDING: {
+        type: "PENDING",
+        rank: "---",
+        statusText: "SUBMITTING RUN TO LEADERBOARD...",
+        subtext: "Syncing score with central server"
+      },
+      UNRANKED: {
+        type: "UNRANKED",
+        rank: "UNRANKED",
+        badge: "INELIGIBLE",
+        reason: "Custom seed or debug mode enabled",
+        statusText: "RUN INELIGIBLE FOR LEADERBOARD"
+      }
+    };
+
+    // Current active state tracker
+    let currentRankingState = "RANKED";
+
+    /**
+     * Render the Global Ranking container based on chosen state
+     * Controls periodic glass shimmer effect: ONLY active in State A: RANKED
+     */
+    function renderRankingState(stateKey) {
+      const state = RANKING_STATES[stateKey];
+      const contentEl = document.getElementById('ranking-content-body');
+      const footerEl = document.getElementById('ranking-footer-status');
+      const headerActionEl = document.getElementById('ranking-header-action');
+      const panel = document.getElementById('global-ranking-panel');
+
+      // Toggle Glass Shimmer: only visible for State A (RANKED)
+      if (stateKey === "RANKED") {
+        panel.classList.add('shimmer-active');
+        panel.style.borderColor = "var(--border-accent)";
+
+        // Rounded rectangle share button replacing the Season 1 pill
+        headerActionEl.innerHTML = `
+          <button class="ranking-share-btn" onclick="handleShareRanking(event)" title="Share Rank" aria-label="Share Rank">
+            <svg viewBox="0 0 24 24">
+              <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/>
+            </svg>
+            <span>SHARE</span>
+          </button>
+        `;
+
+        contentEl.innerHTML = `
+          <div class="rank-left">
+            <span class="rank-number">${state.rank}</span>
+            <span class="rank-label">GLOBAL RANK</span>
+          </div>
+          <div class="rank-right">
+            <div class="percentile-badge">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/>
+              </svg>
+              ${state.percentile}
+            </div>
+            <span class="total-players-text">Among ${state.totalRankedPlayers} ranked runs</span>
+          </div>
+        `;
+
+        footerEl.className = "ranking-footer-status status-ranked";
+        footerEl.innerHTML = `
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+          </svg>
+          <span>${state.statusText}</span>
+        `;
+      } 
+      else if (stateKey === "PENDING") {
+        panel.classList.remove('shimmer-active');
+        panel.style.borderColor = "#6B583E";
+
+        headerActionEl.innerHTML = `
+          <span class="ranking-meta-pill">SYNCING</span>
+        `;
+
+        contentEl.innerHTML = `
+          <div class="rank-left">
+            <span class="rank-number" style="letter-spacing: 0.1em; color: var(--text-secondary); font-size: 26px;">---</span>
+            <span class="rank-label">CALCULATING RANK</span>
+          </div>
+          <div class="rank-right">
+            <div class="percentile-badge" style="background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--text-secondary);">
+              CALCULATING...
+            </div>
+            <span class="total-players-text">${state.subtext}</span>
+          </div>
+        `;
+
+        footerEl.className = "ranking-footer-status status-pending";
+        footerEl.innerHTML = `
+          <span class="pending-loader"></span>
+          <span>${state.statusText}</span>
+        `;
+      } 
+      else if (stateKey === "UNRANKED") {
+        panel.classList.remove('shimmer-active');
+        panel.style.borderColor = "var(--border-subtle)";
+
+        headerActionEl.innerHTML = `
+          <span class="ranking-meta-pill">EXCLUDED</span>
+        `;
+
+        contentEl.innerHTML = `
+          <div class="rank-left">
+            <span class="rank-number" style="font-size: 24px; color: var(--text-secondary);">NOT RANKED</span>
+            <span class="rank-label">LEADERBOARD RESTRICTION</span>
+          </div>
+          <div class="rank-right">
+            <div class="percentile-badge" style="background: rgba(85, 68, 72, 0.3); border-color: #554448; color: var(--text-secondary);">
+              ${state.badge}
+            </div>
+            <span class="total-players-text" style="color: #8C7B74; max-width: 170px; line-height: 1.2;">${state.reason}</span>
+          </div>
+        `;
+
+        footerEl.className = "ranking-footer-status status-unranked";
+        footerEl.innerHTML = `
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+          </svg>
+          <span>${state.statusText}</span>
+        `;
+      }
+    }
+
+    /**
+     * Switch State from Toolbar
+     */
+    function switchRankingState(stateKey) {
+      currentRankingState = stateKey;
+      
+      // Update Toolbar UI buttons
+      document.getElementById('btn-state-a').classList.toggle('active', stateKey === 'RANKED');
+      document.getElementById('btn-state-b').classList.toggle('active', stateKey === 'PENDING');
+      document.getElementById('btn-state-c').classList.toggle('active', stateKey === 'UNRANKED');
+
+      renderRankingState(stateKey);
+    }
+
+    /**
+     * Interaction: Return to Home
+     */
+    function handleGoHome() {
+      showToast("RETURNING TO MAIN MENU...");
+    }
+
+    /**
+     * Interaction: Share Global Rank
+     */
+    function handleShareRanking(e) {
+      if (e) e.stopPropagation();
+      const stateObj = RANKING_STATES["RANKED"];
+      const shareText = `ROGUE 2048 - Global Rank ${stateObj.rank} (${stateObj.percentile}) with a score of ${RUN_DATA.score}!`;
+
+      if (navigator.share) {
+        navigator.share({
+          title: "ROGUE 2048 - Global Rank",
+          text: shareText
+        }).then(() => {
+          showToast("RANKING SHARED SUCCESSFULLY!");
+        }).catch(() => {
+          fallbackCopy(shareText);
+        });
+      } else {
+        fallbackCopy(shareText);
+      }
+    }
+
+    /**
+     * Interaction: Copy Run Log
+     */
+    function handleCopyRunLog() {
+      const stateObj = RANKING_STATES[currentRankingState];
+      const rankString = (stateObj.type === "RANKED") 
+        ? `${stateObj.rank} (${stateObj.percentile} of ${stateObj.totalRankedPlayers})` 
+        : (stateObj.type === "PENDING" ? "Pending Submission" : "Unranked Run");
+
+      const logText = 
+`=== ROGUE 2048 RUN SUMMARY ===
+Score: ${RUN_DATA.score}
+Global Rank: ${rankString}
+Time: ${RUN_DATA.time}
+Moves Survived: ${RUN_DATA.movesSurvived}
+Max Tile: ${RUN_DATA.maxTile}
+Drafts Seen: ${RUN_DATA.draftsSeen}
+Seed: ${RUN_DATA.runSeed}
+Modifier: ${RUN_DATA.modifier}
+Relics: ${RUN_DATA.relics.map(r => r.name).join(", ")}
+===============================`;
+
+      // Copy with reliable fallback
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(logText)
+          .then(() => showToast("RUN LOG COPIED TO CLIPBOARD!"))
+          .catch(() => fallbackCopy(logText));
+      } else {
+        fallbackCopy(logText);
+      }
+    }
+
+    function fallbackCopy(text) {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        showToast("RANKING COPIED TO SHARE!");
+      } catch (err) {
+        showToast("FAILED TO COPY TO CLIPBOARD");
+      }
+      document.body.removeChild(textArea);
+    }
+
+    /**
+     * Interaction: Play Again Mock Action
+     */
+    function handlePlayAgain() {
+      showToast("STARTING NEW RUN...");
+      const scoreEl = document.getElementById('display-score');
+      scoreEl.style.transition = "transform 0.15s ease";
+      scoreEl.style.transform = "scale(1.08)";
+      setTimeout(() => {
+        scoreEl.style.transform = "scale(1)";
+      }, 150);
+    }
+
+    /**
+     * Toast notification display
+     */
+    let toastTimeout;
+    function showToast(message) {
+      const toast = document.getElementById('toast-notice');
+      const toastMsg = document.getElementById('toast-message');
+      toastMsg.textContent = message;
+      toast.classList.add('show');
+      
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2400);
+    }
+
+    // Initialize initial state on window load
+    window.onload = function() {
+      renderRankingState("RANKED");
+    };
+  </script>
+</body>
+</html>
