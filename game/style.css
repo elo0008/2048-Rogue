@@ -1573,6 +1573,52 @@ button:focus-visible {
   margin-top: 15px;
 }
 
+/* Daily Leaderboard Controls */
+.daily-disclosure-container {
+  height: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin: 8px 0 10px 0;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--muted);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.daily-disclosure-container.hidden {
+  display: none;
+}
+
+.daily-disclosure-text {
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.daily-countdown-line {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--soft);
+}
+
+.end-leaderboard-status {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--accent);
+  margin-top: 10px;
+  min-height: 18px;
+}
+
+.end-leaderboard-status.hidden {
+  display: none;
+}
+
 /* Draft Modal Cards */
 .draft-title {
   text-align: center;

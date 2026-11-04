@@ -283,7 +283,42 @@ export async function runUiCanonicalCheck() {
     assert.equal(stonesCheck.ok, false, '?stones=0.1 MUST fail canonical check');
     assert.equal(stonesCheck.key, 'hazardSchedule', `?stones=0.1 must differ in hazardSchedule, got: ${stonesCheck.key}`);
 
-    outputLines.push('SUMMARY: Drift guard passed. Default and ?seed=5 match CANONICAL_CONFIG exactly. ?stones=0.1 correctly detected differing hazardSchedule.');
+    // 4. Daily Run live controller config
+    console.log('[Drift Guard] 4. Checking Daily run live controller config (must match CANONICAL_CONFIG)...');
+    await cdp.send('Page.navigate', { url: baseUrl });
+    await sleep(200);
+    await cdp.eval(`
+      (() => {
+        window.__LB = { url: 'http://localhost:54321', anonKey: 'anon' };
+        const b = document.getElementById('btn-play-daily');
+        if (b) {
+          b.classList.remove('hidden');
+          b.click();
+        }
+      })()
+    `);
+    const dailyRawConfig = await readLiveConfig(cdp);
+    const dailyNormalized = normalizeConfig(dailyRawConfig);
+    const dailyCheck = checkCanonicalConfig(dailyNormalized);
+    const dailyKeyCount = Object.keys(dailyNormalized).length;
+
+    outputLines.push('4. Daily Run live controller config:');
+    outputLines.push(`   URL: ${baseUrl} (started via #btn-play-daily)`);
+    outputLines.push(`   Live controller config keys: ${dailyKeyCount}`);
+    outputLines.push(`   CANONICAL_CONFIG keys: ${defaultCanonicalKeyCount}`);
+    outputLines.push(`   Deep equality: ${dailyCheck.ok ? 'MATCH (deep-equal)' : 'MISMATCH'}`);
+    if (!dailyCheck.ok) {
+      outputLines.push(`   Differing key: ${dailyCheck.key}`);
+      outputLines.push(`   Reason: ${dailyCheck.reason}`);
+    } else {
+      outputLines.push(`   Differing key: (none)`);
+    }
+    outputLines.push('');
+
+    assert.equal(dailyCheck.ok, true, `Daily run config must match CANONICAL_CONFIG: ${dailyCheck.reason}`);
+    assert.equal(dailyKeyCount, defaultCanonicalKeyCount, 'Daily run config key count must match CANONICAL_CONFIG');
+
+    outputLines.push('SUMMARY: Drift guard passed. Default, ?seed=5, and Daily run match CANONICAL_CONFIG exactly. ?stones=0.1 correctly detected differing hazardSchedule.');
 
     const resultText = outputLines.join('\n') + '\n';
     fs.writeFileSync(outFile, resultText, 'utf-8');

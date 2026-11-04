@@ -550,6 +550,69 @@ Moderation of free-text display names is manual after the fact. While the edge f
    where device_id = 'target_device_id';
    ```
 
+---
+
+## Leaderboard Client
+
+The web client (`game/`) includes built-in support for daily challenge seeds and automatic leaderboard submission.
+
+### Environment Variables
+- `LEADERBOARD_URL`: The Supabase project URL (e.g. `https://<project-ref>.supabase.co`).
+- `LEADERBOARD_ANON_KEY`: The public Supabase anonymous JWT key (`anon` role only). Never provide a `service_role` key.
+
+When both variables are provided during build, `scripts/build.js` generates `dist/leaderboard-config.js` containing `window.__LB = { url, anonKey }`. If either variable is omitted or empty, `scripts/build.js` emits `window.__LB = null;`, which cleanly disables the Daily mode button in the UI and produces zero external network requests.
+
+### Local Development & Building
+To build locally with leaderboard functionality enabled:
+```powershell
+# PowerShell
+$env:LEADERBOARD_URL = "https://<project-ref>.supabase.co"
+$env:LEADERBOARD_ANON_KEY = "eyJhbGciOi..."
+node scripts/build.js
+```
+```bash
+# Bash
+LEADERBOARD_URL="https://<project-ref>.supabase.co" LEADERBOARD_ANON_KEY="eyJhbGciOi..." node scripts/build.js
+```
+
+### Local Testing: Use `http://localhost:<port>`, NOT `127.0.0.1`
+When testing the client locally against a remote or local Supabase Edge Function, always open the game via:
+- `http://localhost:3000` or `http://localhost:<port>`
+
+> [!WARNING]
+> **Do NOT use `127.0.0.1` in the browser:** The backend Edge Functions enforce a strict CORS policy that permits `https://rogue2048.vercel.app` and `localhost` origins (with any port). Testing via `http://127.0.0.1` will be rejected by the server CORS handler.
+
+### The Deploy Order Rule
+When simulation or controller rules change (`sim/engine.js`, `sim/relics.js`, or `game/controller.js`), the rules version and replay version hashes update. Always follow this exact deployment sequence:
+1. **Bundle edge vendor dependencies:**
+   ```bash
+   node scripts/build_edge.js
+   ```
+2. **Deploy the Supabase Edge Functions:**
+   ```bash
+   supabase functions deploy submit-run --no-verify-jwt
+   supabase functions deploy set-name --no-verify-jwt
+   ```
+3. **Verify deployed backend parity:**
+   ```bash
+   npm run check:deployed
+   ```
+   Ensures the remote edge runtime is live and serving the identical `rulesVersion` and `replayVersion` as your local checkout.
+4. **Deploy the client site:**
+   Build and deploy the frontend (`npm run build` or push to Vercel).
+
+*Why this matters:* If the client is deployed before the edge function, newly submitted runs will be rejected by the older edge function with `RULES_VERSION_MISMATCH` or `REPLAY_VERSION_MISMATCH`.
+
+### Vercel Production Setup (Instructions for Project Owner)
+1. In the Vercel Dashboard, navigate to your project **Settings -> Environment Variables**.
+2. Add `LEADERBOARD_URL` and `LEADERBOARD_ANON_KEY`.
+3. Set the scope to **Production only**.
+4. Trigger a production redeployment.
+
+> [!NOTE]
+> **Preview Deployments:** Vercel Preview deployments (e.g. `*-username.vercel.app`) are deliberately not in the backend CORS whitelist. Submissions from Preview deployments will fail CORS and remain queued in `localStorage` with exponential backoff, without interrupting gameplay or generating uncaught UI errors.
+
+
 
 
 

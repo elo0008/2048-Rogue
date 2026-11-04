@@ -1,0 +1,2 @@
+window.__LB = null;
+

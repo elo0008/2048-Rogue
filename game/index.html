@@ -162,6 +162,11 @@
         <div class="eyebrow">A PUZZLE ROGUELIKE</div>
         <h1 class="title">ROGUE<br>2048</h1>
         <p class="sub">Merge upward. Hold the line. Outlast the grid.</p>
+        <button id="btn-play-daily" class="primary btn btn-primary hidden" type="button" aria-label="Play Daily Run">PLAY DAILY <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: middle; display: inline-block; margin-left: 4px;"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button>
+        <div id="daily-disclosure-container" class="daily-disclosure-container hidden">
+          <div class="daily-disclosure-text">Daily runs are sent to the leaderboard under an anonymous player ID and display name.</div>
+          <div id="daily-countdown-line" class="daily-countdown-line">New daily in --h --m (resets --:--)</div>
+        </div>
         <button id="btn-play-start" class="primary btn btn-primary" type="button" aria-label="Start Game">START RUN <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: middle; display: inline-block; margin-left: 4px;"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button>
         <div class="start-best-row">
           <div class="best">BEST: <b id="start-best-score">0</b></div>
@@ -283,7 +288,9 @@
         </div>
         <div class="eyebrow">Relics collected</div>
         <div id="end-relics-list" class="ownedicons end-relics-list" style="justify-content:center"></div>
+        <div id="end-leaderboard-status" class="end-leaderboard-status hidden" aria-live="polite"></div>
         <div class="end-actions" style="margin-top:14px; display:flex; flex-direction:column; gap:8px;">
+          <button id="btn-play-daily-again" class="primary btn btn-primary hidden" type="button">PLAY DAILY AGAIN ↗</button>
           <button id="btn-play-again" class="primary btn btn-primary" type="button">PLAY AGAIN ↗</button>
           <button id="btn-copy-log" class="secondary btn btn-secondary" type="button">COPY RUN LOG</button>
         </div>
@@ -306,6 +313,7 @@
     </aside>
   </div>
 
+  <script src="leaderboard-config.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

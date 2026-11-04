@@ -34,6 +34,20 @@ import {
   toggleSound,
   getAudioState,
 } from './audio.js';
+import {
+  dailySeed,
+  utcDateString,
+  msUntilNextUtcMidnight,
+  formatCountdown,
+  formatNextResetLocalTime,
+} from './daily.js';
+import {
+  getDeviceId,
+  shouldSubmitRun,
+  enqueueSubmission,
+  flushQueue,
+  getMyDailyRank,
+} from './leaderboard.js';
 
 const DEFAULT_POOL = [
   'diagonal_charge',
@@ -700,6 +714,101 @@ const endCleanSlateChip = document.getElementById('end-clean-slate-chip');
 
 const pauseTimeVal = document.getElementById('pause-time-val');
 const bestRunsOverlay = document.getElementById('best-runs-overlay');
+
+const btnPlayDaily = document.getElementById('btn-play-daily');
+const dailyDisclosureContainer = document.getElementById('daily-disclosure-container');
+const dailyCountdownLine = document.getElementById('daily-countdown-line');
+const endLeaderboardStatus = document.getElementById('end-leaderboard-status');
+const btnPlayDailyAgain = document.getElementById('btn-play-daily-again');
+
+let dailyRunActive = false;
+
+const FORBIDDEN_DAILY_PARAMS = [
+  'seed', 'stones', 'start', 'ascension', 'shatter', 'siphon',
+  'diag', 'eraser', 'rewind', 'maxcharges', 'cap', 'laststand',
+  'pool', 'draft', 'first', 'debug', 'nodraft', 'lab',
+];
+
+function canShowDailyButton() {
+  if (!window.__LB || !window.__LB.url || !window.__LB.anonKey) return false;
+  const sp = new URLSearchParams(window.location.search || '');
+  for (const p of FORBIDDEN_DAILY_PARAMS) {
+    if (sp.has(p)) return false;
+  }
+  return true;
+}
+
+function getDailyCanonicalConfig() {
+  return {
+    hazardSchedule: buildHazardSchedule(3),
+    draftEveryMoves: 60,
+    draftThresholds: [],
+    draftPool: [...DEFAULT_POOL],
+    enableDraft: true,
+    stoneLifetime: null,
+    stoneGroupCap: 2,
+    forcedRelics: [],
+    forceAtMove: 0,
+    rewindEvery: 10,
+    ascensionAt: 2048,
+  };
+}
+
+function updateDailyCountdown() {
+  if (!dailyCountdownLine) return;
+  const now = new Date();
+  const ms = msUntilNextUtcMidnight(now);
+  dailyCountdownLine.textContent = `New daily in ${formatCountdown(ms)} (resets ${formatNextResetLocalTime(now)})`;
+}
+
+function flushLeaderboardQueue(targetStatusEl = null, force = false) {
+  if (!window.__LB || !window.__LB.url || !window.__LB.anonKey) return;
+  if (!persistenceEnabled) return;
+
+  const url = window.__LB.url;
+  const anonKey = window.__LB.anonKey;
+  const devId = getDeviceId(localStorage, persistenceEnabled);
+
+  flushQueue({
+    url,
+    anonKey,
+    deviceId: devId,
+    storage: localStorage,
+    persistenceEnabled,
+    fetchFn: window.fetch.bind(window),
+    clockFn: Date.now,
+    force,
+    onItemProcessed: async ({ item, res, status }) => {
+      const statusEl = targetStatusEl || document.getElementById('end-leaderboard-status');
+      if (!statusEl) return;
+
+      if (status === 'ACCEPTED') {
+        try {
+          const rankInfo = await getMyDailyRank({
+            url,
+            anonKey,
+            day: item.day,
+            deviceId: devId,
+            fetchFn: window.fetch.bind(window),
+          });
+          if (rankInfo && typeof rankInfo.rank === 'number' && typeof rankInfo.total_players === 'number') {
+            statusEl.textContent = `Submitted · Daily rank #${rankInfo.rank} of ${rankInfo.total_players}`;
+          } else {
+            statusEl.textContent = 'Submitted · Daily rank #1 of 1';
+          }
+        } catch {
+          statusEl.textContent = 'Submitted · Daily rank #1 of 1';
+        }
+      } else if (status === 'VERSION_MISMATCH') {
+        statusEl.textContent = 'Saved · leaderboard updating';
+      } else if (status === 'RETRY') {
+        statusEl.textContent = 'Saved · will retry';
+      } else if (status === 'REJECTED') {
+        statusEl.textContent = 'Not accepted';
+      }
+    },
+  }).catch(() => {});
+}
 
 /* -------------------------------------------------------------
  * Play Time Tracker (Active run time, accumulated from performance.now)
@@ -4625,13 +4734,49 @@ function handleGameOver() {
     }
   }
 
+  if (dailyRunActive) {
+    if (btnPlayDailyAgain) btnPlayDailyAgain.classList.remove('hidden');
+  } else {
+    if (btnPlayDailyAgain) btnPlayDailyAgain.classList.add('hidden');
+  }
+
+  if (dailyRunActive && persistenceEnabled && canShowDailyButton()) {
+    const reallyEnded = controller && (controller.isGameOver() || (controller.state && controller.state.endedByPlayer));
+    if (reallyEnded) {
+      const day = utcDateString(new Date());
+      const points = currentRunLog.points || 0;
+      const moves = currentRunLog.totalMoves ?? currentRunLog.moves ?? 0;
+
+      if (endLeaderboardStatus) {
+        endLeaderboardStatus.classList.remove('hidden');
+        endLeaderboardStatus.textContent = 'Sending…';
+      }
+
+      if (shouldSubmitRun(day, points, moves, localStorage)) {
+        enqueueSubmission({
+          runId: currentRunLog.runId || `run_${Date.now()}`,
+          day,
+          runLog: currentRunLog,
+        }, localStorage, persistenceEnabled);
+
+        flushLeaderboardQueue(endLeaderboardStatus);
+      }
+    }
+  } else {
+    if (endLeaderboardStatus) {
+      endLeaderboardStatus.classList.add('hidden');
+      endLeaderboardStatus.textContent = '';
+    }
+  }
+
   endOverlay.classList.remove('hidden');
 }
 
 /* -------------------------------------------------------------
  * Run Initialization
  * ------------------------------------------------------------- */
-function startNewGame(seed = null) {
+function startNewGame(seed = null, isDaily = false) {
+  dailyRunActive = Boolean(isDaily);
   if (typeof rewindDirector !== 'undefined') {
     rewindDirector.hardReset();
   }
@@ -4645,9 +4790,14 @@ function startNewGame(seed = null) {
   if (pauseTimeVal) pauseTimeVal.textContent = '0:00';
   startPlayTimer();
 
-  const chosenSeed = seed !== null ? seed : (initialSeed !== null ? initialSeed : Math.floor(Math.random() * 2147483647) + 1);
+  const configToUse = isDaily ? getDailyCanonicalConfig() : activeConfig;
+  const chosenSeed = seed !== null
+    ? seed
+    : (isDaily
+        ? dailySeed(utcDateString(new Date()))
+        : (initialSeed !== null ? initialSeed : Math.floor(Math.random() * 2147483647) + 1));
   const bestScore = getStoredBestScore();
-  controller = new GameController(chosenSeed, activeConfig, playerId);
+  controller = new GameController(chosenSeed, configToUse, playerId);
   controller.bestScoreAtRunStart = bestScore;
   window.controller = controller;
 
@@ -5069,7 +5219,11 @@ if (btnPauseRestart && pauseOverlay) {
   btnPauseRestart.addEventListener('click', () => {
     resetEndRunButton();
     pauseOverlay.classList.add('hidden');
-    startNewGame();
+    if (dailyRunActive) {
+      startNewGame(dailySeed(utcDateString(new Date())), true);
+    } else {
+      startNewGame();
+    }
     showToast('New run started');
   });
 }
@@ -5109,6 +5263,17 @@ if (btnStartHow && startHowList) {
   });
 }
 
+// Daily button
+if (btnPlayDaily) {
+  btnPlayDaily.addEventListener('click', (e) => {
+    e.preventDefault();
+    initAudio();
+    playClick();
+    if (startOverlay && startOverlay.classList.contains('hidden')) return;
+    startNewGame(dailySeed(utcDateString(new Date())), true);
+  });
+}
+
 // Start button (idempotent: cannot run twice)
 if (btnPlayStart) {
   btnPlayStart.addEventListener('click', (e) => {
@@ -5116,7 +5281,7 @@ if (btnPlayStart) {
     initAudio();
     playClick();
     if (startOverlay && startOverlay.classList.contains('hidden')) return;
-    startNewGame();
+    startNewGame(null, false);
   });
 }
 
@@ -5168,14 +5333,43 @@ if (startOverlay) {
   });
 }
 
-// Play again button
+// Play again buttons
+if (btnPlayDailyAgain) {
+  btnPlayDailyAgain.addEventListener('click', () => {
+    initAudio();
+    playClick();
+    startNewGame(dailySeed(utcDateString(new Date())), true);
+  });
+}
+
 if (btnPlayAgain) {
   btnPlayAgain.addEventListener('click', () => {
     initAudio();
     playClick();
-    startNewGame();
+    startNewGame(null, false);
   });
 }
+
+// Start overlay daily controls setup
+if (canShowDailyButton()) {
+  if (btnPlayDaily) btnPlayDaily.classList.remove('hidden');
+  if (dailyDisclosureContainer) dailyDisclosureContainer.classList.remove('hidden');
+  updateDailyCountdown();
+  setInterval(updateDailyCountdown, 1000);
+}
+
+// Background queue flush triggers
+try {
+  flushLeaderboardQueue();
+  window.addEventListener('online', () => {
+    try { flushLeaderboardQueue(null, true); } catch {}
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      try { flushLeaderboardQueue(); } catch {}
+    }
+  });
+} catch {}
 
 // Copy run log button (copies { currentRun: <record>, history: [<last 20 records>] }, fallback download)
 if (btnCopyLog) {

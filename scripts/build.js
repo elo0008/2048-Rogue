@@ -52,6 +52,50 @@ export function validateAndProcessLabMarkers(code, target) {
   return code;
 }
 
+export function validateLeaderboardConfig(rawUrl, rawKey) {
+  if (!rawUrl && !rawKey) return null;
+  if (!rawUrl || !rawKey) {
+    throw new Error('[BUILD ERROR] Both LEADERBOARD_URL and LEADERBOARD_ANON_KEY must be provided, or neither.');
+  }
+  const url = rawUrl.trim();
+  const key = rawKey.trim();
+
+  // URL validation: https://<ref>.supabase.co or http://localhost[:port]
+  const cleanUrl = url.replace(/\/+$/, '');
+  const isSupabase = /^https:\/\/[a-z0-9_-]+\.supabase\.co$/i.test(cleanUrl);
+  const isLocalhost = /^http:\/\/localhost(?::\d+)?$/i.test(cleanUrl);
+  if (!isSupabase && !isLocalhost) {
+    throw new Error(`[BUILD ERROR] Invalid LEADERBOARD_URL "${url}". Must be https://<ref>.supabase.co or http://localhost[:port]`);
+  }
+
+  // Key validation:
+  if (key.startsWith('sb_secret_')) {
+    throw new Error('[BUILD ERROR] LEADERBOARD_ANON_KEY must not be a service-role/secret key (starts with "sb_secret_").');
+  }
+
+  if (key.startsWith('sb_publishable_')) {
+    return { url: cleanUrl, anonKey: key };
+  }
+
+  // Check if JWT (3 parts separated by '.')
+  const parts = key.split('.');
+  if (parts.length === 3) {
+    try {
+      const payloadJson = Buffer.from(parts[1], 'base64url').toString('utf8');
+      const payload = JSON.parse(payloadJson);
+      if (payload.role !== 'anon') {
+        throw new Error(`[BUILD ERROR] LEADERBOARD_ANON_KEY JWT role must be "anon", got "${payload.role}". Do NOT use service-role key.`);
+      }
+      return { url: cleanUrl, anonKey: key };
+    } catch (e) {
+      if (e.message.startsWith('[BUILD ERROR]')) throw e;
+      throw new Error(`[BUILD ERROR] Failed to decode LEADERBOARD_ANON_KEY JWT: ${e.message}`);
+    }
+  }
+
+  throw new Error('[BUILD ERROR] LEADERBOARD_ANON_KEY must be a valid Supabase anon JWT or sb_publishable_ key.');
+}
+
 export function computeGameContentHash(dir = path.join(rootDir, 'game')) {
   const gameFiles = fs.readdirSync(dir)
     .filter(f => f.endsWith('.js'))
@@ -193,6 +237,28 @@ export async function build(options = {}) {
     const audioJs = fs.readFileSync(path.join(targetRootDir, 'game', 'audio.js'), 'utf-8');
     fs.writeFileSync(path.join(targetDistDir, 'audio.js'), audioJs, 'utf-8');
   }
+
+  // Copy daily.js
+  if (fs.existsSync(path.join(targetRootDir, 'game', 'daily.js'))) {
+    const dailyJs = fs.readFileSync(path.join(targetRootDir, 'game', 'daily.js'), 'utf-8');
+    fs.writeFileSync(path.join(targetDistDir, 'daily.js'), dailyJs, 'utf-8');
+  }
+
+  // Copy leaderboard.js
+  if (fs.existsSync(path.join(targetRootDir, 'game', 'leaderboard.js'))) {
+    const leaderboardJs = fs.readFileSync(path.join(targetRootDir, 'game', 'leaderboard.js'), 'utf-8');
+    fs.writeFileSync(path.join(targetDistDir, 'leaderboard.js'), leaderboardJs, 'utf-8');
+  }
+
+  // Generate and emit leaderboard-config.js (ALWAYS emitted)
+  const lbConfig = validateLeaderboardConfig(
+    options.leaderboardUrl ?? process.env.LEADERBOARD_URL,
+    options.leaderboardAnonKey ?? process.env.LEADERBOARD_ANON_KEY
+  );
+  const lbConfigJs = lbConfig
+    ? `window.__LB = ${JSON.stringify(lbConfig)};\n`
+    : `window.__LB = null;\n`;
+  fs.writeFileSync(path.join(targetDistDir, 'leaderboard-config.js'), lbConfigJs, 'utf-8');
 
   // Copy icons directory to dist/icons
   const iconsDistDir = path.join(targetDistDir, 'icons');

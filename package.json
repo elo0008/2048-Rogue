@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test": "node --test sim/tests/*.test.js && node --test verify/tests/*.test.js && node scripts/smoke_test.js && node scripts/ui_canonical_check.js && node scripts/ghost_fuzz.js",
+    "test": "node --test sim/tests/*.test.js && node --test verify/tests/*.test.js && node scripts/smoke_test.js && node scripts/ui_canonical_check.js && node scripts/ghost_fuzz.js && node scripts/test_daily_client.js",
     "serve": "node scripts/serve.js",
     "serve:dev": "node scripts/serve.js dev",
     "build": "node scripts/build.js",
@@ -11,7 +11,8 @@
     "icons": "node scripts/icon_metrics.js",
     "sim": "node sim/run.js",
     "test:edge": "node scripts/test_edge_parity.js && node scripts/test_edge_cpu.js && node scripts/test_edge_security.js && node scripts/test_edge_rank.js && node scripts/test_names.js && node scripts/test_ip_norm.js",
-    "test:live": "node scripts/run_live_suite.js"
+    "test:live": "node scripts/run_live_suite.js",
+    "check:deployed": "node scripts/check_deployed.js"
   },
   "engines": {
     "node": ">=18"

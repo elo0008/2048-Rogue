@@ -49,7 +49,7 @@ export function getCorsHeaders(req: Request): HeadersInit {
   }
   return {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-region',
     'Vary': 'Origin',
   };
@@ -132,6 +132,27 @@ export async function handleSubmissionRequest(
   // 1. Handle CORS Preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: { ...corsHeaders, ...ipSourceHeaders } });
+  }
+
+  // S0: Version Endpoint for GET requests
+  if (req.method === 'GET') {
+    const manifest = manifestOverride !== undefined ? manifestOverride : defaultManifest;
+    if (!manifest || !manifest.rulesVersion || !manifest.replayVersion) {
+      return new Response(JSON.stringify({
+        error: 'SERVER_CONFIGURATION_ERROR',
+        message: 'Manifest missing or incomplete',
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({
+      rulesVersion: manifest.rulesVersion,
+      replayVersion: manifest.replayVersion,
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, ...ipSourceHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   if (req.method !== 'POST') {
