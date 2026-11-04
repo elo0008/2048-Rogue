@@ -612,6 +612,23 @@ When simulation or controller rules change (`sim/engine.js`, `sim/relics.js`, or
 > [!NOTE]
 > **Preview Deployments:** Vercel Preview deployments (e.g. `*-username.vercel.app`) are deliberately not in the backend CORS whitelist. Submissions from Preview deployments will fail CORS and remain queued in `localStorage` with exponential backoff, without interrupting gameplay or generating uncaught UI errors.
 
+### Minimal Submission Payload (`buildSubmission`)
+
+To minimize bandwidth, protect privacy, and ensure client storage efficiency, `buildSubmission()` drops non-essential client telemetry and hardware details before enqueueing runs into `localStorage` and submitting to the edge function.
+
+- **Full Client Run Log (48 keys):**
+  `abilityUses`, `activeMs`, `ascensionLevel`, `ascensions`, `audioState`, `bestScoreAtRunStart`, `buildId`, `capped`, `chargesAtDeath`, `config`, `diagnostics`, `drafts`, `draftsSeen`, `embedded`, `endTimestamp`, `endedByPlayer`, `errorCount`, `errors`, `events`, `finalBoard`, `finalNumberTiles`, `finalStones`, `host`, `inputMethodCounts`, `lang`, `lastStandFired`, `maxTile`, `moveNumberAtDeath`, `playerId`, `points`, `queryString`, `reducedMotion`, `referrerOrigin`, `relicActivations`, `relicsOwned`, `replayVersion`, `rulesVersion`, `runId`, `score`, `seed`, `soundEnabled`, `startTimestamp`, `stuckNeedsAbility`, `swipesAtMax`, `totalMoves`, `touchPoints`, `userAgent`, `viewport`
+
+- **Minimal Submission Run Log (20 keys):**
+  `abilityUses`, `activeMs`, `ascensions`, `capped`, `config`, `drafts`, `durationMs`, `endedByPlayer`, `events`, `finalBoard`, `lastStandFired`, `maxTile`, `moveNumberAtDeath`, `points`, `relicsOwned`, `replayVersion`, `rulesVersion`, `seed`, `startTimestamp`, `totalMoves`
+
+- **Dropped Keys (29 keys):**
+  `ascensionLevel`, `audioState`, `bestScoreAtRunStart`, `buildId`, `chargesAtDeath`, `diagnostics`, `draftsSeen`, `embedded`, `endTimestamp`, `errorCount`, `errors`, `finalNumberTiles`, `finalStones`, `host`, `inputMethodCounts`, `lang`, `playerId`, `queryString`, `reducedMotion`, `referrerOrigin`, `relicActivations`, `runId`, `score`, `soundEnabled`, `stuckNeedsAbility`, `swipesAtMax`, `touchPoints`, `userAgent`, `viewport`
+
+- **Verification Properties Read (17 properties):**
+  `abilityUses`, `activeMs`, `ascensions`, `capped`, `config`, `drafts`, `endedByPlayer`, `events`, `finalBoard`, `lastStandFired`, `maxTile`, `moveNumberAtDeath`, `points`, `relicsOwned`, `replayVersion`, `rulesVersion`, `seed`
+  *(All 17 verified properties are 100% present in the minimal submission payload, ensuring identical simulation verdict and event hash).*
+
 
 
 

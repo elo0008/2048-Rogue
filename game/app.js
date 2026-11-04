@@ -44,6 +44,7 @@ import {
 import {
   getDeviceId,
   shouldSubmitRun,
+  getStoredDailyBest,
   enqueueSubmission,
   flushQueue,
   getMyDailyRank,
@@ -722,6 +723,9 @@ const endLeaderboardStatus = document.getElementById('end-leaderboard-status');
 const btnPlayDailyAgain = document.getElementById('btn-play-daily-again');
 
 let dailyRunActive = false;
+let dailyRunStartDay = null;
+let displayedRunId = null;
+let countdownIntervalId = null;
 
 const FORBIDDEN_DAILY_PARAMS = [
   'seed', 'stones', 'start', 'ascension', 'shatter', 'siphon',
@@ -761,13 +765,33 @@ function updateDailyCountdown() {
   dailyCountdownLine.textContent = `New daily in ${formatCountdown(ms)} (resets ${formatNextResetLocalTime(now)})`;
 }
 
-function flushLeaderboardQueue(targetStatusEl = null, force = false) {
+function startDailyCountdown() {
+  if (countdownIntervalId !== null) return;
+  if (!canShowDailyButton()) return;
+  updateDailyCountdown();
+  countdownIntervalId = setInterval(updateDailyCountdown, 1000);
+}
+
+function stopDailyCountdown() {
+  if (countdownIntervalId !== null) {
+    clearInterval(countdownIntervalId);
+    countdownIntervalId = null;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.__testCountdownActive = () => countdownIntervalId !== null;
+  window.__testFlushLeaderboardQueue = flushLeaderboardQueue;
+}
+
+function flushLeaderboardQueue(targetStatusEl = null, force = false, targetRunId = null) {
   if (!window.__LB || !window.__LB.url || !window.__LB.anonKey) return;
   if (!persistenceEnabled) return;
 
   const url = window.__LB.url;
   const anonKey = window.__LB.anonKey;
   const devId = getDeviceId(localStorage, persistenceEnabled);
+  const activeRunId = targetRunId || displayedRunId;
 
   flushQueue({
     url,
@@ -779,6 +803,10 @@ function flushLeaderboardQueue(targetStatusEl = null, force = false) {
     clockFn: Date.now,
     force,
     onItemProcessed: async ({ item, res, status }) => {
+      // F3: Status bound strictly to the run shown
+      if (!item || !activeRunId || item.runId !== activeRunId) {
+        return;
+      }
       const statusEl = targetStatusEl || document.getElementById('end-leaderboard-status');
       if (!statusEl) return;
 
@@ -791,13 +819,14 @@ function flushLeaderboardQueue(targetStatusEl = null, force = false) {
             deviceId: devId,
             fetchFn: window.fetch.bind(window),
           });
+          // F2: No fake rank fallback
           if (rankInfo && typeof rankInfo.rank === 'number' && typeof rankInfo.total_players === 'number') {
             statusEl.textContent = `Submitted · Daily rank #${rankInfo.rank} of ${rankInfo.total_players}`;
           } else {
-            statusEl.textContent = 'Submitted · Daily rank #1 of 1';
+            statusEl.textContent = 'Submitted';
           }
         } catch {
-          statusEl.textContent = 'Submitted · Daily rank #1 of 1';
+          statusEl.textContent = 'Submitted';
         }
       } else if (status === 'VERSION_MISMATCH') {
         statusEl.textContent = 'Saved · leaderboard updating';
@@ -4742,24 +4771,45 @@ function handleGameOver() {
 
   if (dailyRunActive && persistenceEnabled && canShowDailyButton()) {
     const reallyEnded = controller && (controller.isGameOver() || (controller.state && controller.state.endedByPlayer));
-    if (reallyEnded) {
-      const day = utcDateString(new Date());
-      const points = currentRunLog.points || 0;
-      const moves = currentRunLog.totalMoves ?? currentRunLog.moves ?? 0;
+    if (reallyEnded && dailyRunStartDay) {
+      const now = Date.now();
+      const today = new Date(now);
+      const yesterday = new Date(now - 86400000);
+      const validDays = new Set([utcDateString(today), utcDateString(yesterday)]);
 
-      if (endLeaderboardStatus) {
-        endLeaderboardStatus.classList.remove('hidden');
-        endLeaderboardStatus.textContent = 'Sending…';
-      }
+      // If run was started before midnight but submitted after two midnights, drop as stale
+      if (!validDays.has(dailyRunStartDay)) {
+        if (endLeaderboardStatus) {
+          endLeaderboardStatus.classList.remove('hidden');
+          endLeaderboardStatus.textContent = 'Not accepted';
+        }
+      } else {
+        const day = dailyRunStartDay;
+        const points = currentRunLog.points || 0;
+        const moves = currentRunLog.totalMoves ?? currentRunLog.moves ?? 0;
+        displayedRunId = currentRunLog.runId || null;
 
-      if (shouldSubmitRun(day, points, moves, localStorage)) {
-        enqueueSubmission({
-          runId: currentRunLog.runId || `run_${Date.now()}`,
-          day,
-          runLog: currentRunLog,
-        }, localStorage, persistenceEnabled);
+        if (shouldSubmitRun(day, points, moves, localStorage)) {
+          if (endLeaderboardStatus) {
+            endLeaderboardStatus.classList.remove('hidden');
+            endLeaderboardStatus.textContent = 'Sending…';
+          }
+          enqueueSubmission({
+            runId: currentRunLog.runId || `run_${Date.now()}`,
+            day,
+            runLog: currentRunLog,
+          }, localStorage, persistenceEnabled);
 
-        flushLeaderboardQueue(endLeaderboardStatus);
+          flushLeaderboardQueue(endLeaderboardStatus, false, displayedRunId);
+        } else {
+          // F4: NOT-BETTER STATE
+          const best = getStoredDailyBest(day, localStorage);
+          const bestPoints = best ? best.points : points;
+          if (endLeaderboardStatus) {
+            endLeaderboardStatus.classList.remove('hidden');
+            endLeaderboardStatus.textContent = `Not sent · your best today is ${bestPoints}`;
+          }
+        }
       }
     }
   } else {
@@ -4777,6 +4827,14 @@ function handleGameOver() {
  * ------------------------------------------------------------- */
 function startNewGame(seed = null, isDaily = false) {
   dailyRunActive = Boolean(isDaily);
+  stopDailyCountdown();
+
+  if (isDaily) {
+    dailyRunStartDay = utcDateString(new Date());
+  } else {
+    dailyRunStartDay = null;
+  }
+
   if (typeof rewindDirector !== 'undefined') {
     rewindDirector.hardReset();
   }
@@ -4794,7 +4852,7 @@ function startNewGame(seed = null, isDaily = false) {
   const chosenSeed = seed !== null
     ? seed
     : (isDaily
-        ? dailySeed(utcDateString(new Date()))
+        ? dailySeed(dailyRunStartDay)
         : (initialSeed !== null ? initialSeed : Math.floor(Math.random() * 2147483647) + 1));
   const bestScore = getStoredBestScore();
   controller = new GameController(chosenSeed, configToUse, playerId);
@@ -5220,7 +5278,7 @@ if (btnPauseRestart && pauseOverlay) {
     resetEndRunButton();
     pauseOverlay.classList.add('hidden');
     if (dailyRunActive) {
-      startNewGame(dailySeed(utcDateString(new Date())), true);
+      startNewGame(null, true);
     } else {
       startNewGame();
     }
@@ -5270,7 +5328,7 @@ if (btnPlayDaily) {
     initAudio();
     playClick();
     if (startOverlay && startOverlay.classList.contains('hidden')) return;
-    startNewGame(dailySeed(utcDateString(new Date())), true);
+    startNewGame(null, true);
   });
 }
 
@@ -5338,7 +5396,7 @@ if (btnPlayDailyAgain) {
   btnPlayDailyAgain.addEventListener('click', () => {
     initAudio();
     playClick();
-    startNewGame(dailySeed(utcDateString(new Date())), true);
+    startNewGame(null, true);
   });
 }
 
@@ -5354,8 +5412,9 @@ if (btnPlayAgain) {
 if (canShowDailyButton()) {
   if (btnPlayDaily) btnPlayDaily.classList.remove('hidden');
   if (dailyDisclosureContainer) dailyDisclosureContainer.classList.remove('hidden');
-  updateDailyCountdown();
-  setInterval(updateDailyCountdown, 1000);
+  if (startOverlay && !startOverlay.classList.contains('hidden')) {
+    startDailyCountdown();
+  }
 }
 
 // Background queue flush triggers
@@ -5531,6 +5590,9 @@ function renderBestRunsList() {
 
 function showBestRunsOverlay(source) {
   tickPlayTimer();
+  if (source === startOverlay) {
+    stopDailyCountdown();
+  }
   if (typeof rewindDirector !== 'undefined' && rewindDirector.isActive()) {
     rewindDirector.pause();
   }
@@ -5554,6 +5616,9 @@ function hideBestRunsOverlay() {
   }
   if (previousOverlayBeforeBestRuns && previousOverlayBeforeBestRuns.classList) {
     previousOverlayBeforeBestRuns.classList.remove('hidden');
+    if (previousOverlayBeforeBestRuns === startOverlay) {
+      startDailyCountdown();
+    }
   }
   previousOverlayBeforeBestRuns = null;
   lastPerfTime = performance.now();
@@ -5653,7 +5718,10 @@ if (hasLaunchParams) {
   startNewGame(initialSeed);
 } else {
   startNewGame(null);
-  if (startOverlay) startOverlay.classList.remove('hidden');
+  if (startOverlay) {
+    startOverlay.classList.remove('hidden');
+    startDailyCountdown();
+  }
 }
 
 /*DEV_LAB_BEGIN*/

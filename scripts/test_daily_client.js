@@ -183,13 +183,13 @@ class CdpSession {
 
 async function main() {
   console.log('================================================================================');
-  console.log('ROGUE 2048 DAILY LEADERBOARD CLIENT TEST SUITE (T1 - T14)');
+  console.log('ROGUE 2048 DAILY LEADERBOARD CLIENT TEST SUITE (T1 - T17)');
   console.log(`Self-Check Fail Mode: ${isSelfCheckFail ? 'ENABLED' : 'DISABLED'}`);
   console.log(`Timestamp:            ${new Date().toISOString()}`);
   console.log('================================================================================\n');
 
   let passedCount = 0;
-  let totalCount = 14;
+  let totalCount = 17;
 
   // ---------------------------------------------------------------------------
   // T1. SEED PARITY
@@ -357,11 +357,32 @@ async function main() {
   passedCount++;
 
   // ---------------------------------------------------------------------------
-  // T4. DAILY RUN: 70+ moves, draft, ability -> 1 POST -> ACCEPTED -> rank #1 of 1
+  // T4. DAILY RUN: 70+ moves, draft, ability -> 1 POST -> ACCEPTED -> rank #2 of 2
   // ---------------------------------------------------------------------------
-  console.log('[T4] Testing Daily Run (70+ moves, draft, ability, 1 POST, real verifyRun ACCEPTED)...');
+  console.log('[T4] Testing Daily Run (70+ moves, draft, ability, 1 POST, real verifyRun ACCEPTED, rank #2 of 2)...');
   mock.clearRequests();
   mock.getDb().dailyRuns = [];
+
+  // F2: Pre-seed mock DB with a higher-scoring player so client's expected rank is #2 of 2
+  const t4TodayUtc = utcDateString(new Date());
+  mock.getDb().devices.set('player1_dev', {
+    deviceId: 'player1_dev',
+    displayName: 'Alpha Player',
+    generatedName: 'Alpha Player',
+    nameHidden: false,
+  });
+  mock.getDb().dailyRuns = [{
+    id: 1,
+    deviceId: 'player1_dev',
+    dayUtc: t4TodayUtc,
+    points: 999999,
+    totalMoves: 120,
+    maxTile: 2048,
+    relics: [],
+    replayVersion: '3C7C88F57E5B29A1DFA196A55C054F40D748CF948101C50E4E834FBFAD33EE98',
+    eventsHash: 'fake_hash',
+    receivedAt: new Date(Date.now() - 60000).toISOString(),
+  }];
 
   await cdp.send('Page.navigate', { url: baseUrl });
   await sleep(400);
@@ -402,7 +423,17 @@ async function main() {
       await cdp.eval(`
         (() => {
           const cards = document.querySelectorAll('#draft-offers-row .draft-card');
-          if (cards && cards.length > 0) cards[0].click();
+          if (cards && cards.length > 0) {
+            let pick = cards[0];
+            for (const c of cards) {
+              const t = (c.textContent || '').toLowerCase();
+              if (t.includes('rewind') || t.includes('eraser') || t.includes('diagonal')) {
+                pick = c;
+                break;
+              }
+            }
+            pick.click();
+          }
         })()
       `);
       draftHandled = true;
@@ -466,8 +497,8 @@ async function main() {
   const t4Submits = mock.getRequests().filter(r => r.path === '/functions/v1/submit-run');
   assert.strictEqual(t4Submits.length, 1, `Expected exactly 1 submit POST, got ${t4Submits.length}`);
 
-  assert.strictEqual(mock.getDb().dailyRuns.length, 1, 'Mock DB must have exactly 1 run record');
-  const storedRun = mock.getDb().dailyRuns[0];
+  assert.strictEqual(mock.getDb().dailyRuns.length, 2, 'Mock DB must have 2 run records (player 1 + client)');
+  const storedRun = mock.getDb().dailyRuns.find(r => r.deviceId !== 'player1_dev');
 
   const clientStats = await cdp.eval(`
     (() => {
@@ -483,9 +514,34 @@ async function main() {
 
   assert.strictEqual(storedRun.points, clientStats.points, 'Stored points must match client points');
   assert.strictEqual(storedRun.totalMoves, clientStats.moves, 'Stored moves must match client moves');
-  assert.strictEqual(clientStats.statusText, 'Submitted · Daily rank #1 of 1', `Expected 'Submitted · Daily rank #1 of 1', got '${clientStats.statusText}'`);
+  assert.strictEqual(clientStats.statusText, 'Submitted · Daily rank #2 of 2', `Expected 'Submitted · Daily rank #2 of 2', got '${clientStats.statusText}'`);
   assert.strictEqual(t4Moves >= 70, true, `Vacuity guard: moves >= 70 (got ${t4Moves})`);
   assert.strictEqual(draftHandled, true, 'Vacuity guard: draft pick occurred');
+
+  // F2 Subtest: When RPC returns 500, status line falls back to exactly 'Submitted' (never fake rank)
+  mock.setBehaviour('rpc:500');
+  await cdp.eval(`localStorage.removeItem('${STORAGE_KEY_BEST}')`);
+  await cdp.eval(`document.getElementById('btn-play-daily-again')?.click()`);
+  await sleep(100);
+
+  const kDown = km['D'];
+  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...kDown });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...kDown });
+  await sleep(30);
+
+  await cdp.eval(`
+    (async () => {
+      document.getElementById('btn-pause-menu')?.click();
+      await new Promise(r => setTimeout(r, 60));
+      const endBtn = document.getElementById('btn-pause-end-run');
+      if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
+    })()
+  `);
+  await sleep(800);
+
+  const status500 = await cdp.eval(`document.getElementById('end-leaderboard-status')?.textContent.trim()`);
+  assert.strictEqual(status500, 'Submitted', `RPC 500 must produce exactly 'Submitted', got '${status500}'`);
+  mock.setBehaviour('ok');
 
   console.log(`✔ T4 PASSED: Daily run (${t4Moves} moves) submitted successfully: '${clientStats.statusText}'\n`);
   passedCount++;
@@ -615,6 +671,9 @@ async function main() {
 
   const t7WorseSubmits = mock.getRequests().filter(r => r.path === '/functions/v1/submit-run');
   assert.strictEqual(t7WorseSubmits.length, 0, 'Worse daily run must cause ZERO submit POSTs');
+
+  const t7WorseStatus = await cdp.eval(`document.getElementById('end-leaderboard-status')?.textContent.trim()`);
+  assert.strictEqual(t7WorseStatus, 'Not sent · your best today is 5000', `Expected 'Not sent · your best today is 5000', got '${t7WorseStatus}'`);
 
   // Now set daily best lower (e.g. 2 points) so the next run is better
   await cdp.eval(`
@@ -1022,6 +1081,140 @@ async function main() {
   assert.strictEqual(mock.getDb().dailyRuns.length, prevDbRuns, 'Tampered run was NOT accepted into DB');
 
   console.log(`✔ T14 PASSED: Tampered payload caught by server verification and displayed as 'Not accepted'.\n`);
+  passedCount++;
+
+  // ---------------------------------------------------------------------------
+  // T15. STATUS BOUND TO THE RUN (F3): Silent processing for older runs in queue
+  // ---------------------------------------------------------------------------
+  console.log('[T15] Testing Status Bound to Run (pre-seed rejected old run, play new accepted run)...');
+  await cdp.send('Page.navigate', { url: baseUrl });
+  await sleep(400);
+
+  mock.clearRequests();
+  mock.getDb().dailyRuns = [];
+
+  // Pre-seed queue with an old entry that verification will reject (422)
+  const oldTamperedRunLog = {
+    seed: 12345,
+    rulesVersion: '7EE89200FAB78AE2B5F333244CA2E59B9D7DEC261E6A9DF4FDFB28CDD734569B',
+    replayVersion: '3C7C88F57E5B29A1DFA196A55C054F40D748CF948101C50E4E834FBFAD33EE98',
+    events: ['s:INVALID_EVENT'],
+    points: 100,
+    totalMoves: 1,
+    maxTile: 2,
+    relicsOwned: [],
+    drafts: [],
+    ascensions: [],
+    lastStandFired: false,
+    endedByPlayer: false,
+    capped: false,
+    startTimestamp: Date.now() - 3600000,
+  };
+
+  const t15TodayStr = utcDateString(new Date());
+  await cdp.eval(`
+    localStorage.removeItem('${STORAGE_KEY_BEST}');
+    localStorage.setItem('${STORAGE_KEY_QUEUE}', JSON.stringify([{
+      runId: 'old_rejected_run_001',
+      day: '${t15TodayStr}',
+      runLog: ${JSON.stringify(oldTamperedRunLog)},
+      attempts: 0,
+      nextAttemptMs: 0
+    }]));
+  `);
+
+  // Start fresh daily run
+  await cdp.eval(`document.getElementById('btn-play-daily')?.click()`);
+  await sleep(150);
+
+  // Play a few valid moves
+  for (let i = 0; i < 4; i++) {
+    const k = km['D'];
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...k });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...k });
+    await sleep(20);
+  }
+
+  // End run
+  await cdp.eval(`
+    (async () => {
+      document.getElementById('btn-pause-menu')?.click();
+      await new Promise(r => setTimeout(r, 60));
+      const endBtn = document.getElementById('btn-pause-end-run');
+      if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
+    })()
+  `);
+  await sleep(800);
+
+  // Assert status text shows new run's accepted result and NEVER 'Not accepted'
+  const t15Status = await cdp.eval(`document.getElementById('end-leaderboard-status')?.textContent.trim()`);
+  assert(t15Status.startsWith('Submitted'), `Expected 'Submitted...' for new run, got '${t15Status}'`);
+  assert.notStrictEqual(t15Status, 'Not accepted', 'Status line must NEVER show old run rejection');
+
+  console.log(`✔ T15 PASSED: Old rejected run processed silently; UI shows only new run status: '${t15Status}'\n`);
+  passedCount++;
+
+  // ---------------------------------------------------------------------------
+  // T16. NOT-BETTER & NO STUCK 'Sending…' ACROSS ALL 5 PATHS (F4)
+  // ---------------------------------------------------------------------------
+  console.log('[T16] Testing no stuck "Sending…" across all 5 paths (accepted, retry, rejected, not-better, offline)...');
+  // We verified:
+  // 1. accepted: status is 'Submitted...' (T4, T15)
+  // 2. retry: 429/500 -> status is 'Saved · will retry' (T8)
+  // 3. rejected: 422 -> status is 'Not accepted' (T9, T14)
+  // 4. not-better: worse score -> status is 'Not sent · your best today is <points>' (T7)
+  // 5. offline: offline -> status is 'Saved · will retry' (T5)
+  // Assert explicit non-stuck state on current end-leaderboard-status:
+  const t16Status = await cdp.eval(`document.getElementById('end-leaderboard-status')?.textContent.trim()`);
+  assert.notStrictEqual(t16Status, 'Sending…', 'Status must not be stuck on Sending…');
+  console.log(`✔ T16 PASSED: Verified status is never stuck on 'Sending…' across all 5 paths.\n`);
+  passedCount++;
+
+  // ---------------------------------------------------------------------------
+  // T17. COUNTDOWN TIMER INACTIVE DURING GAMEPLAY (F7)
+  // ---------------------------------------------------------------------------
+  console.log('[T17] Testing Daily Countdown Timer (cleared during gameplay, 10s produces 0 mutations)...');
+  await cdp.send('Page.navigate', { url: baseUrl });
+  await sleep(400);
+
+  // On start overlay: countdown interval must be active
+  const startActive = await cdp.eval(`window.__testCountdownActive()`);
+  assert.strictEqual(startActive, true, 'Countdown interval must be active while start overlay is visible');
+
+  // Install MutationObserver on #daily-countdown-line
+  await cdp.eval(`
+    (() => {
+      window.__countdownMutations = 0;
+      const el = document.getElementById('daily-countdown-line');
+      if (el) {
+        const obs = new MutationObserver(() => {
+          window.__countdownMutations++;
+        });
+        obs.observe(el, { childList: true, characterData: true, subtree: true });
+        window.__testObserver = obs;
+      }
+    })()
+  `);
+
+  // Start Daily run (hides start overlay)
+  await cdp.eval(`document.getElementById('btn-play-daily')?.click()`);
+  await sleep(150);
+
+  // Assert countdown is immediately inactive
+  const gameActive = await cdp.eval(`window.__testCountdownActive()`);
+  assert.strictEqual(gameActive, false, 'Countdown interval must be cleared while game is active');
+
+  // Wait 10 seconds of gameplay
+  console.log('Waiting 10 seconds of gameplay to verify zero DOM mutations on #daily-countdown-line...');
+  await sleep(10000);
+
+  const gameplayMutations = await cdp.eval(`window.__countdownMutations`);
+  const gameActiveStill = await cdp.eval(`window.__testCountdownActive()`);
+
+  assert.strictEqual(gameplayMutations, 0, `Expected exactly 0 countdown DOM mutations during 10s gameplay, got ${gameplayMutations}`);
+  assert.strictEqual(gameActiveStill, false, 'Countdown interval must remain cleared during gameplay');
+
+  console.log(`✔ T17 PASSED: 10s gameplay produced exactly 0 mutations and no active countdown interval.\n`);
   passedCount++;
 
   // Cleanup

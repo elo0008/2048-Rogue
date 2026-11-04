@@ -52,6 +52,14 @@ export function createMockLeaderboardServer(initialDb = null) {
       timestamp: Date.now(),
     });
 
+    // Supabase Kong gateway simulation: reject Bearer sb_publishable_ keys as Invalid JWT
+    const authHeader = req.headers['authorization'] || '';
+    if (/^Bearer\s+sb_publishable_/i.test(authHeader)) {
+      res.writeHead(401, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message: 'Invalid JWT' }));
+      return;
+    }
+
     // 3. Control Endpoints
     if (pathname === '/__control/behaviour' && req.method === 'POST') {
       if (bodyJson && bodyJson.behaviour) {
@@ -130,6 +138,11 @@ export function createMockLeaderboardServer(initialDb = null) {
 
     // 5. REST RPC Endpoints
     if (pathname === '/rest/v1/rpc/my_daily_rank' && req.method === 'POST') {
+      if (behaviour === 'rpc:500') {
+        res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INTERNAL_SERVER_ERROR', message: 'Mock RPC 500 error' }));
+        return;
+      }
       const targetDay = bodyJson?.target_day || new Date().toISOString().slice(0, 10);
       const deviceId = bodyJson?.p_device_id || '';
       const result = db.rpcMyDailyRank(targetDay, deviceId);
@@ -164,9 +177,12 @@ export function createMockLeaderboardServer(initialDb = null) {
       const webRes = await handleSubmissionRequest(webReq, db);
       const resBody = await webRes.text();
 
-      const outHeaders = { ...corsHeaders };
+      const outHeaders = {};
+      for (const [k, v] of Object.entries(corsHeaders)) {
+        outHeaders[k.toLowerCase()] = v;
+      }
       webRes.headers.forEach((val, key) => {
-        outHeaders[key] = val;
+        outHeaders[key.toLowerCase()] = val;
       });
 
       res.writeHead(webRes.status, outHeaders);
@@ -191,9 +207,12 @@ export function createMockLeaderboardServer(initialDb = null) {
       const webRes = await handleSetNameRequest(webReq, db);
       const resBody = await webRes.text();
 
-      const outHeaders = { ...corsHeaders };
+      const outHeaders = {};
+      for (const [k, v] of Object.entries(corsHeaders)) {
+        outHeaders[k.toLowerCase()] = v;
+      }
       webRes.headers.forEach((val, key) => {
-        outHeaders[key] = val;
+        outHeaders[key.toLowerCase()] = val;
       });
 
       res.writeHead(webRes.status, outHeaders);

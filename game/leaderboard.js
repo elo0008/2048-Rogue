@@ -63,23 +63,41 @@ export function buildSubmission(runLog) {
     return null;
   }
 
-  return {
+  const sub = {
     seed: runLog.seed,
     rulesVersion: runLog.rulesVersion,
     replayVersion: runLog.replayVersion,
-    startTimestamp: runLog.startTimestamp,
-    activeMs: runLog.activeMs,
-    durationMs: typeof runLog.durationMs === 'number' ? runLog.durationMs : (typeof runLog.activeMs === 'number' ? runLog.activeMs : null),
+    config: runLog.config,
+    events: [...runLog.events],
     points: runLog.points ?? runLog.score ?? 0,
     totalMoves: runLog.totalMoves ?? runLog.moveNumberAtDeath ?? 0,
+    moveNumberAtDeath: runLog.moveNumberAtDeath ?? runLog.totalMoves ?? 0,
     maxTile: runLog.maxTile ?? 0,
     relicsOwned: Array.isArray(runLog.relicsOwned) ? [...runLog.relicsOwned] : [],
+    drafts: Array.isArray(runLog.drafts) ? [...runLog.drafts] : [],
+    ascensions: Array.isArray(runLog.ascensions) ? [...runLog.ascensions] : [],
     lastStandFired: Boolean(runLog.lastStandFired),
     endedByPlayer: Boolean(runLog.endedByPlayer),
     capped: Boolean(runLog.capped),
-    config: runLog.config,
-    events: [...runLog.events],
+    startTimestamp: runLog.startTimestamp,
   };
+
+  if (typeof runLog.activeMs === 'number') {
+    sub.activeMs = runLog.activeMs;
+    sub.durationMs = Math.round(runLog.activeMs);
+  } else if (typeof runLog.durationMs === 'number') {
+    sub.durationMs = runLog.durationMs;
+  }
+
+  if (Array.isArray(runLog.finalBoard)) {
+    sub.finalBoard = [...runLog.finalBoard];
+  }
+
+  if (runLog.abilityUses) {
+    sub.abilityUses = runLog.abilityUses;
+  }
+
+  return sub;
 }
 
 /**
@@ -104,6 +122,26 @@ export function shouldSubmitRun(day, points, moves, storage = globalThis.localSt
     return false;
   } catch {
     return true;
+  }
+}
+
+/**
+ * Returns the currently stored daily best object { day, points, moves } or null if none/mismatched.
+ *
+ * @param {string} day
+ * @param {Storage} [storage=globalThis.localStorage]
+ * @returns {object|null}
+ */
+export function getStoredDailyBest(day, storage = globalThis.localStorage) {
+  try {
+    if (!storage || typeof storage.getItem !== 'function') return null;
+    const raw = storage.getItem(STORAGE_KEY_BEST);
+    if (!raw) return null;
+    const best = JSON.parse(raw);
+    if (!best || best.day !== day) return null;
+    return best;
+  } catch {
+    return null;
   }
 }
 
@@ -169,7 +207,6 @@ export async function submitRun({
       headers: {
         'Content-Type': 'application/json',
         'apikey': anonKey,
-        'Authorization': `Bearer ${anonKey}`,
       },
       body: JSON.stringify({ deviceId, runLog: minimalLog }),
       signal: controller?.signal,
@@ -336,7 +373,22 @@ export async function flushQueue(options = {}) {
     const now = clockFn();
     const remaining = [];
 
+    const isRealisticEpoch = now >= 1000000000000;
+    const validDays = isRealisticEpoch
+      ? new Set([utcDateString(new Date(now)), utcDateString(new Date(now - 86400000))])
+      : null;
+
     for (const item of queue) {
+      if (validDays && item.day && !validDays.has(item.day)) {
+        // Stale run: day older than yesterday (dropped without submit)
+        if (typeof onItemProcessed === 'function') {
+          try {
+            await onItemProcessed({ item, res: { status: 'REJECTED' }, status: 'REJECTED' });
+          } catch {}
+        }
+        continue;
+      }
+
       if (!force && item.nextAt > now) {
         remaining.push(item);
         continue;
@@ -419,7 +471,6 @@ export async function getMyDailyRank({
       headers: {
         'Content-Type': 'application/json',
         'apikey': anonKey,
-        'Authorization': `Bearer ${anonKey}`,
       },
       body: JSON.stringify({ target_day: day, p_device_id: deviceId }),
     });

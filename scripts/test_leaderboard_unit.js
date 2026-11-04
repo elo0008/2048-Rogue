@@ -327,6 +327,166 @@ await asyncTest('Submission queue respects max 5 entries, drops expired, and bac
   assert.equal(remainingAfterPass.length, 0, 'Queue must be empty after all items are accepted');
 });
 
+// 6. Test F1 Auth Header: getMyDailyRank & submitRun send apikey ONLY (never Authorization: Bearer)
+await asyncTest('F1 Auth Header: getMyDailyRank and submitRun send apikey ONLY with publishable and JWT keys', async () => {
+  const dummyLog = {
+    seed: 123,
+    rulesVersion: 'r',
+    replayVersion: 'v',
+    startTimestamp: 1000,
+    activeMs: 5000,
+    points: 100,
+    totalMoves: 20,
+    events: ['s:L'],
+  };
+
+  // 1. Publishable key: sb_publishable_...
+  {
+    let capturedHeaders = null;
+    const mockFetch = async (url, opts) => {
+      capturedHeaders = opts.headers;
+      return new Response(JSON.stringify([{ rank: 1, total_players: 1 }]), { status: 200 });
+    };
+
+    const pubKey = 'sb_publishable_test_token_12345';
+    await getMyDailyRank({
+      url: 'http://localhost',
+      anonKey: pubKey,
+      day: '2026-11-04',
+      deviceId: 'dev_12345',
+      fetchFn: mockFetch,
+    });
+
+    assert.equal(capturedHeaders.apikey, pubKey, 'apikey header must equal anonKey');
+    assert.equal(capturedHeaders.Authorization, undefined, 'Authorization header must NOT be sent for getMyDailyRank');
+
+    // Also assert submitRun sends apikey only
+    let submitHeaders = null;
+    const mockSubmitFetch = async (url, opts) => {
+      submitHeaders = opts.headers;
+      return new Response(JSON.stringify({ status: 'ACCEPTED' }), { status: 200 });
+    };
+
+    await submitRun({
+      url: 'http://localhost',
+      anonKey: pubKey,
+      deviceId: 'dev_12345',
+      runLog: dummyLog,
+      fetchFn: mockSubmitFetch,
+    });
+
+    assert.equal(submitHeaders.apikey, pubKey, 'apikey header must equal anonKey in submitRun');
+    assert.equal(submitHeaders.Authorization, undefined, 'Authorization header must NOT be sent in submitRun');
+  }
+
+  // 2. Legacy JWT key: eyJhbGciOi...
+  {
+    let capturedHeaders = null;
+    const mockFetch = async (url, opts) => {
+      capturedHeaders = opts.headers;
+      return new Response(JSON.stringify([{ rank: 1, total_players: 1 }]), { status: 200 });
+    };
+
+    const jwtKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.mock_signature';
+    await getMyDailyRank({
+      url: 'http://localhost',
+      anonKey: jwtKey,
+      day: '2026-11-04',
+      deviceId: 'dev_12345',
+      fetchFn: mockFetch,
+    });
+
+    assert.equal(capturedHeaders.apikey, jwtKey, 'apikey header must equal anonKey for JWT');
+    assert.equal(capturedHeaders.Authorization, undefined, 'Authorization header must NOT be sent even for legacy JWT');
+  }
+
+  // 3. Mock server rejection test: if Authorization: Bearer sb_publishable_ is sent, mock responds 401 Invalid JWT
+  {
+    const { createMockLeaderboardServer } = await import('./mock_leaderboard.js');
+    const mock = createMockLeaderboardServer();
+    const port = await mock.listen(0);
+    const mockUrl = `http://localhost:${port}`;
+
+    try {
+      // Direct fetch with illegal Bearer sb_publishable_
+      const res = await fetch(`${mockUrl}/rest/v1/rpc/my_daily_rank`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': 'sb_publishable_key_123',
+          'Authorization': 'Bearer sb_publishable_key_123',
+        },
+        body: JSON.stringify({ target_day: '2026-11-04', p_device_id: 'test_dev' }),
+      });
+
+      assert.equal(res.status, 401, 'Mock server must return 401 for Bearer sb_publishable_');
+      const body = await res.json();
+      assert.equal(body.message, 'Invalid JWT');
+
+      // Valid fetch with apikey only -> 200 OK
+      const validRes = await fetch(`${mockUrl}/rest/v1/rpc/my_daily_rank`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': 'sb_publishable_key_123',
+        },
+        body: JSON.stringify({ target_day: '2026-11-04', p_device_id: 'test_dev' }),
+      });
+      assert.equal(validRes.status, 200, 'Mock server must return 200 for apikey only');
+    } finally {
+      await mock.close();
+    }
+  }
+});
+
+// 7. Test F2 No Fake Rank: getMyDailyRank returns exact rank or null on missing/empty/500
+await asyncTest('F2 No Fake Rank: getMyDailyRank returns rank info or null on missing/500', async () => {
+  // Case A: 2 players -> returns rank #2 of 2
+  {
+    const mockFetch = async () => new Response(JSON.stringify([{
+      rank: 2,
+      total_players: 2,
+      display_name: 'Player2',
+      points: 500,
+    }]), { status: 200 });
+
+    const rank = await getMyDailyRank({
+      url: 'http://localhost',
+      anonKey: 'key',
+      day: '2026-11-04',
+      deviceId: 'dev_2',
+      fetchFn: mockFetch,
+    });
+    assert.deepEqual(rank, { rank: 2, total_players: 2, display_name: 'Player2', points: 500 });
+  }
+
+  // Case B: empty list -> null
+  {
+    const mockFetch = async () => new Response(JSON.stringify([]), { status: 200 });
+    const rank = await getMyDailyRank({
+      url: 'http://localhost',
+      anonKey: 'key',
+      day: '2026-11-04',
+      deviceId: 'dev_unknown',
+      fetchFn: mockFetch,
+    });
+    assert.equal(rank, null, 'Empty list must resolve to null (no fake rank)');
+  }
+
+  // Case C: 500 RPC error -> null
+  {
+    const mockFetch = async () => new Response(JSON.stringify({ error: 'SERVER_ERROR' }), { status: 500 });
+    const rank = await getMyDailyRank({
+      url: 'http://localhost',
+      anonKey: 'key',
+      day: '2026-11-04',
+      deviceId: 'dev_err',
+      fetchFn: mockFetch,
+    });
+    assert.equal(rank, null, 'RPC 500 error must resolve to null (no fake rank)');
+  }
+});
+
 console.log('\n================================================================================');
 console.log(`ALL ${passed}/${total} LEADERBOARD UNIT TESTS PASSED CLEANLY.`);
 console.log('================================================================================');
