@@ -137,26 +137,72 @@ export function createMockLeaderboardServer(initialDb = null) {
     }
 
     // 5. REST RPC Endpoints
-    if (pathname === '/rest/v1/rpc/my_daily_rank' && req.method === 'POST') {
+    if (pathname.startsWith('/rest/v1/rpc/') && req.method === 'POST') {
+      if (behaviour === 'rpc:slow') {
+        await new Promise(r => setTimeout(r, 2000));
+      }
       if (behaviour === 'rpc:500') {
         res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'INTERNAL_SERVER_ERROR', message: 'Mock RPC 500 error' }));
         return;
       }
-      const targetDay = bodyJson?.target_day || new Date().toISOString().slice(0, 10);
-      const deviceId = bodyJson?.p_device_id || '';
-      const result = db.rpcMyDailyRank(targetDay, deviceId);
-      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(result));
-      return;
-    }
+      if (behaviour === 'rpc:empty') {
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify([]));
+        return;
+      }
 
-    if (pathname === '/rest/v1/rpc/daily_best' && req.method === 'POST') {
-      const targetDay = bodyJson?.target_day || new Date().toISOString().slice(0, 10);
-      const result = db.rpcDailyBest(targetDay);
-      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(result));
-      return;
+      if (pathname === '/rest/v1/rpc/my_daily_rank') {
+        const targetDay = bodyJson?.target_day || new Date().toISOString().slice(0, 10);
+        const deviceId = bodyJson?.p_device_id || '';
+        const result = db.rpcMyDailyRank(targetDay, deviceId);
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (pathname === '/rest/v1/rpc/daily_best') {
+        const targetDay = bodyJson?.target_day || new Date().toISOString().slice(0, 10);
+        const limit = bodyJson?.p_limit;
+        const result = db.rpcDailyBest(targetDay, limit);
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (pathname === '/rest/v1/rpc/weekly_best') {
+        const targetWeekStart = bodyJson?.target_week_start || null;
+        const limit = bodyJson?.p_limit;
+        const result = db.rpcWeeklyBest(targetWeekStart, limit);
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (pathname === '/rest/v1/rpc/my_weekly_rank') {
+        const targetWeekStart = bodyJson?.target_week_start || null;
+        const deviceId = bodyJson?.p_device_id || '';
+        const result = db.rpcMyWeeklyRank(targetWeekStart, deviceId);
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (pathname === '/rest/v1/rpc/alltime_best') {
+        const limit = bodyJson?.p_limit;
+        const result = db.rpcAlltimeBest(limit);
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (pathname === '/rest/v1/rpc/my_alltime_rank') {
+        const deviceId = bodyJson?.p_device_id || '';
+        const result = db.rpcMyAlltimeRank(deviceId);
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
     }
 
     // 6. Submit-Run Edge Function

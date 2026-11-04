@@ -16,6 +16,7 @@ const scripts = [
   'scripts/test_live_hardening_fixes.js',
   'scripts/test_live_g2_g6.js',
   'scripts/test_live_p1_p3.js',
+  'scripts/test_live_alltime.js',
 ];
 
 console.log('================================================================================');

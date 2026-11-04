@@ -485,3 +485,379 @@ export async function getMyDailyRank({
     return null;
   }
 }
+
+/**
+ * Computes the ISO Monday date string (YYYY-MM-DD) in UTC.
+ *
+ * @param {string|number|Date} [inputDate]
+ * @returns {string} 'YYYY-MM-DD'
+ */
+export function getMondayUtc(inputDate) {
+  const d = typeof inputDate === 'string'
+    ? new Date(inputDate.includes('T') ? inputDate : `${inputDate}T00:00:00Z`)
+    : (inputDate ? new Date(inputDate) : new Date());
+  const day = d.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + diff));
+  return utcDateString(monday);
+}
+
+/**
+ * Formats a point value with en-US thousands separators (e.g. 18420 -> '18,420').
+ *
+ * @param {number|bigint|string} n
+ * @returns {string}
+ */
+export function formatPoints(n) {
+  if (typeof n !== 'number' && typeof n !== 'bigint') {
+    const parsed = Number(n);
+    if (!Number.isNaN(parsed)) n = parsed;
+    else return '0';
+  }
+  return Number(n).toLocaleString('en-US');
+}
+
+/**
+ * Returns rank summary labels for leaderboard display.
+ *
+ * @param {number} rank
+ * @param {number} total
+ * @returns {{ topLabel: string|null, ofLabel: string }}
+ */
+export function rankSummary(rank, total) {
+  const r = Number(rank);
+  const t = Number(total);
+  if (!t || t <= 0) {
+    return { topLabel: null, ofLabel: 'of 0 players' };
+  }
+
+  const ofLabel = `of ${formatPoints(t)} players`;
+
+  if (t >= 50 && r > 0) {
+    const pct = Math.max(1, Math.ceil((r / t) * 100));
+    return {
+      topLabel: `Top ${pct}%`,
+      ofLabel,
+    };
+  }
+
+  return {
+    topLabel: null,
+    ofLabel,
+  };
+}
+
+/**
+ * Generates avatar initials from a player's display name.
+ * Up to two uppercase letters from the first letters of tokens split on:
+ * spaces, hyphens, underscores, digit boundaries, and lower->Upper camel boundaries.
+ * Single token -> its first two letters. Empty/no letters -> '?'.
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+export function avatarInitials(name) {
+  if (!name || typeof name !== 'string') return '?';
+  const trimmed = name.trim();
+  if (!trimmed) return '?';
+
+  const separated = trimmed
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([0-9])([^0-9\s\-_])/g, '$1 $2')
+    .replace(/([^0-9\s\-_])([0-9])/g, '$1 $2');
+
+  const rawTokens = separated.split(/[\s\-_]+/).filter(Boolean);
+  const letterTokens = rawTokens
+    .map(t => t.replace(/[^a-zA-Z]/g, ''))
+    .filter(Boolean);
+
+  if (letterTokens.length === 0) {
+    return '?';
+  }
+
+  if (letterTokens.length === 1) {
+    const tok = letterTokens[0].toUpperCase();
+    return tok.slice(0, 2);
+  }
+
+  const first = letterTokens[0][0].toUpperCase();
+  const second = letterTokens[1][0].toUpperCase();
+  return (first + second);
+}
+
+/**
+ * Fetches a leaderboard tab ('today', 'week', 'all').
+ *
+ * @param {object} params
+ * @param {string} params.url
+ * @param {string} params.anonKey
+ * @param {'today'|'week'|'all'} [params.tab='today']
+ * @param {string} [params.day]
+ * @param {typeof fetch} [params.fetchFn=globalThis.fetch]
+ * @param {() => number} [params.clockFn=Date.now]
+ * @param {number} [params.timeoutMs=10000]
+ * @param {number} [params.limit=100]
+ * @returns {Promise<{ ok: true, rows: Array<{ rank: number, name: string, points: number, moves: number, maxTile: number }>, fetchedAt: number } | { ok: false, error: 'network'|'http'|'timeout' }>}
+ */
+export async function fetchBoard({
+  url,
+  anonKey,
+  tab = 'today',
+  day = null,
+  fetchFn = globalThis.fetch,
+  clockFn = Date.now,
+  timeoutMs = 10000,
+  limit = 100,
+}) {
+  const baseUrl = url ? url.replace(/\/+$/, '') : '';
+  let endpoint = '';
+  let bodyPayload = {};
+
+  if (tab === 'today') {
+    endpoint = `${baseUrl}/rest/v1/rpc/daily_best`;
+    bodyPayload = {
+      target_day: day || utcDateString(new Date(clockFn())),
+      p_limit: limit,
+    };
+  } else if (tab === 'week') {
+    endpoint = `${baseUrl}/rest/v1/rpc/weekly_best`;
+    bodyPayload = {
+      target_week_start: getMondayUtc(day || clockFn()),
+      p_limit: limit,
+    };
+  } else if (tab === 'all') {
+    endpoint = `${baseUrl}/rest/v1/rpc/alltime_best`;
+    bodyPayload = {
+      p_limit: limit,
+    };
+  } else {
+    return { ok: false, error: 'http' };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer = null;
+  if (controller && timeoutMs > 0) {
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+  }
+
+  try {
+    const res = await fetchFn(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+      },
+      body: JSON.stringify(bodyPayload),
+      signal: controller?.signal,
+    });
+
+    if (timer) clearTimeout(timer);
+
+    if (!res.ok) {
+      return { ok: false, error: 'http' };
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      return { ok: false, error: 'http' };
+    }
+
+    const rows = data.map(r => ({
+      rank: Number(r.rank),
+      name: r.display_name,
+      points: Number(r.points),
+      moves: Number(r.total_moves ?? r.moves ?? 0),
+      maxTile: Number(r.max_tile ?? r.maxTile ?? 0),
+    }));
+
+    return {
+      ok: true,
+      rows,
+      fetchedAt: clockFn(),
+    };
+  } catch (err) {
+    if (timer) clearTimeout(timer);
+    if (err?.name === 'AbortError' || controller?.signal?.aborted) {
+      return { ok: false, error: 'timeout' };
+    }
+    return { ok: false, error: 'network' };
+  }
+}
+
+/**
+ * Fetches the caller device's rank on a given tab ('today', 'week', 'all').
+ *
+ * @param {object} params
+ * @param {string} params.url
+ * @param {string} params.anonKey
+ * @param {'today'|'week'|'all'} [params.tab='today']
+ * @param {string} params.deviceId
+ * @param {string} [params.day]
+ * @param {typeof fetch} [params.fetchFn=globalThis.fetch]
+ * @param {() => number} [params.clockFn=Date.now]
+ * @param {number} [params.timeoutMs=10000]
+ * @returns {Promise<{ ok: true, row: { rank: number, name: string, points: number, moves: number, maxTile: number }|null, totalPlayers: number|null } | { ok: false, error: 'network'|'http'|'timeout' }>}
+ */
+export async function fetchMyRank({
+  url,
+  anonKey,
+  tab = 'today',
+  deviceId,
+  day = null,
+  fetchFn = globalThis.fetch,
+  clockFn = Date.now,
+  timeoutMs = 10000,
+}) {
+  const baseUrl = url ? url.replace(/\/+$/, '') : '';
+  let endpoint = '';
+  let bodyPayload = {};
+
+  if (tab === 'today') {
+    endpoint = `${baseUrl}/rest/v1/rpc/my_daily_rank`;
+    bodyPayload = {
+      target_day: day || utcDateString(new Date(clockFn())),
+      p_device_id: deviceId,
+    };
+  } else if (tab === 'week') {
+    endpoint = `${baseUrl}/rest/v1/rpc/my_weekly_rank`;
+    bodyPayload = {
+      target_week_start: getMondayUtc(day || clockFn()),
+      p_device_id: deviceId,
+    };
+  } else if (tab === 'all') {
+    endpoint = `${baseUrl}/rest/v1/rpc/my_alltime_rank`;
+    bodyPayload = {
+      p_device_id: deviceId,
+    };
+  } else {
+    return { ok: false, error: 'http' };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer = null;
+  if (controller && timeoutMs > 0) {
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+  }
+
+  try {
+    const res = await fetchFn(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+      },
+      body: JSON.stringify(bodyPayload),
+      signal: controller?.signal,
+    });
+
+    if (timer) clearTimeout(timer);
+
+    if (!res.ok) {
+      return { ok: false, error: 'http' };
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      return { ok: false, error: 'http' };
+    }
+
+    if (data.length === 0) {
+      return {
+        ok: true,
+        row: null,
+        totalPlayers: null,
+      };
+    }
+
+    const r = data[0];
+    return {
+      ok: true,
+      row: {
+        rank: Number(r.rank),
+        name: r.display_name,
+        points: Number(r.points),
+        moves: Number(r.total_moves ?? r.moves ?? 0),
+        maxTile: Number(r.max_tile ?? r.maxTile ?? 0),
+      },
+      totalPlayers: Number(r.total_players),
+    };
+  } catch (err) {
+    if (timer) clearTimeout(timer);
+    if (err?.name === 'AbortError' || controller?.signal?.aborted) {
+      return { ok: false, error: 'timeout' };
+    }
+    return { ok: false, error: 'network' };
+  }
+}
+
+/**
+ * Sets or resets the custom display name for a device.
+ *
+ * @param {object} params
+ * @param {string} params.url
+ * @param {string} params.anonKey
+ * @param {string} params.deviceId
+ * @param {string|null} params.name
+ * @param {typeof fetch} [params.fetchFn=globalThis.fetch]
+ * @param {number} [params.timeoutMs=10000]
+ * @returns {Promise<{ ok: true, displayName: string } | { ok: false, code: 'NAME_NOT_ALLOWED'|'NAME_TAKEN'|'RATE_LIMITED'|'DEVICE_NOT_FOUND'|'INVALID_NAME_FIELD'|'NETWORK' }>}
+ */
+export async function setDisplayName({
+  url,
+  anonKey,
+  deviceId,
+  name,
+  fetchFn = globalThis.fetch,
+  timeoutMs = 10000,
+}) {
+  const baseUrl = url ? url.replace(/\/+$/, '') : '';
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer = null;
+  if (controller && timeoutMs > 0) {
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+  }
+
+  try {
+    const res = await fetchFn(`${baseUrl}/functions/v1/set-name`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+      },
+      body: JSON.stringify({ deviceId, name }),
+      signal: controller?.signal,
+    });
+
+    if (timer) clearTimeout(timer);
+
+    if (res.status === 200) {
+      const data = await res.json().catch(() => ({}));
+      return { ok: true, displayName: data.displayName || data.display_name || name };
+    }
+
+    if (res.status === 400) {
+      const data = await res.json().catch(() => ({}));
+      if (data.error === 'INVALID_NAME_FIELD') {
+        return { ok: false, code: 'INVALID_NAME_FIELD' };
+      }
+      return { ok: false, code: 'NAME_NOT_ALLOWED' };
+    }
+
+    if (res.status === 404) {
+      return { ok: false, code: 'DEVICE_NOT_FOUND' };
+    }
+
+    if (res.status === 409) {
+      return { ok: false, code: 'NAME_TAKEN' };
+    }
+
+    if (res.status === 429) {
+      return { ok: false, code: 'RATE_LIMITED' };
+    }
+
+    return { ok: false, code: 'NETWORK' };
+  } catch (err) {
+    if (timer) clearTimeout(timer);
+    return { ok: false, code: 'NETWORK' };
+  }
+}

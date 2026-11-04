@@ -1,6 +1,15 @@
 // scripts/lib/inmemory_db.js
 // Shared in-memory database engine simulating PostgreSQL RLS, submit-run RPCs, and set-name RPCs
 
+import {
+  computeDailyBest,
+  computeMyDailyRank,
+  computeWeeklyBest,
+  computeMyWeeklyRank,
+  computeAlltimeBest,
+  computeMyAlltimeRank,
+} from './ranking.js';
+
 export class SecurityDatabaseEngine {
   constructor() {
     this.devices = new Map();
@@ -172,78 +181,28 @@ export class SecurityDatabaseEngine {
     throw new Error(`Unknown table or action: ${table} ${action}`);
   }
 
-  // Public RPC function: daily_best(target_day)
-  rpcDailyBest(targetDay) {
-    const perDevice = new Map();
-    for (const r of this.dailyRuns) {
-      if (r.dayUtc !== targetDay) continue;
-      const cur = perDevice.get(r.deviceId);
-      // Spec: points DESC, total_moves DESC (more moves survived wins), received_at ASC, id ASC
-      if (!cur) {
-        perDevice.set(r.deviceId, r);
-      } else {
-        const movesR = r.totalMoves || r.moves || 0;
-        const movesCur = cur.totalMoves || cur.moves || 0;
-        let better = false;
-        if (r.points > cur.points) better = true;
-        else if (r.points === cur.points) {
-          if (movesR > movesCur) better = true;
-          else if (movesR === movesCur) {
-            if (r.receivedAt < cur.receivedAt) better = true;
-            else if (r.receivedAt === cur.receivedAt) {
-              if (r.id < cur.id) better = true;
-            }
-          }
-        }
-        if (better) perDevice.set(r.deviceId, r);
-      }
-    }
-
-    const bests = Array.from(perDevice.values());
-    bests.sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      const movesA = a.totalMoves || a.moves || 0;
-      const movesB = b.totalMoves || b.moves || 0;
-      if (movesB !== movesA) return movesB - movesA;
-      if (a.receivedAt !== b.receivedAt) return a.receivedAt.localeCompare(b.receivedAt);
-      return a.id - b.id;
-    });
-
-    // Expose ONLY allowed columns (display_name, points, total_moves, max_tile, rank)
-    return bests.map((b, idx) => {
-      const dev = this.devices.get(b.deviceId);
-      const displayName = dev
-        ? (dev.nameHidden ? dev.generatedName : (dev.displayName || dev.generatedName))
-        : 'Unknown';
-      return {
-        display_name: displayName,
-        points: b.points,
-        total_moves: b.totalMoves || b.moves || 0,
-        max_tile: b.maxTile,
-        rank: idx + 1,
-      };
-    });
+  // Public RPC functions
+  rpcDailyBest(targetDay, limit = 100) {
+    return computeDailyBest(this.dailyRuns, this.devices, targetDay, limit);
   }
 
-  // Public RPC function: my_daily_rank(target_day, p_device_id)
   rpcMyDailyRank(targetDay, deviceId) {
-    const list = this.rpcDailyBest(targetDay);
-    const total_players = list.length;
-    const hasRun = this.dailyRuns.some(r => r.dayUtc === targetDay && r.deviceId === deviceId);
-    if (!hasRun) return [];
+    return computeMyDailyRank(this.dailyRuns, this.devices, targetDay, deviceId);
+  }
 
-    const dev = this.devices.get(deviceId);
-    const expectedName = dev
-      ? (dev.nameHidden ? dev.generatedName : (dev.displayName || dev.generatedName))
-      : 'Unknown';
+  rpcWeeklyBest(targetWeekStart = null, limit = 100) {
+    return computeWeeklyBest(this.dailyRuns, this.devices, targetWeekStart, limit);
+  }
 
-    const match = list.find(r => r.display_name === expectedName);
-    if (!match) return [];
-    return [{
-      rank: match.rank,
-      total_players,
-      display_name: match.display_name,
-      points: match.points,
-    }];
+  rpcMyWeeklyRank(targetWeekStart, deviceId) {
+    return computeMyWeeklyRank(this.dailyRuns, this.devices, targetWeekStart, deviceId);
+  }
+
+  rpcAlltimeBest(limit = 100) {
+    return computeAlltimeBest(this.dailyRuns, this.devices, limit);
+  }
+
+  rpcMyAlltimeRank(deviceId) {
+    return computeMyAlltimeRank(this.dailyRuns, this.devices, deviceId);
   }
 }
