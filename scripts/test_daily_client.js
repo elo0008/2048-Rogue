@@ -716,13 +716,17 @@ async function main() {
   await cdp.eval(`document.getElementById('btn-play-daily-again')?.click()`);
   await sleep(100);
 
-  // Date-independent: play legal moves until score exceeds stored best of 2 or cap of 60 moves
+  // Date-independent: play legal moves until controller POINTS exceeds stored best of 2 points (cap 60 moves)
   let t7MovesPlayed = 0;
   const t7MaxMoves = 60;
+  let t7BetterPoints = 0;
   while (t7MovesPlayed < t7MaxMoves) {
-    const score = await cdp.eval(`window.controller ? window.controller.state.score : 0`);
+    const points = await cdp.eval(`window.controller ? (window.controller.state.points || 0) : 0`);
     const isOver = await cdp.eval(`window.controller ? window.controller.isGameOver() : false`);
-    if (score > 2 || isOver) break;
+    if (points > 2 || isOver) {
+      t7BetterPoints = points;
+      break;
+    }
 
     const validMoves = await cdp.eval(`window.controller ? window.controller.getValidMoves() : []`);
     if (!validMoves || validMoves.length === 0) break;
@@ -731,12 +735,13 @@ async function main() {
     const k = km[dir] || km['D'];
     await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...k });
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...k });
-    await sleep(20);
+    await sleep(40);
     t7MovesPlayed++;
+    t7BetterPoints = await cdp.eval(`window.controller ? (window.controller.state.points || 0) : 0`);
+    if (t7BetterPoints > 2) break;
   }
 
-  const t7BetterScore = await cdp.eval(`window.controller ? window.controller.state.score : 0`);
-  assert.strictEqual(t7BetterScore > 2, true, `Vacuity guard: run 2 score must exceed previous best 2 (got ${t7BetterScore} after ${t7MovesPlayed} moves)`);
+  assert.ok(t7BetterPoints > 2, `T7 must reach points > 2 within 60 moves (got points=${t7BetterPoints} after ${t7MovesPlayed} moves)`);
 
   await cdp.eval(`
     (async () => {
@@ -750,8 +755,123 @@ async function main() {
 
   const t7BetterSubmits = mock.getRequests().filter(r => r.path === '/functions/v1/submit-run');
   assert.strictEqual(t7BetterSubmits.length, 1, 'Better daily run must cause exactly ONE submit POST');
+  const t7SubmittedLog = t7BetterSubmits[0].body?.runLog || {};
+  assert.strictEqual(t7SubmittedLog.points, t7BetterPoints, `POST body points (${t7SubmittedLog.points}) must equal controller points (${t7BetterPoints})`);
 
-  console.log(`✔ T7 PASSED: Worse run caused 0 POSTs, better run caused exactly 1 POST.\n`);
+  // Date proof across >= 12 fake UTC dates (including month boundaries and 2026-11-01..10)
+  const t7ProofDates = [
+    '2026-10-31', // Month boundary
+    '2026-11-01',
+    '2026-11-02',
+    '2026-11-03',
+    '2026-11-04',
+    '2026-11-05',
+    '2026-11-06',
+    '2026-11-07',
+    '2026-11-08',
+    '2026-11-09',
+    '2026-11-10',
+    '2026-11-30', // Month boundary
+    '2026-12-01', // Month boundary
+  ];
+
+  console.log(`  [T7 Date Proof] Verifying date independence across ${t7ProofDates.length} fake UTC dates...`);
+  const t7ProofResults = [];
+
+  for (const dt of t7ProofDates) {
+    mock.clearRequests();
+
+    await cdp.send('Page.navigate', { url: baseUrl });
+    await sleep(350);
+
+    const s = dailySeed(dt);
+
+    await cdp.eval(`
+      (() => {
+        const fixedMs = Date.parse('${dt}T12:00:00Z');
+        const RealDate = window.Date;
+        class MockDate extends RealDate {
+          constructor(...args) {
+            if (args.length === 0) super(fixedMs);
+            else super(...args);
+          }
+          static now() { return fixedMs; }
+        }
+        MockDate.UTC = RealDate.UTC;
+        MockDate.parse = RealDate.parse;
+        window.Date = MockDate;
+
+        localStorage.setItem('${STORAGE_KEY_BEST}', JSON.stringify({
+          day: '${dt}',
+          points: 2,
+          moves: 1
+        }));
+        localStorage.removeItem('${STORAGE_KEY_QUEUE}');
+      })()
+    `);
+
+    await cdp.eval(`document.getElementById('btn-play-daily')?.click()`);
+    await sleep(150);
+
+    let moves = 0;
+    let pts = 0;
+    while (moves < 60) {
+      const validMoves = await cdp.eval(`window.controller ? window.controller.getValidMoves() : []`);
+      if (!validMoves || validMoves.length === 0) break;
+      const preferredOrder = ['D', 'L', 'R', 'U'];
+      const dir = preferredOrder.find(m => validMoves.includes(m)) || validMoves[0];
+      const k = km[dir] || km['D'];
+      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...k });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...k });
+      await sleep(30);
+      moves++;
+
+      pts = await cdp.eval(`window.controller ? (window.controller.state.points || 0) : 0`);
+      if (pts > 2) break;
+    }
+
+    assert.ok(pts > 2, `T7 Date Proof: points on ${dt} must exceed 2 within 60 moves (got ${pts})`);
+
+    await cdp.eval(`
+      (async () => {
+        document.getElementById('btn-pause-menu')?.click();
+        await new Promise(r => setTimeout(r, 60));
+        const endBtn = document.getElementById('btn-pause-end-run');
+        if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
+      })()
+    `);
+    await sleep(350);
+
+    const submits = mock.getRequests().filter(r => r.path === '/functions/v1/submit-run');
+    assert.strictEqual(submits.length, 1, `T7 Date Proof: exactly 1 submit POST on ${dt} (got ${submits.length})`);
+    const log = submits[0].body?.runLog || {};
+    assert.strictEqual(log.points, pts, `T7 Date Proof: POST points (${log.points}) must match controller points (${pts}) on ${dt}`);
+
+    t7ProofResults.push({
+      date: dt,
+      seed: s,
+      moves,
+      points: pts,
+      postCount: submits.length,
+    });
+  }
+
+  // Format table with exact requested columns: date, seed, moves, POINTS, POST count
+  let proofTable = 'Date       | Seed       | Moves | POINTS | POST Count | Status\n';
+  proofTable +=    '-----------+------------+-------+--------+------------+--------\n';
+  for (const r of t7ProofResults) {
+    proofTable += `${r.date.padEnd(10)} | ${String(r.seed).padEnd(10)} | ${String(r.moves).padStart(5)} | ${String(r.points).padStart(6)} | ${String(r.postCount).padStart(10)} | PASS\n`;
+  }
+
+  const proofPath = path.join(outDir, 'r1b_date_proof.txt');
+  fs.writeFileSync(proofPath, proofTable, 'utf8');
+
+  // Restore navigation to baseUrl for subsequent tests
+  mock.clearRequests();
+  await cdp.send('Page.navigate', { url: baseUrl });
+  await sleep(300);
+
+  console.log(`✔ T7 PASSED: Worse run caused 0 POSTs, better run caused exactly 1 POST (points asserted, 13 dates verified in r1b_date_proof.txt).\n`);
   passedCount++;
 
   // ---------------------------------------------------------------------------

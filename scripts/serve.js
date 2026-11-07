@@ -14,9 +14,9 @@ const targetDir = isDev
   ? (fs.existsSync(path.join(rootDir, 'dist-dev')) ? path.join(rootDir, 'dist-dev') : path.join(rootDir, 'dist'))
   : path.join(rootDir, 'dist');
 
-// Auto-build guard: ensure dist and dist/icons exist before serving
-if (!fs.existsSync(targetDir) || !fs.existsSync(path.join(targetDir, 'icons')) || !fs.existsSync(path.join(targetDir, 'index.html'))) {
-  console.log(`[serve] Target ${path.relative(rootDir, targetDir) || 'dist/'} is missing or incomplete. Building first...`);
+// Always run build first unless SERVE_NO_BUILD=1 is set
+if (process.env.SERVE_NO_BUILD !== '1') {
+  console.log(`[serve] Building target "${isDev ? 'dev' : 'prod'}" before serving...`);
   await build({ target: isDev ? 'dev' : 'prod' });
 }
 

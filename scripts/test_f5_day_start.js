@@ -14,6 +14,7 @@ import { spawn } from 'node:child_process';
 import assert from 'node:assert';
 import { createMockLeaderboardServer } from './mock_leaderboard.js';
 import { utcDateString } from '../game/daily.js';
+import { build } from './build.js';
 
 const STORAGE_KEY_QUEUE = '2048_rogue_submit_queue';
 const STORAGE_KEY_BEST = '2048_rogue_daily_best';
@@ -142,15 +143,17 @@ async function main() {
   const mockUrl = `http://localhost:${mockPort}`;
   const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.mock_key';
 
-  // 2. Build dist with leaderboard config pointing to mock
-  const distDir = path.join(process.cwd(), 'dist');
-  fs.writeFileSync(
-    path.join(distDir, 'leaderboard-config.js'),
-    `window.__LB = { url: "${mockUrl}", anonKey: "${anonKey}" };\n`
-  );
+  // 2. Build isolated temp dist with leaderboard config pointing to mock
+  const tempDistDir = path.join(process.cwd(), `.temp_dist_f5_${Date.now()}`);
+  await build({
+    distDir: tempDistDir,
+    target: 'prod',
+    leaderboardUrl: mockUrl,
+    leaderboardAnonKey: anonKey,
+  });
 
-  // 3. Start web server
-  const webServer = await startStaticServer(distDir);
+  // 3. Start web server against isolated temp dist
+  const webServer = await startStaticServer(tempDistDir);
   const baseUrl = `http://localhost:${webServer.port}`;
 
   // 4. Launch Headless Chrome
@@ -355,6 +358,7 @@ async function main() {
     webServer.server.close();
     await mock.close();
     try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
+    try { fs.rmSync(tempDistDir, { recursive: true, force: true }); } catch {}
   }
 
   console.log('================================================================================');

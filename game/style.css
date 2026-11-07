@@ -3518,12 +3518,10 @@ button:focus-visible {
   flex-direction: column;
   padding: 0;
   box-sizing: border-box;
-}
   overflow: hidden;
   box-shadow: 0 24px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(244, 200, 121, 0.08);
   position: relative;
   margin: auto;
-  box-sizing: border-box;
 }
 
 .modal-header {

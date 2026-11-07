@@ -8,6 +8,8 @@ screenshots*/
 *.patch
 CHANGES.diff
 sample_run_log.json
+.temp_*/
+.temp_chrome
 .temp_chrome*/
 test_output*.txt
 scripts/out/

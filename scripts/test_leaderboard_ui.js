@@ -329,6 +329,8 @@ async function main() {
 
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${designPort}/rogue_2048_global_leaderboard.html` });
     await sleep(400);
+    await cdp.eval(`document.fonts.ready`);
+    await cdp.eval(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`);
 
     const refLbBoxes = await cdp.eval(`
       (() => {
@@ -353,7 +355,9 @@ async function main() {
     `);
 
     // B. Live Game Measurements (390x742)
+    await cdp.setViewport(390, 742);
     await cdp.send('Page.navigate', { url: baseUrl });
+    await cdp.setViewport(390, 742);
     await sleep(400);
 
     // Initialize mock LB in client
@@ -372,6 +376,10 @@ async function main() {
       }
     })()`);
     await sleep(350); // wait for appear animation (200ms) to settle
+    await cdp.eval(`document.fonts.ready`);
+    await cdp.eval(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`);
+    const cardOutfitLoaded = await cdp.eval(`document.fonts.check('16px Outfit')`);
+    assert.strictEqual(cardOutfitLoaded, true, 'Outfit font must be loaded before measuring card');
 
     const liveCardBoxes = await cdp.eval(`
       (() => {
@@ -414,6 +422,10 @@ async function main() {
       }
     })()`);
     await sleep(350);
+    await cdp.eval(`document.fonts.ready`);
+    await cdp.eval(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`);
+    const lbOutfitLoaded = await cdp.eval(`document.fonts.check('16px Outfit')`);
+    assert.strictEqual(lbOutfitLoaded, true, 'Outfit font must be loaded before measuring leaderboard overlay');
 
     const liveLbBoxes = await cdp.eval(`
       (() => {
@@ -449,6 +461,13 @@ async function main() {
       const dy = Math.abs(ref.y - live.y);
       const dw = Math.abs(ref.width - live.width);
       const dh = Math.abs(ref.height - live.height);
+
+      if (name === 'LB Header') {
+        const r6File = path.join(rootDir, 'scripts', 'out', 'r6_header_runs.txt');
+        const count = fs.existsSync(r6File) ? fs.readFileSync(r6File, 'utf8').split('\n').filter(Boolean).length : 0;
+        const status = (dh <= 4 && dx <= 4 && dw <= 4) ? 'PASS' : 'FAIL';
+        fs.appendFileSync(r6File, `Run ${count + 1}: Live Header height=${live.height}px, Ref=${ref.height}px, delta=${dh}px, status=${status}\n`);
+      }
 
       maxDeltaSeen = Math.max(maxDeltaSeen, dx, dw, dh, checkY ? dy : 0);
       assert.ok(dx <= 4, `${name} x delta (${dx}px) must be <= 4px`);
@@ -781,6 +800,7 @@ async function main() {
 
     assert.strictEqual(missingImgCheck.naturalWidth, 0, 'Self-check: missing image must have naturalWidth === 0');
     const missingStatus = cdp.networkStatuses?.get(missingImgCheck.currentSrc) ?? 404;
+    console.log(`  [Self-Check missing_icon] src: icons/missing_icon.svg | naturalWidth: ${missingImgCheck.naturalWidth} | complete: ${missingImgCheck.complete} | HTTP: ${missingStatus}`);
     assert.strictEqual(missingStatus, 404, `Self-check: missing image must return HTTP 404 (got ${missingStatus})`);
 
     if (isSelfCheckFail) {
@@ -1383,7 +1403,10 @@ async function main() {
     const styleCss = fs.readFileSync(path.join(rootDir, 'game', 'style.css'), 'utf8');
     const liveAnim = extractCssInventory(styleCss);
 
-    const beforeAnimPath = path.join(outDir, 'anim_inventory_before.json');
+    const baselineAnimPath = path.join(rootDir, 'scripts', 'baselines', 'animation_inventory_before.json');
+    const fallbackAnimPath = path.join(outDir, 'anim_inventory_before.json');
+    const beforeAnimPath = fs.existsSync(baselineAnimPath) ? baselineAnimPath : fallbackAnimPath;
+    assert.ok(fs.existsSync(beforeAnimPath), 'animation_inventory_before.json baseline must exist');
     if (fs.existsSync(beforeAnimPath)) {
       const beforeAnim = JSON.parse(fs.readFileSync(beforeAnimPath, 'utf8'));
       const beforeList = beforeAnim.keyframeNames || Object.keys(beforeAnim.keyframes || {});
