@@ -131,14 +131,14 @@ export class SecurityDatabaseEngine {
   async setDisplayNameLimited(deviceId, newName, newNorm, dayKey, devLimit, ipKey, ipLimit) {
     const dev = this.devices.get(deviceId);
     if (!dev) {
-      return { status: 'DEVICE_NOT_FOUND' };
+      return { ok: false, status: 404, error: 'DEVICE_NOT_FOUND' };
     }
 
     // Check unique normalized name if setting a custom name
     if (newNorm) {
       for (const [id, d] of this.devices) {
         if (id !== deviceId && d.nameNorm === newNorm) {
-          return { status: 'NAME_TAKEN' };
+          return { ok: false, status: 409, error: 'NAME_TAKEN' };
         }
       }
     }
@@ -146,12 +146,14 @@ export class SecurityDatabaseEngine {
     // Consume limits
     const devCheck = await this.consumeRateLimit(dayKey, devLimit);
     if (!devCheck.allowed) {
-      return { status: 'DEVICE_LIMIT' };
+      return { ok: false, status: 429, error: 'DEVICE_DAILY_LIMIT_EXCEEDED' };
     }
 
-    const ipCheck = await this.consumeRateLimit(ipKey, ipLimit);
-    if (!ipCheck.allowed) {
-      return { status: 'IP_LIMIT' };
+    if (ipKey && ipLimit !== undefined) {
+      const ipCheck = await this.consumeRateLimit(ipKey, ipLimit);
+      if (!ipCheck.allowed) {
+        return { ok: false, status: 429, error: 'IP_DAILY_LIMIT_EXCEEDED' };
+      }
     }
 
     if (newName === null) {
@@ -164,7 +166,7 @@ export class SecurityDatabaseEngine {
       dev.nameHidden = false;
     }
     dev.nameChangedAt = new Date().toISOString();
-    return { status: 'OK', displayName: dev.displayName };
+    return { ok: true, status: 200, display_name: dev.displayName };
   }
 
   // Direct client simulation (Anon role context)

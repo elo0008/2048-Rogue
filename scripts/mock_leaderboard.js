@@ -238,6 +238,15 @@ export function createMockLeaderboardServer(initialDb = null) {
 
     // 7. Set-Name Edge Function
     if (pathname === '/functions/v1/set-name') {
+      if (behaviour === 'offline') {
+        req.socket.destroy();
+        return;
+      }
+      if (behaviour === 'status:500') {
+        res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INTERNAL_SERVER_ERROR', message: 'Mock 500 error' }));
+        return;
+      }
       const webHeaders = new Headers();
       for (const [k, v] of Object.entries(req.headers)) {
         if (v !== undefined) webHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
@@ -273,6 +282,11 @@ export function createMockLeaderboardServer(initialDb = null) {
 
   return {
     server,
+    reset: () => {
+      db = new SecurityDatabaseEngine();
+      behaviour = 'ok';
+      requests.length = 0;
+    },
     getDb: () => db,
     setDb: newDb => { db = newDb; },
     getBehaviour: () => behaviour,

@@ -1,0 +1,202 @@
+{
+  "generatedAt": "2026-11-07T11:18:08.035Z",
+  "source": "design/v2",
+  "card": {
+    "card": {
+      "x": 12,
+      "y": 16,
+      "width": 366,
+      "height": 804
+    },
+    "score": {
+      "x": 33,
+      "y": 67,
+      "width": 324,
+      "height": 55
+    },
+    "miniBoard": {
+      "x": 33,
+      "y": 138,
+      "width": 324,
+      "height": 124
+    },
+    "statsGrid": {
+      "x": 33,
+      "y": 280,
+      "width": 324,
+      "height": 173
+    },
+    "rankingCard": {
+      "x": 33,
+      "y": 547,
+      "width": 324,
+      "height": 145
+    },
+    "buttons": {
+      "x": 33,
+      "y": 708,
+      "width": 324,
+      "height": 43
+    },
+    "secondaryRow": {
+      "x": 33,
+      "y": 760,
+      "width": 324,
+      "height": 39
+    }
+  },
+  "leaderboard": {
+    "320x568": {
+      "modal": {
+        "x": 12,
+        "y": 12,
+        "width": 296,
+        "height": 544
+      },
+      "header": {
+        "x": 13,
+        "y": 13,
+        "width": 294,
+        "height": 96
+      },
+      "tabs": {
+        "x": 31,
+        "y": 119,
+        "width": 258,
+        "height": 37
+      },
+      "podium": {
+        "x": 13,
+        "y": 164,
+        "width": 294,
+        "height": 194
+      },
+      "firstRow": {
+        "x": 27,
+        "y": 392,
+        "width": 266,
+        "height": 61
+      },
+      "pinned": {
+        "x": 13,
+        "y": 453,
+        "width": 294,
+        "height": 102
+      }
+    },
+    "360x640": {
+      "modal": {
+        "x": 12,
+        "y": 12,
+        "width": 336,
+        "height": 616
+      },
+      "header": {
+        "x": 13,
+        "y": 13,
+        "width": 334,
+        "height": 96
+      },
+      "tabs": {
+        "x": 31,
+        "y": 119,
+        "width": 298,
+        "height": 37
+      },
+      "podium": {
+        "x": 13,
+        "y": 164,
+        "width": 334,
+        "height": 182
+      },
+      "firstRow": {
+        "x": 27,
+        "y": 380,
+        "width": 306,
+        "height": 54
+      },
+      "pinned": {
+        "x": 13,
+        "y": 525,
+        "width": 334,
+        "height": 102
+      }
+    },
+    "390x742": {
+      "modal": {
+        "x": 12,
+        "y": 12,
+        "width": 366,
+        "height": 718
+      },
+      "header": {
+        "x": 13,
+        "y": 13,
+        "width": 364,
+        "height": 96
+      },
+      "tabs": {
+        "x": 31,
+        "y": 119,
+        "width": 328,
+        "height": 37
+      },
+      "podium": {
+        "x": 13,
+        "y": 164,
+        "width": 364,
+        "height": 182
+      },
+      "firstRow": {
+        "x": 27,
+        "y": 380,
+        "width": 336,
+        "height": 54
+      },
+      "pinned": {
+        "x": 13,
+        "y": 632,
+        "width": 364,
+        "height": 97
+      }
+    },
+    "433x846": {
+      "modal": {
+        "x": 12,
+        "y": 12,
+        "width": 409,
+        "height": 822
+      },
+      "header": {
+        "x": 13,
+        "y": 13,
+        "width": 407,
+        "height": 96
+      },
+      "tabs": {
+        "x": 31,
+        "y": 119,
+        "width": 371,
+        "height": 37
+      },
+      "podium": {
+        "x": 13,
+        "y": 164,
+        "width": 407,
+        "height": 182
+      },
+      "firstRow": {
+        "x": 27,
+        "y": 380,
+        "width": 379,
+        "height": 54
+      },
+      "pinned": {
+        "x": 13,
+        "y": 736,
+        "width": 407,
+        "height": 97
+      }
+    }
+  }
+}

@@ -3542,6 +3542,7 @@ button:focus-visible {
 
 .header-eyebrow {
   font-size: 11px;
+  line-height: 13px;
   font-weight: 800;
   letter-spacing: 1.5px;
   color: var(--accent);
@@ -3625,6 +3626,7 @@ button:focus-visible {
   color: #766a64;
   font-family: inherit;
   font-size: 11px;
+  line-height: 13px;
   font-weight: 800;
   letter-spacing: 0.8px;
   padding: 8px 6px;
@@ -3898,6 +3900,9 @@ button:focus-visible {
   align-items: center;
   padding: 6px 18px;
   font-size: 10px;
+  line-height: 12px;
+  height: 26px;
+  box-sizing: border-box;
   font-weight: 800;
   letter-spacing: 1px;
   color: var(--muted);
@@ -3982,6 +3987,7 @@ button:focus-visible {
 
 .player-username {
   font-size: 13px;
+  line-height: 15px;
   font-weight: 700;
   color: var(--text);
   white-space: nowrap;
@@ -3994,6 +4000,7 @@ button:focus-visible {
 
 .you-pill {
   font-size: 9px;
+  line-height: 11px;
   font-weight: 900;
   background: var(--accent);
   color: #120F0D;
@@ -4004,6 +4011,7 @@ button:focus-visible {
 
 .player-subdetails {
   font-size: 11px;
+  line-height: 13px;
   color: var(--muted);
   font-weight: 600;
   display: flex;
@@ -4063,6 +4071,7 @@ button:focus-visible {
 
 .pinned-label {
   font-size: 10px;
+  line-height: 12px;
   font-weight: 900;
   letter-spacing: 1.2px;
   color: var(--accent);
@@ -4074,6 +4083,8 @@ button:focus-visible {
 
 .lb-sync-bar {
   font-size: 10px;
+  line-height: 12px;
+  height: 12px;
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -4082,15 +4093,25 @@ button:focus-visible {
 
 .lb-refresh-btn {
   background: transparent;
-  border: 1px solid #44352f;
+  border: none;
   border-radius: 4px;
   color: var(--accent);
-  padding: 2px 4px;
+  padding: 0;
+  width: 14px;
+  height: 14px;
+  line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: transform 0.15s ease, background-color 0.15s ease;
+  position: relative;
+}
+
+.lb-refresh-btn::after {
+  content: '';
+  position: absolute;
+  inset: -11px;
 }
 
 .lb-refresh-btn:hover {
@@ -4110,6 +4131,14 @@ button:focus-visible {
   text-align: left;
   box-sizing: border-box;
 }
+
+@media (max-width: 370px) {
+  .pinned-row-card {
+    min-height: 63px;
+  }
+}
+
+
 
 .pinned-rank-badge {
   font-size: 13px;

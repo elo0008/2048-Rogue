@@ -1,0 +1,152 @@
+{
+  "sourceCommit": "e6332a3",
+  "keyframeCount": 23,
+  "keyframeNames": [
+    "appear",
+    "bestRunsDotPulse",
+    "boardShake",
+    "card-shine-sweep",
+    "cleanSlatePopupFloat",
+    "dustRingExpand",
+    "eraseBurst",
+    "eraseTileOut",
+    "masonGlow",
+    "mergePop",
+    "pulse",
+    "rewindCell",
+    "rewindIn",
+    "rewindOut",
+    "shatterFlash",
+    "siphonGlowFade",
+    "spawn",
+    "spawnFade",
+    "standExitLeft",
+    "standExitRight",
+    "standStampIn",
+    "stoneRingPulse",
+    "stuckWaveOut"
+  ],
+  "relevantRules": [
+    {
+      "selector": ".card-shine::before",
+      "animation": "none",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": "}\n\n.ability-btn.shimmer .card-shine::before",
+      "animation": "card-shine-sweep 700ms ease-out 1",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".card-shine,\n  .card-shine::before,\n  .ability-btn.shimmer .card-shine::before",
+      "animation": "none !important",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".modal, .start-card, .draft-card-container, .end-card",
+      "animation": "appear .2s ease-out",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".trophy-btn",
+      "animation": null,
+      "animationName": null,
+      "transition": "transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease"
+    },
+    {
+      "selector": ".stand-center-wrapper .stand-dust-ring",
+      "animation": "dustRingExpand 0.35s ease-out forwards",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".stand .stand-last, .stand .stand-word",
+      "animation": "none",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".stand:not(.hidden) .stand-stamp",
+      "animation": "standStampIn 0.24s cubic-bezier(0.1, 0.9, 0.2, 1) both",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".stand:not(.hidden) .stand-last",
+      "animation": "standExitRight 0.38s cubic-bezier(0.6, 0, 0.8, 0.25) 1.47s forwards",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".stand:not(.hidden) .stand-word",
+      "animation": "standExitLeft 0.38s cubic-bezier(0.6, 0, 0.8, 0.25) 1.47s forwards",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": "}\n\n.stand-dust-ring",
+      "animation": "dustRingExpand 0.35s ease-out forwards",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".stand:not(.hidden) .stand-last,\n  .stand:not(.hidden) .stand-word",
+      "animation": "none !important",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".shatter-pulse",
+      "animation": "dustRingExpand 0.28s ease-out forwards",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".record-card",
+      "animation": null,
+      "animationName": null,
+      "transition": "transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),\n              background-color 0.18s ease,\n              border-color 0.18s ease,\n              box-shadow 0.18s ease"
+    },
+    {
+      "selector": ".record-card",
+      "animation": null,
+      "animationName": null,
+      "transition": "none"
+    },
+    {
+      "selector": ".clean-slate-banner:not(.hidden) .clean-slate-title",
+      "animation": "standExitRight 0.38s cubic-bezier(0.6, 0, 0.8, 0.25) 1.47s forwards",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".clean-slate-banner:not(.hidden) .stand-subtitle",
+      "animation": "standExitLeft 0.38s cubic-bezier(0.6, 0, 0.8, 0.25) 1.47s forwards",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".tile-clean-slate-charge,\n.tile-clean-slate-charge .tile-face",
+      "animation": null,
+      "animationName": null,
+      "transition": "box-shadow 0.45s ease-in-out"
+    },
+    {
+      "selector": ".clean-slate-popup",
+      "animation": "cleanSlatePopupFloat 1.2s cubic-bezier(0.15, 0.85, 0.3, 1) forwards",
+      "animationName": null,
+      "transition": null
+    },
+    {
+      "selector": ".tile-clean-slate-charge,\n  .tile-clean-slate-charge .tile-face",
+      "animation": "none !important",
+      "animationName": null,
+      "transition": null
+    }
+  ],
+  "totalRulesWithAnimationOrTransition": 54
+}
