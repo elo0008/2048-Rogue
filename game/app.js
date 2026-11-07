@@ -48,6 +48,13 @@ import {
   enqueueSubmission,
   flushQueue,
   getMyDailyRank,
+  fetchBoard,
+  fetchMyRank,
+  setDisplayName,
+  rankSummary,
+  avatarInitials,
+  formatPoints,
+  getMondayUtc,
 } from './leaderboard.js';
 
 const DEFAULT_POOL = [
@@ -812,6 +819,7 @@ function flushLeaderboardQueue(targetStatusEl = null, force = false, targetRunId
 
       if (status === 'ACCEPTED') {
         try {
+          try { localStorage.setItem('rogue2048_has_accepted_run', '1'); } catch {}
           const rankInfo = await getMyDailyRank({
             url,
             anonKey,
@@ -822,18 +830,29 @@ function flushLeaderboardQueue(targetStatusEl = null, force = false, targetRunId
           // F2: No fake rank fallback
           if (rankInfo && typeof rankInfo.rank === 'number' && typeof rankInfo.total_players === 'number') {
             statusEl.textContent = `Submitted · Daily rank #${rankInfo.rank} of ${rankInfo.total_players}`;
+            renderGameOverRankingCard(2, {
+              rank: rankInfo.rank,
+              total: rankInfo.total_players,
+              points: item.runLog ? item.runLog.points : 0,
+              day: item.day,
+            });
           } else {
             statusEl.textContent = 'Submitted';
+            renderGameOverRankingCard(3, { day: item.day });
           }
         } catch {
           statusEl.textContent = 'Submitted';
+          renderGameOverRankingCard(3, { day: item.day });
         }
       } else if (status === 'VERSION_MISMATCH') {
         statusEl.textContent = 'Saved · leaderboard updating';
+        renderGameOverRankingCard(6, { day: item.day });
       } else if (status === 'RETRY') {
         statusEl.textContent = 'Saved · will retry';
+        renderGameOverRankingCard(5, { day: item.day });
       } else if (status === 'REJECTED') {
         statusEl.textContent = 'Not accepted';
+        renderGameOverRankingCard(7, { day: item.day });
       }
     },
   }).catch(() => {});
@@ -4765,57 +4784,104 @@ function handleGameOver() {
 
   if (dailyRunActive) {
     if (btnPlayDailyAgain) btnPlayDailyAgain.classList.remove('hidden');
+    if (btnPlayAgain) btnPlayAgain.classList.add('hidden');
   } else {
     if (btnPlayDailyAgain) btnPlayDailyAgain.classList.add('hidden');
+    if (btnPlayAgain) btnPlayAgain.classList.remove('hidden');
   }
 
-  if (dailyRunActive && persistenceEnabled && canShowDailyButton()) {
-    const reallyEnded = controller && (controller.isGameOver() || (controller.state && controller.state.endedByPlayer));
-    if (reallyEnded && dailyRunStartDay) {
-      const now = Date.now();
-      const today = new Date(now);
-      const yesterday = new Date(now - 86400000);
-      const validDays = new Set([utcDateString(today), utcDateString(yesterday)]);
+  const rkPanel = document.getElementById('global-ranking-panel');
+  const endSeedLabel = document.getElementById('end-seed-label');
 
-      // If run was started before midnight but submitted after two midnights, drop as stale
-      if (!validDays.has(dailyRunStartDay)) {
-        if (endLeaderboardStatus) {
-          endLeaderboardStatus.classList.remove('hidden');
-          endLeaderboardStatus.textContent = 'Not accepted';
-        }
-      } else {
-        const day = dailyRunStartDay;
-        const points = currentRunLog.points || 0;
-        const moves = currentRunLog.totalMoves ?? currentRunLog.moves ?? 0;
-        displayedRunId = currentRunLog.runId || null;
-
-        if (shouldSubmitRun(day, points, moves, localStorage)) {
-          if (endLeaderboardStatus) {
-            endLeaderboardStatus.classList.remove('hidden');
-            endLeaderboardStatus.textContent = 'Sending…';
-          }
-          enqueueSubmission({
-            runId: currentRunLog.runId || `run_${Date.now()}`,
-            day,
-            runLog: currentRunLog,
-          }, localStorage, persistenceEnabled);
-
-          flushLeaderboardQueue(endLeaderboardStatus, false, displayedRunId);
-        } else {
-          // F4: NOT-BETTER STATE
-          const best = getStoredDailyBest(day, localStorage);
-          const bestPoints = best ? best.points : points;
-          if (endLeaderboardStatus) {
-            endLeaderboardStatus.classList.remove('hidden');
-            endLeaderboardStatus.textContent = `Not sent · your best today is ${bestPoints}`;
-          }
-        }
-      }
-    }
-  } else {
+  if (!window.__LB || !window.__LB.url || !window.__LB.anonKey) {
+    if (rkPanel) rkPanel.classList.add('hidden');
     if (endLeaderboardStatus) {
       endLeaderboardStatus.classList.add('hidden');
       endLeaderboardStatus.textContent = '';
+    }
+    if (endSeedLabel) endSeedLabel.textContent = 'RUN SEED';
+    if (endSeedEl) endSeedEl.textContent = currentRunLog.seed;
+  } else {
+    if (rkPanel) rkPanel.classList.remove('hidden');
+
+    if (!dailyRunActive) {
+      if (endSeedLabel) endSeedLabel.textContent = 'RUN SEED';
+      if (endSeedEl) endSeedEl.textContent = currentRunLog.seed;
+      renderGameOverRankingCard(8, { isForbidden: !canShowDailyButton() });
+      if (endLeaderboardStatus) {
+        endLeaderboardStatus.classList.add('hidden');
+        endLeaderboardStatus.textContent = '';
+      }
+    } else {
+      if (endSeedLabel) endSeedLabel.textContent = 'RUN';
+      if (endSeedEl) endSeedEl.textContent = `DAILY · ${formatDayShort(dailyRunStartDay)} UTC`;
+
+      if (persistenceEnabled && canShowDailyButton()) {
+        const reallyEnded = controller && (controller.isGameOver() || (controller.state && controller.state.endedByPlayer));
+        if (reallyEnded && dailyRunStartDay) {
+          const now = Date.now();
+          const today = new Date(now);
+          const yesterday = new Date(now - 86400000);
+          const validDays = new Set([utcDateString(today), utcDateString(yesterday)]);
+
+          // If run was started before midnight but submitted after two midnights, drop as stale
+          if (!validDays.has(dailyRunStartDay)) {
+            if (endLeaderboardStatus) {
+              endLeaderboardStatus.classList.remove('hidden');
+              endLeaderboardStatus.textContent = 'Not accepted';
+            }
+            renderGameOverRankingCard(7, { day: dailyRunStartDay });
+          } else {
+            const day = dailyRunStartDay;
+            const points = currentRunLog.points || 0;
+            const moves = currentRunLog.totalMoves ?? currentRunLog.moves ?? 0;
+            displayedRunId = currentRunLog.runId || null;
+
+            if (shouldSubmitRun(day, points, moves, localStorage)) {
+              if (endLeaderboardStatus) {
+                endLeaderboardStatus.classList.remove('hidden');
+                endLeaderboardStatus.textContent = 'Sending…';
+              }
+              renderGameOverRankingCard(1, { day });
+              enqueueSubmission({
+                runId: currentRunLog.runId || `run_${Date.now()}`,
+                day,
+                runLog: currentRunLog,
+              }, localStorage, persistenceEnabled);
+
+              flushLeaderboardQueue(endLeaderboardStatus, false, displayedRunId);
+            } else {
+              // F4: NOT-BETTER STATE
+              const best = getStoredDailyBest(day, localStorage);
+              const bestPoints = best ? best.points : points;
+              if (endLeaderboardStatus) {
+                endLeaderboardStatus.classList.remove('hidden');
+                endLeaderboardStatus.textContent = `Not sent · your best today is ${bestPoints}`;
+              }
+              renderGameOverRankingCard(4, { bestPoints, bestRank: null, day });
+
+              // Look up rank of stored best to populate rank number
+              const url = window.__LB.url;
+              const anonKey = window.__LB.anonKey;
+              const devId = getDeviceId(localStorage, persistenceEnabled);
+              fetchMyRank({
+                url,
+                anonKey,
+                tab: 'today',
+                deviceId: devId,
+                day,
+                fetchFn: window.fetch.bind(window),
+              }).then(rankRes => {
+                if (rankRes.ok && rankRes.row) {
+                  renderGameOverRankingCard(4, { bestPoints, bestRank: rankRes.row.rank, day });
+                }
+              }).catch(() => {});
+            }
+          }
+        }
+      } else {
+        renderGameOverRankingCard(8, { isForbidden: !canShowDailyButton() });
+      }
     }
   }
 
@@ -5662,14 +5728,1228 @@ if (bestRunsOverlayEl) {
 
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    const nso = document.getElementById('name-sheet-overlay');
+    if (nso && !nso.classList.contains('hidden')) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeNameSheet();
+      return;
+    }
+    const lbo = document.getElementById('leaderboard-overlay');
+    if (lbo && !lbo.classList.contains('hidden')) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeLeaderboardOverlay();
+      return;
+    }
     const bro = document.getElementById('best-runs-overlay');
     if (bro && !bro.classList.contains('hidden')) {
       e.preventDefault();
       e.stopPropagation();
       hideBestRunsOverlay();
+      return;
     }
   }
 });
+
+/* =============================================================================
+ * Global Leaderboard (B2), Name Sheet (B3), and Ranking Card (B1) Orchestration
+ * ============================================================================= */
+
+const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function formatDayShort(dayStr) {
+  if (!dayStr || typeof dayStr !== 'string') return '';
+  const parts = dayStr.split('-');
+  if (parts.length < 3) return dayStr;
+  const day = parseInt(parts[2], 10);
+  const mIndex = parseInt(parts[1], 10) - 1;
+  const month = MONTH_NAMES_SHORT[mIndex] || parts[1];
+  return `${day} ${month}`;
+}
+
+const AVATAR_PALETTES = [
+  { bg: '#3e2e28', border: '#785542', text: '#f4c77f' },
+  { bg: '#2f353b', border: '#53616f', text: '#cbd5e1' },
+  { bg: '#3b2f35', border: '#735160', text: '#f4b8c7' },
+  { bg: '#2b3934', border: '#4f7263', text: '#a7f3d0' },
+  { bg: '#3d3224', border: '#79633e', text: '#fde047' },
+  { bg: '#352e3e', border: '#68547d', text: '#d8b4fe' },
+  { bg: '#3e352b', border: '#7a664e', text: '#fdba74' },
+  { bg: '#2e393b', border: '#536d72', text: '#67e8f9' },
+];
+
+function getAvatarColors(name) {
+  let hash = 0;
+  for (let i = 0; i < (name || '').length; i++) {
+    hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+  }
+  return AVATAR_PALETTES[Math.abs(hash) % AVATAR_PALETTES.length];
+}
+
+function handleShareRanking(data) {
+  const dayStr = data.day || dailyRunStartDay || utcDateString(new Date());
+  const rank = data.rank || '—';
+  const total = data.total ? formatPoints(data.total) : '—';
+  const points = data.points ? formatPoints(data.points) : (currentRunLog ? formatPoints(currentRunLog.points) : '0');
+  const shareText = `Rogue 2048 Daily ${formatDayShort(dayStr)} · #${rank} of ${total} · ${points} pts`;
+  const url = (typeof window !== 'undefined' && window.location.origin && window.location.origin.startsWith('https'))
+    ? window.location.origin
+    : 'https://rogue2048.com';
+
+  if (navigator?.share) {
+    navigator.share({
+      title: 'Rogue 2048 Daily',
+      text: shareText,
+      url,
+    }).catch(() => {
+      fallbackShareCopy(`${shareText} ${url}`);
+    });
+  } else {
+    fallbackShareCopy(`${shareText} ${url}`);
+  }
+}
+
+function fallbackShareCopy(text) {
+  if (navigator?.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Copied!');
+    }).catch(() => {
+      showToast('Copied!');
+    });
+  } else {
+    showToast('Copied!');
+  }
+}
+
+function handleReturnToStartWithDaily() {
+  if (endOverlay) endOverlay.classList.add('hidden');
+  if (startOverlay) {
+    startOverlay.classList.remove('hidden');
+    if (canShowDailyButton()) {
+      if (btnPlayDaily) btnPlayDaily.classList.remove('hidden');
+      if (dailyDisclosureContainer) dailyDisclosureContainer.classList.remove('hidden');
+      startDailyCountdown();
+    }
+    updateStartOverlayLeaderboardControls();
+  }
+}
+
+function renderGameOverRankingCard(outcome, data = {}) {
+  const panel = document.getElementById('global-ranking-panel');
+  if (!panel) return;
+  panel.classList.remove('hidden');
+  const headerTitleEl = document.getElementById('ranking-header-title-text');
+  const actionEl = document.getElementById('ranking-header-action');
+  const bodyEl = document.getElementById('ranking-content-body');
+  const footerEl = document.getElementById('ranking-footer-status');
+  const statusCompatibilityEl = document.getElementById('end-leaderboard-status');
+
+  const dayStr = data.day || dailyRunStartDay || utcDateString(new Date());
+  if (headerTitleEl) {
+    headerTitleEl.textContent = `DAILY RANKING · ${formatDayShort(dayStr)}`;
+  }
+
+  if (actionEl) actionEl.replaceChildren();
+  if (bodyEl) bodyEl.replaceChildren();
+  if (footerEl) {
+    footerEl.replaceChildren();
+    footerEl.className = 'ranking-footer-status';
+  }
+
+  panel.classList.remove('shimmer-active');
+
+  // Outcome 1: SENDING (calculating layout)
+  if (outcome === 1) {
+    const pill = document.createElement('span');
+    pill.className = 'ranking-meta-pill';
+    pill.textContent = 'SYNCING';
+    actionEl.appendChild(pill);
+
+    const rankLeft = document.createElement('div');
+    rankLeft.className = 'rank-left';
+    const rankNum = document.createElement('span');
+    rankNum.className = 'rank-number';
+    rankNum.style.letterSpacing = '0.1em';
+    rankNum.style.color = 'var(--muted)';
+    rankNum.style.fontSize = '26px';
+    rankNum.textContent = '---';
+    const rankLbl = document.createElement('span');
+    rankLbl.className = 'rank-label';
+    rankLbl.textContent = 'CALCULATING RANK';
+    rankLeft.appendChild(rankNum);
+    rankLeft.appendChild(rankLbl);
+
+    const rankRight = document.createElement('div');
+    rankRight.className = 'rank-right';
+    const pct = document.createElement('div');
+    pct.className = 'percentile-badge';
+    pct.style.background = 'rgba(255,255,255,0.06)';
+    pct.style.borderColor = 'rgba(255,255,255,0.1)';
+    pct.style.color = 'var(--muted)';
+    pct.textContent = 'CALCULATING...';
+    const helper = document.createElement('span');
+    helper.className = 'total-players-text';
+    helper.textContent = 'Sending your run for verification';
+    rankRight.appendChild(pct);
+    rankRight.appendChild(helper);
+
+    bodyEl.appendChild(rankLeft);
+    bodyEl.appendChild(rankRight);
+
+    footerEl.classList.add('status-pending');
+    const spinner = document.createElement('span');
+    spinner.className = 'pending-loader';
+    const footerTxt = document.createElement('span');
+    footerTxt.textContent = 'SUBMITTING RUN TO LEADERBOARD…';
+    footerEl.appendChild(spinner);
+    footerEl.appendChild(footerTxt);
+
+    if (statusCompatibilityEl) {
+      statusCompatibilityEl.textContent = 'Sending…';
+    }
+  }
+
+  // Outcome 2: ACCEPTED with rank
+  else if (outcome === 2) {
+    panel.classList.add('shimmer-active');
+
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'ranking-share-btn';
+    shareBtn.id = 'btn-ranking-share';
+    shareBtn.type = 'button';
+    shareBtn.setAttribute('aria-label', 'Share Rank');
+    shareBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/></svg><span>SHARE</span>';
+    shareBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleShareRanking(data);
+    });
+    actionEl.appendChild(shareBtn);
+
+    const rankLeft = document.createElement('div');
+    rankLeft.className = 'rank-left';
+    const rankNum = document.createElement('span');
+    rankNum.className = 'rank-number';
+    rankNum.textContent = `#${data.rank}`;
+    const rankLbl = document.createElement('span');
+    rankLbl.className = 'rank-label';
+    rankLbl.textContent = 'DAILY RANK';
+    rankLeft.appendChild(rankNum);
+    rankLeft.appendChild(rankLbl);
+
+    const rankRight = document.createElement('div');
+    rankRight.className = 'rank-right';
+    const summary = rankSummary(data.rank, data.total);
+    if (summary.topLabel) {
+      const pct = document.createElement('div');
+      pct.className = 'percentile-badge';
+      pct.textContent = summary.topLabel;
+      rankRight.appendChild(pct);
+      const helper = document.createElement('span');
+      helper.className = 'total-players-text';
+      helper.textContent = `Among ${formatPoints(data.total)} players today`;
+      rankRight.appendChild(helper);
+    } else {
+      const helper = document.createElement('span');
+      helper.className = 'total-players-text';
+      helper.textContent = `of ${formatPoints(data.total)} players`;
+      rankRight.appendChild(helper);
+    }
+
+    bodyEl.appendChild(rankLeft);
+    bodyEl.appendChild(rankRight);
+
+    footerEl.classList.add('status-ranked');
+    footerEl.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+    const footerTxt = document.createElement('span');
+    footerTxt.textContent = 'RUN SUBMITTED TO LEADERBOARD';
+    footerEl.appendChild(footerTxt);
+
+    if (statusCompatibilityEl) {
+      statusCompatibilityEl.textContent = `Submitted · Daily rank #${data.rank} of ${data.total}`;
+    }
+  }
+
+  // Outcome 3: ACCEPTED but rank unavailable
+  else if (outcome === 3) {
+    const rankLeft = document.createElement('div');
+    rankLeft.className = 'rank-left';
+    const rankNum = document.createElement('span');
+    rankNum.className = 'rank-number';
+    rankNum.textContent = '—';
+    const rankLbl = document.createElement('span');
+    rankLbl.className = 'rank-label';
+    rankLbl.textContent = 'RANK UNAVAILABLE';
+    rankLeft.appendChild(rankNum);
+    rankLeft.appendChild(rankLbl);
+
+    bodyEl.appendChild(rankLeft);
+
+    footerEl.classList.add('status-ranked');
+    footerEl.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+    const footerTxt = document.createElement('span');
+    footerTxt.textContent = 'RUN SUBMITTED';
+    footerEl.appendChild(footerTxt);
+
+    if (statusCompatibilityEl) {
+      statusCompatibilityEl.textContent = 'Submitted';
+    }
+  }
+
+  // Outcome 4: NOT BETTER
+  else if (outcome === 4) {
+    const rankLeft = document.createElement('div');
+    rankLeft.className = 'rank-left';
+    const rankNum = document.createElement('span');
+    rankNum.className = 'rank-number';
+    rankNum.textContent = data.bestRank ? `#${data.bestRank}` : '#—';
+    const rankLbl = document.createElement('span');
+    rankLbl.className = 'rank-label';
+    rankLbl.textContent = 'DAILY RANK';
+    rankLeft.appendChild(rankNum);
+    rankLeft.appendChild(rankLbl);
+
+    bodyEl.appendChild(rankLeft);
+
+    const footerTxt = document.createElement('span');
+    footerTxt.style.color = 'var(--muted)';
+    footerTxt.textContent = `NOT SENT · YOUR BEST TODAY IS ${data.bestPoints}`;
+    footerEl.appendChild(footerTxt);
+
+    if (statusCompatibilityEl) {
+      statusCompatibilityEl.textContent = `Not sent · your best today is ${data.bestPoints}`;
+    }
+  }
+
+  // Outcome 5: QUEUED
+  else if (outcome === 5) {
+    const pill = document.createElement('span');
+    pill.className = 'ranking-meta-pill';
+    pill.textContent = 'QUEUED';
+    actionEl.appendChild(pill);
+
+    const rankLeft = document.createElement('div');
+    rankLeft.className = 'rank-left';
+    const rankNum = document.createElement('span');
+    rankNum.className = 'rank-number';
+    rankNum.style.letterSpacing = '0.1em';
+    rankNum.style.color = 'var(--muted)';
+    rankNum.style.fontSize = '26px';
+    rankNum.textContent = '---';
+    const rankLbl = document.createElement('span');
+    rankLbl.className = 'rank-label';
+    rankLbl.textContent = 'CALCULATING RANK';
+    rankLeft.appendChild(rankNum);
+    rankLeft.appendChild(rankLbl);
+
+    const rankRight = document.createElement('div');
+    rankRight.className = 'rank-right';
+    const pct = document.createElement('div');
+    pct.className = 'percentile-badge';
+    pct.style.background = 'rgba(255,255,255,0.06)';
+    pct.style.borderColor = 'rgba(255,255,255,0.1)';
+    pct.style.color = 'var(--muted)';
+    pct.textContent = 'WAITING';
+    const helper = document.createElement('span');
+    helper.className = 'total-players-text';
+    helper.textContent = 'Saved on this device. Will retry automatically.';
+    rankRight.appendChild(pct);
+    rankRight.appendChild(helper);
+
+    bodyEl.appendChild(rankLeft);
+    bodyEl.appendChild(rankRight);
+
+    footerEl.classList.add('status-pending');
+    const footerTxt = document.createElement('span');
+    footerTxt.textContent = 'SAVED · WILL RETRY';
+    footerEl.appendChild(footerTxt);
+
+    if (statusCompatibilityEl) {
+      statusCompatibilityEl.textContent = 'Saved · will retry';
+    }
+  }
+
+  // Outcome 6: UPDATING
+  else if (outcome === 6) {
+    const pill = document.createElement('span');
+    pill.className = 'ranking-meta-pill';
+    pill.textContent = 'UPDATING';
+    actionEl.appendChild(pill);
+
+    const rankLeft = document.createElement('div');
+    rankLeft.className = 'rank-left';
+    const rankNum = document.createElement('span');
+    rankNum.className = 'rank-number';
+    rankNum.style.letterSpacing = '0.1em';
+    rankNum.style.color = 'var(--muted)';
+    rankNum.style.fontSize = '26px';
+    rankNum.textContent = '---';
+    const rankLbl = document.createElement('span');
+    rankLbl.className = 'rank-label';
+    rankLbl.textContent = 'CALCULATING RANK';
+    rankLeft.appendChild(rankNum);
+    rankLeft.appendChild(rankLbl);
+
+    const rankRight = document.createElement('div');
+    rankRight.className = 'rank-right';
+    const pct = document.createElement('div');
+    pct.className = 'percentile-badge';
+    pct.style.background = 'rgba(255,255,255,0.06)';
+    pct.style.borderColor = 'rgba(255,255,255,0.1)';
+    pct.style.color = 'var(--muted)';
+    pct.textContent = 'PAUSED';
+    const helper = document.createElement('span');
+    helper.className = 'total-players-text';
+    helper.textContent = 'The leaderboard is updating. Your run is saved.';
+    rankRight.appendChild(pct);
+    rankRight.appendChild(helper);
+
+    bodyEl.appendChild(rankLeft);
+    bodyEl.appendChild(rankRight);
+
+    footerEl.classList.add('status-pending');
+    const footerTxt = document.createElement('span');
+    footerTxt.textContent = 'SAVED · LEADERBOARD UPDATING';
+    footerEl.appendChild(footerTxt);
+
+    if (statusCompatibilityEl) {
+      statusCompatibilityEl.textContent = 'Saved · leaderboard updating';
+    }
+  }
+
+  // Outcome 7: REJECTED
+  else if (outcome === 7) {
+    const pill = document.createElement('span');
+    pill.className = 'ranking-meta-pill';
+    pill.textContent = 'REJECTED';
+    actionEl.appendChild(pill);
+
+    const rankLeft = document.createElement('div');
+    rankLeft.className = 'rank-left';
+    const rankNum = document.createElement('span');
+    rankNum.className = 'rank-number';
+    rankNum.style.fontSize = '24px';
+    rankNum.style.color = 'var(--muted)';
+    rankNum.textContent = 'NOT ACCEPTED';
+    rankLeft.appendChild(rankNum);
+
+    const rankRight = document.createElement('div');
+    rankRight.className = 'rank-right';
+    const helper = document.createElement('span');
+    helper.className = 'total-players-text';
+    helper.textContent = 'The server could not verify this run.';
+    rankRight.appendChild(helper);
+
+    bodyEl.appendChild(rankLeft);
+    bodyEl.appendChild(rankRight);
+
+    footerEl.classList.add('status-unranked');
+    footerEl.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+    const footerTxt = document.createElement('span');
+    footerTxt.textContent = 'RUN NOT ACCEPTED';
+    footerEl.appendChild(footerTxt);
+
+    if (statusCompatibilityEl) {
+      statusCompatibilityEl.textContent = 'Not accepted';
+    }
+  }
+
+  // Outcome 8: FREE RUN
+  else if (outcome === 8) {
+    const pill = document.createElement('span');
+    pill.className = 'ranking-meta-pill';
+    pill.textContent = 'FREE RUN';
+    actionEl.appendChild(pill);
+
+    const rankLeft = document.createElement('div');
+    rankLeft.className = 'rank-left';
+    const rankNum = document.createElement('span');
+    rankNum.className = 'rank-number';
+    rankNum.style.fontSize = '24px';
+    rankNum.style.color = 'var(--muted)';
+    rankNum.textContent = 'NOT RANKED';
+    rankLeft.appendChild(rankNum);
+
+    const rankRight = document.createElement('div');
+    rankRight.className = 'rank-right';
+    const pillBtn = document.createElement('button');
+    pillBtn.className = 'percentile-badge pill-btn';
+    pillBtn.id = 'btn-play-daily-pill';
+    pillBtn.type = 'button';
+    pillBtn.textContent = 'PLAY DAILY';
+    pillBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleReturnToStartWithDaily();
+    });
+    rankRight.appendChild(pillBtn);
+
+    const helper = document.createElement('span');
+    helper.className = 'total-players-text';
+    helper.textContent = data.isForbidden ? 'Custom seed or debug mode enabled' : 'Free runs are not ranked. Daily runs are.';
+    rankRight.appendChild(helper);
+
+    bodyEl.appendChild(rankLeft);
+    bodyEl.appendChild(rankRight);
+
+    footerEl.classList.add('status-unranked');
+    footerEl.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+    const footerTxt = document.createElement('span');
+    footerTxt.textContent = 'RUN NOT SUBMITTED';
+    footerEl.appendChild(footerTxt);
+
+    if (statusCompatibilityEl) {
+      statusCompatibilityEl.textContent = '';
+    }
+  }
+}
+
+// Bind Ranking Card Click to open Leaderboard Overlay
+const rkPanelCard = document.getElementById('global-ranking-panel');
+if (rkPanelCard) {
+  rkPanelCard.addEventListener('click', (e) => {
+    if (e.target.closest('#btn-ranking-share') || e.target.closest('#btn-play-daily-pill')) {
+      return;
+    }
+    openLeaderboardOverlay('end');
+  });
+}
+
+function updateStartOverlayLeaderboardControls() {
+  const btnStartLb = document.getElementById('btn-start-leaderboard');
+  const hasLb = Boolean(window.__LB && window.__LB.url && window.__LB.anonKey);
+  if (btnStartLb) {
+    if (hasLb) {
+      btnStartLb.classList.remove('hidden');
+    } else {
+      btnStartLb.classList.add('hidden');
+    }
+  }
+}
+
+// Bind Home Button
+const btnEndHome = document.getElementById('btn-end-home');
+if (btnEndHome) {
+  btnEndHome.addEventListener('click', () => {
+    initAudio();
+    playClick();
+    if (endOverlay) endOverlay.classList.add('hidden');
+    if (startOverlay) {
+      startOverlay.classList.remove('hidden');
+      if (canShowDailyButton()) {
+        if (btnPlayDaily) btnPlayDaily.classList.remove('hidden');
+        if (dailyDisclosureContainer) dailyDisclosureContainer.classList.remove('hidden');
+        startDailyCountdown();
+      }
+      updateStartOverlayLeaderboardControls();
+    }
+  });
+}
+
+// B4 Globe button setup on Start Overlay
+const btnStartLeaderboard = document.getElementById('btn-start-leaderboard');
+if (btnStartLeaderboard) {
+  updateStartOverlayLeaderboardControls();
+  btnStartLeaderboard.addEventListener('click', (e) => {
+    e.stopPropagation();
+    initAudio();
+    playClick();
+    openLeaderboardOverlay('start');
+  });
+}
+
+/* -------------------------------------------------------------
+ * B2 Leaderboard Overlay Management
+ * ------------------------------------------------------------- */
+let activeLeaderboardTab = 'today';
+let leaderboardOriginOverlay = 'start';
+let leaderboardAbortController = null;
+let tabCache = { today: null, week: null, alltime: null };
+let lastBoardFetchTime = { today: 0, week: 0, alltime: 0 };
+
+function openLeaderboardOverlay(origin = 'start') {
+  leaderboardOriginOverlay = origin;
+  if (origin === 'start') {
+    stopDailyCountdown();
+  }
+  const overlay = document.getElementById('leaderboard-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('hidden');
+
+  switchLeaderboardTab('today');
+}
+
+function closeLeaderboardOverlay() {
+  const overlay = document.getElementById('leaderboard-overlay');
+  if (overlay) overlay.classList.add('hidden');
+
+  if (leaderboardAbortController) {
+    leaderboardAbortController.abort();
+    leaderboardAbortController = null;
+  }
+
+  if (leaderboardOriginOverlay === 'end') {
+    if (endOverlay) endOverlay.classList.remove('hidden');
+  } else {
+    if (startOverlay) {
+      startOverlay.classList.remove('hidden');
+      if (canShowDailyButton()) {
+        startDailyCountdown();
+      }
+      updateStartOverlayLeaderboardControls();
+    }
+  }
+}
+
+function switchLeaderboardTab(tabKey, force = false) {
+  activeLeaderboardTab = tabKey;
+
+  const tabToday = document.getElementById('tab-today');
+  const tabWeek = document.getElementById('tab-week');
+  const tabAlltime = document.getElementById('tab-alltime');
+  const subtitleEl = document.getElementById('lb-subtitle');
+
+  if (tabToday) {
+    tabToday.classList.toggle('active', tabKey === 'today');
+    tabToday.setAttribute('aria-selected', String(tabKey === 'today'));
+  }
+  if (tabWeek) {
+    tabWeek.classList.toggle('active', tabKey === 'week');
+    tabWeek.setAttribute('aria-selected', String(tabKey === 'week'));
+  }
+  if (tabAlltime) {
+    tabAlltime.classList.toggle('active', tabKey === 'alltime');
+    tabAlltime.setAttribute('aria-selected', String(tabKey === 'alltime'));
+  }
+
+  if (subtitleEl) {
+    if (tabKey === 'today') {
+      subtitleEl.textContent = 'Same daily seed for everyone';
+    } else if (tabKey === 'week') {
+      subtitleEl.textContent = "Sum of each player's daily bests (Mon-Sun UTC)";
+    } else if (tabKey === 'alltime') {
+      subtitleEl.textContent = 'Best single run per player';
+    }
+  }
+
+  renderLeaderboardTab(tabKey, force);
+}
+
+async function renderLeaderboardTab(tabKey, force = false) {
+  const listEl = document.getElementById('lb-scroll-list');
+  const podiumEl = document.getElementById('lb-podium');
+
+  if (!window.__LB || !window.__LB.url || !window.__LB.anonKey) {
+    if (podiumEl) podiumEl.replaceChildren();
+    if (listEl) {
+      listEl.innerHTML = '<div class="lb-state-msg"><span>Leaderboard not configured.</span></div>';
+    }
+    return;
+  }
+
+  const url = window.__LB.url;
+  const anonKey = window.__LB.anonKey;
+  const devId = getDeviceId(localStorage, persistenceEnabled);
+  const now = Date.now();
+
+  // 30s cache check
+  if (!force && tabCache[tabKey] && (now - lastBoardFetchTime[tabKey] < 30000)) {
+    renderTabContent(tabKey, tabCache[tabKey]);
+    updateSyncText(lastBoardFetchTime[tabKey]);
+    return;
+  }
+
+  if (leaderboardAbortController) {
+    leaderboardAbortController.abort();
+  }
+  leaderboardAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const signal = leaderboardAbortController?.signal;
+
+  if (listEl) {
+    listEl.innerHTML = '<div class="lb-state-msg"><span class="pending-loader"></span><span>Loading rankings…</span></div>';
+  }
+
+  const apiTab = tabKey === 'alltime' ? 'all' : tabKey;
+
+  try {
+    const [boardRes, myRankRes] = await Promise.all([
+      fetchBoard({
+        url,
+        anonKey,
+        tab: apiTab,
+        limit: 100,
+        fetchFn: (input, init) => window.fetch(input, { ...init, signal }),
+      }),
+      fetchMyRank({
+        url,
+        anonKey,
+        tab: apiTab,
+        deviceId: devId,
+        fetchFn: (input, init) => window.fetch(input, { ...init, signal }),
+      }),
+    ]);
+
+    if (signal?.aborted) return;
+
+    if (!boardRes.ok) {
+      if (podiumEl) podiumEl.replaceChildren();
+      if (listEl) {
+        listEl.innerHTML = '<div class="lb-state-msg"><span>Failed to load rankings.</span><button class="lb-retry-btn" id="btn-lb-retry" type="button">Retry</button></div>';
+        const retryBtn = document.getElementById('btn-lb-retry');
+        if (retryBtn) retryBtn.addEventListener('click', () => renderLeaderboardTab(tabKey, true));
+      }
+      return;
+    }
+
+    const cachedData = {
+      rows: boardRes.rows,
+      myRank: myRankRes.ok ? myRankRes.row : null,
+      totalPlayers: myRankRes.ok ? myRankRes.totalPlayers : null,
+    };
+    tabCache[tabKey] = cachedData;
+    lastBoardFetchTime[tabKey] = Date.now();
+
+    renderTabContent(tabKey, cachedData);
+    updateSyncText(lastBoardFetchTime[tabKey]);
+  } catch (err) {
+    if (signal?.aborted) return;
+    if (podiumEl) podiumEl.replaceChildren();
+    if (listEl) {
+      listEl.innerHTML = '<div class="lb-state-msg"><span>Failed to load rankings.</span><button class="lb-retry-btn" id="btn-lb-retry" type="button">Retry</button></div>';
+      const retryBtn = document.getElementById('btn-lb-retry');
+      if (retryBtn) retryBtn.addEventListener('click', () => renderLeaderboardTab(tabKey, true));
+    }
+  }
+}
+
+function renderTabContent(tabKey, { rows, myRank }) {
+  const podiumEl = document.getElementById('lb-podium');
+  const listEl = document.getElementById('lb-scroll-list');
+  const pinnedCardEl = document.getElementById('lb-pinned-card');
+
+  if (podiumEl) podiumEl.replaceChildren();
+  if (listEl) listEl.replaceChildren();
+  if (pinnedCardEl) pinnedCardEl.replaceChildren();
+
+  if (!rows || rows.length === 0) {
+    if (listEl) {
+      listEl.innerHTML = '<div class="lb-state-msg"><span>No runs yet. Be the first.</span></div>';
+    }
+  } else {
+    // 1. Render Podium (ranks 1-3)
+    const p1 = rows[0] || null;
+    const p2 = rows[1] || null;
+    const p3 = rows[2] || null;
+
+    if (podiumEl) {
+      // Slot 2 (Left)
+      const card2 = document.createElement('div');
+      card2.className = 'podium-card rank-2';
+      card2.innerHTML = '<div class="podium-shimmer" aria-hidden="true"></div>';
+
+      const avWrap2 = document.createElement('div');
+      avWrap2.className = 'avatar-wrapper';
+      const av2 = document.createElement('div');
+      av2.className = 'podium-avatar';
+      if (p2) {
+        const col2 = getAvatarColors(p2.name);
+        av2.style.backgroundColor = col2.bg;
+        av2.style.borderColor = col2.border;
+        av2.style.color = col2.text;
+        av2.textContent = avatarInitials(p2.name);
+      } else {
+        av2.textContent = '—';
+      }
+      avWrap2.appendChild(av2);
+      card2.appendChild(avWrap2);
+
+      const name2 = document.createElement('div');
+      name2.className = 'podium-name';
+      name2.textContent = p2 ? p2.name : '—';
+      card2.appendChild(name2);
+
+      const score2 = document.createElement('div');
+      score2.className = 'podium-score';
+      score2.textContent = p2 ? formatPoints(p2.points) : '—';
+      card2.appendChild(score2);
+
+      const pill2 = document.createElement('span');
+      pill2.className = 'podium-tile-pill';
+      pill2.textContent = p2 ? `Tile ${p2.maxTile}` : '—';
+      card2.appendChild(pill2);
+
+      const tag2 = document.createElement('div');
+      tag2.className = 'podium-rank-tag';
+      tag2.textContent = '#2 SILVER';
+      card2.appendChild(tag2);
+
+      podiumEl.appendChild(card2);
+
+      // Slot 1 (Center)
+      const slot1 = document.createElement('div');
+      slot1.className = 'podium-slot-1';
+
+      const trophy = document.createElement('div');
+      trophy.className = 'trophy-badge';
+      trophy.setAttribute('title', 'Champion Crown');
+      trophy.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z"/></svg>';
+      slot1.appendChild(trophy);
+
+      const card1 = document.createElement('div');
+      card1.className = 'podium-card rank-1';
+      card1.innerHTML = '<div class="podium-shimmer" aria-hidden="true"></div>';
+
+      const avWrap1 = document.createElement('div');
+      avWrap1.className = 'avatar-wrapper';
+      const av1 = document.createElement('div');
+      av1.className = 'podium-avatar';
+      if (p1) {
+        const col1 = getAvatarColors(p1.name);
+        av1.style.backgroundColor = col1.bg;
+        av1.style.borderColor = col1.border;
+        av1.style.color = col1.text;
+        av1.textContent = avatarInitials(p1.name);
+      } else {
+        av1.textContent = '—';
+      }
+      avWrap1.appendChild(av1);
+      card1.appendChild(avWrap1);
+
+      const name1 = document.createElement('div');
+      name1.className = 'podium-name';
+      name1.textContent = p1 ? p1.name : '—';
+      card1.appendChild(name1);
+
+      const score1 = document.createElement('div');
+      score1.className = 'podium-score';
+      score1.textContent = p1 ? formatPoints(p1.points) : '—';
+      card1.appendChild(score1);
+
+      const pill1 = document.createElement('span');
+      pill1.className = 'podium-tile-pill';
+      pill1.textContent = p1 ? `Tile ${p1.maxTile}` : '—';
+      card1.appendChild(pill1);
+
+      const tag1 = document.createElement('div');
+      tag1.className = 'podium-rank-tag';
+      tag1.textContent = '#1 CHAMPION';
+      card1.appendChild(tag1);
+
+      slot1.appendChild(card1);
+      podiumEl.appendChild(slot1);
+
+      // Slot 3 (Right)
+      const card3 = document.createElement('div');
+      card3.className = 'podium-card rank-3';
+      card3.innerHTML = '<div class="podium-shimmer" aria-hidden="true"></div>';
+
+      const avWrap3 = document.createElement('div');
+      avWrap3.className = 'avatar-wrapper';
+      const av3 = document.createElement('div');
+      av3.className = 'podium-avatar';
+      if (p3) {
+        const col3 = getAvatarColors(p3.name);
+        av3.style.backgroundColor = col3.bg;
+        av3.style.borderColor = col3.border;
+        av3.style.color = col3.text;
+        av3.textContent = avatarInitials(p3.name);
+      } else {
+        av3.textContent = '—';
+      }
+      avWrap3.appendChild(av3);
+      card3.appendChild(avWrap3);
+
+      const name3 = document.createElement('div');
+      name3.className = 'podium-name';
+      name3.textContent = p3 ? p3.name : '—';
+      card3.appendChild(name3);
+
+      const score3 = document.createElement('div');
+      score3.className = 'podium-score';
+      score3.textContent = p3 ? formatPoints(p3.points) : '—';
+      card3.appendChild(score3);
+
+      const pill3 = document.createElement('span');
+      pill3.className = 'podium-tile-pill';
+      pill3.textContent = p3 ? `Tile ${p3.maxTile}` : '—';
+      card3.appendChild(pill3);
+
+      const tag3 = document.createElement('div');
+      tag3.className = 'podium-rank-tag';
+      tag3.textContent = '#3 BRONZE';
+      card3.appendChild(tag3);
+
+      podiumEl.appendChild(card3);
+    }
+
+    // 2. Render List Rows (ranks 4-100)
+    if (listEl) {
+      const remaining = rows.slice(3);
+      for (const p of remaining) {
+        const isMe = myRank && p.rank === myRank.rank;
+        const row = document.createElement('div');
+        row.className = `ranking-row ${isMe ? 'is-current-user' : ''}`;
+
+        const rankNum = document.createElement('div');
+        rankNum.className = 'rank-number';
+        rankNum.textContent = `#${p.rank}`;
+        row.appendChild(rankNum);
+
+        const avBox = document.createElement('div');
+        avBox.className = 'row-avatar-box';
+        const av = document.createElement('div');
+        av.className = 'row-avatar';
+        const col = getAvatarColors(p.name);
+        av.style.backgroundColor = col.bg;
+        av.style.borderColor = col.border;
+        av.style.color = col.text;
+        av.textContent = avatarInitials(p.name);
+        avBox.appendChild(av);
+        row.appendChild(avBox);
+
+        const meta = document.createElement('div');
+        meta.className = 'player-meta';
+        const unameWrap = document.createElement('div');
+        unameWrap.className = 'player-username';
+        const uname = document.createElement('span');
+        uname.className = 'row-name';
+        uname.textContent = p.name;
+        unameWrap.appendChild(uname);
+        if (isMe) {
+          const youPill = document.createElement('span');
+          youPill.className = 'you-pill';
+          youPill.textContent = 'YOU';
+          unameWrap.appendChild(youPill);
+        }
+        meta.appendChild(unameWrap);
+
+        const sub = document.createElement('div');
+        sub.className = 'player-subdetails';
+        const movesSpan = document.createElement('span');
+        movesSpan.textContent = `${p.moves} moves`;
+        const dot = document.createElement('span');
+        dot.className = 'sub-dot';
+        const maxTileSpan = document.createElement('span');
+        maxTileSpan.textContent = `Max ${p.maxTile}`;
+        sub.appendChild(movesSpan);
+        sub.appendChild(dot);
+        sub.appendChild(maxTileSpan);
+        meta.appendChild(sub);
+        row.appendChild(meta);
+
+        const scoreBlock = document.createElement('div');
+        scoreBlock.className = 'player-score-block';
+        const scoreVal = document.createElement('span');
+        scoreVal.className = 'player-score-val';
+        scoreVal.textContent = formatPoints(p.points);
+        const tileTag = document.createElement('span');
+        tileTag.className = 'player-tile-tag';
+        tileTag.textContent = String(p.maxTile);
+        scoreBlock.appendChild(scoreVal);
+        scoreBlock.appendChild(tileTag);
+        row.appendChild(scoreBlock);
+
+        listEl.appendChild(row);
+      }
+    }
+  }
+
+  // 3. Render Pinned Current User Card
+  if (pinnedCardEl) {
+    if (myRank) {
+      const rankBadge = document.createElement('div');
+      rankBadge.className = 'pinned-rank-badge current-rank-badge';
+      rankBadge.textContent = `#${myRank.rank}`;
+      pinnedCardEl.appendChild(rankBadge);
+
+      const avBox = document.createElement('div');
+      avBox.className = 'row-avatar-box';
+      const av = document.createElement('div');
+      av.className = 'row-avatar';
+      const col = getAvatarColors(myRank.name);
+      av.style.backgroundColor = col.bg;
+      av.style.borderColor = col.border;
+      av.style.color = col.text;
+      av.textContent = avatarInitials(myRank.name);
+      avBox.appendChild(av);
+      pinnedCardEl.appendChild(avBox);
+
+      const meta = document.createElement('div');
+      meta.className = 'player-meta';
+      const unameWrap = document.createElement('div');
+      unameWrap.className = 'player-username';
+      const uname = document.createElement('span');
+      uname.className = 'row-name';
+      uname.textContent = myRank.name;
+      unameWrap.appendChild(uname);
+
+      const youPill = document.createElement('span');
+      youPill.className = 'you-pill';
+      youPill.textContent = 'YOU';
+      unameWrap.appendChild(youPill);
+
+      // Pencil edit button
+      const pencil = document.createElement('button');
+      pencil.className = 'btn-name-edit';
+      pencil.id = 'btn-name-edit';
+      pencil.type = 'button';
+      pencil.setAttribute('aria-label', 'Edit display name');
+      pencil.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>';
+
+      let hasAcceptedRun = false;
+      try {
+        hasAcceptedRun = localStorage.getItem('rogue2048_has_accepted_run') === '1' ||
+          Boolean(getStoredDailyBest(utcDateString(new Date()), localStorage));
+      } catch {}
+
+      if (!hasAcceptedRun) {
+        pencil.disabled = true;
+        pencil.setAttribute('title', 'Finish a Daily run first to set a name.');
+      } else {
+        pencil.disabled = false;
+        pencil.setAttribute('title', 'Edit display name');
+        pencil.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openNameSheet(myRank.name);
+        });
+      }
+      unameWrap.appendChild(pencil);
+      meta.appendChild(unameWrap);
+
+      const sub = document.createElement('div');
+      sub.className = 'player-subdetails';
+      const movesSpan = document.createElement('span');
+      movesSpan.textContent = `${myRank.moves} moves`;
+      const dot = document.createElement('span');
+      dot.className = 'sub-dot';
+      const maxTileSpan = document.createElement('span');
+      maxTileSpan.textContent = `Max Tile ${myRank.maxTile}`;
+      sub.appendChild(movesSpan);
+      sub.appendChild(dot);
+      sub.appendChild(maxTileSpan);
+      meta.appendChild(sub);
+      pinnedCardEl.appendChild(meta);
+
+      const scoreBlock = document.createElement('div');
+      scoreBlock.className = 'player-score-block';
+      const scoreVal = document.createElement('span');
+      scoreVal.className = 'player-score-val';
+      scoreVal.textContent = formatPoints(myRank.points);
+      const tileTag = document.createElement('span');
+      tileTag.className = 'player-tile-tag';
+      tileTag.textContent = String(myRank.maxTile);
+      scoreBlock.appendChild(scoreVal);
+      scoreBlock.appendChild(tileTag);
+      pinnedCardEl.appendChild(scoreBlock);
+    } else {
+      const msg = document.createElement('div');
+      msg.style.cssText = 'grid-column: span 4; text-align: center; color: var(--muted); font-size: 11px; padding: 4px 0;';
+      if (tabKey === 'today') {
+        msg.textContent = "Play today's Daily to get ranked";
+      } else if (tabKey === 'week') {
+        msg.textContent = 'Play Daily runs this week to get ranked';
+      } else {
+        msg.textContent = 'Play a Daily run to get ranked';
+      }
+      pinnedCardEl.appendChild(msg);
+    }
+  }
+}
+
+function updateSyncText(timestamp) {
+  const syncTextEl = document.getElementById('lb-sync-text');
+  if (!syncTextEl) return;
+  if (!timestamp) {
+    syncTextEl.textContent = 'Updated just now';
+    return;
+  }
+  const diffSec = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (diffSec < 5) {
+    syncTextEl.textContent = 'Updated just now';
+  } else if (diffSec < 60) {
+    syncTextEl.textContent = `Updated ${diffSec}s ago`;
+  } else {
+    const mins = Math.floor(diffSec / 60);
+    syncTextEl.textContent = `Updated ${mins}m ago`;
+  }
+}
+
+// Bind Leaderboard overlay close & refresh buttons
+const btnLeaderboardClose = document.getElementById('btn-leaderboard-close');
+if (btnLeaderboardClose) {
+  btnLeaderboardClose.addEventListener('click', () => {
+    closeLeaderboardOverlay();
+  });
+}
+
+const lbOverlay = document.getElementById('leaderboard-overlay');
+if (lbOverlay) {
+  lbOverlay.addEventListener('click', (e) => {
+    if (e.target === lbOverlay) {
+      closeLeaderboardOverlay();
+    }
+  });
+}
+
+const btnLbRefresh = document.getElementById('btn-lb-refresh');
+if (btnLbRefresh) {
+  btnLbRefresh.addEventListener('click', () => {
+    renderLeaderboardTab(activeLeaderboardTab, true);
+  });
+}
+
+const tabBtnToday = document.getElementById('tab-today');
+if (tabBtnToday) {
+  tabBtnToday.addEventListener('click', () => switchLeaderboardTab('today'));
+}
+
+const tabBtnWeek = document.getElementById('tab-week');
+if (tabBtnWeek) {
+  tabBtnWeek.addEventListener('click', () => switchLeaderboardTab('week'));
+}
+
+const tabBtnAlltime = document.getElementById('tab-alltime');
+if (tabBtnAlltime) {
+  tabBtnAlltime.addEventListener('click', () => switchLeaderboardTab('alltime'));
+}
+
+/* -------------------------------------------------------------
+ * B3 Name Sheet Management
+ * ------------------------------------------------------------- */
+function openNameSheet(currentName = '') {
+  const sheetOverlay = document.getElementById('name-sheet-overlay');
+  const inputEl = document.getElementById('ns-name-input') || document.getElementById('ns-input');
+  const errorEl = document.getElementById('ns-error-box') || document.getElementById('ns-error');
+  if (!sheetOverlay || !inputEl) return;
+
+  sheetOverlay.classList.remove('hidden');
+  inputEl.value = currentName || localStorage.getItem('rogue2048_display_name') || '';
+  if (errorEl) {
+    errorEl.textContent = '';
+    errorEl.classList.add('hidden');
+  }
+  inputEl.focus();
+}
+
+function closeNameSheet() {
+  const sheetOverlay = document.getElementById('name-sheet-overlay');
+  if (sheetOverlay) sheetOverlay.classList.add('hidden');
+}
+
+async function handleNameSubmit(customName) {
+  const url = window.__LB?.url;
+  const anonKey = window.__LB?.anonKey;
+  const devId = getDeviceId(localStorage, persistenceEnabled);
+  const errorEl = document.getElementById('ns-error-box') || document.getElementById('ns-error');
+  const saveBtn = document.getElementById('btn-ns-save');
+  const genBtn = document.getElementById('btn-ns-generated');
+
+  if (!url || !anonKey) return;
+  if (saveBtn) saveBtn.disabled = true;
+  if (genBtn) genBtn.disabled = true;
+
+  try {
+    const res = await setDisplayName({
+      url,
+      anonKey,
+      deviceId: devId,
+      name: customName,
+      fetchFn: window.fetch.bind(window),
+    });
+
+    if (res.ok) {
+      try {
+        localStorage.setItem('rogue2048_has_accepted_run', '1');
+        if (res.displayName) {
+          localStorage.setItem('rogue2048_display_name', res.displayName);
+        }
+      } catch {}
+
+      tabCache = { today: null, week: null, alltime: null };
+      closeNameSheet();
+      showToast('Name updated!');
+      renderLeaderboardTab(activeLeaderboardTab, true);
+    } else {
+      let msg = "Couldn't reach the server. Try again.";
+      if (res.code === 'NAME_NOT_ALLOWED') {
+        msg = "That name isn't allowed. Try another.";
+      } else if (res.code === 'NAME_TAKEN') {
+        msg = 'That name is taken.';
+      } else if (res.code === 'RATE_LIMITED') {
+        msg = 'Too many changes today. Try again tomorrow.';
+      } else if (res.code === 'DEVICE_NOT_FOUND') {
+        msg = 'Finish a Daily run first to set a name.';
+      }
+      if (errorEl) {
+        errorEl.textContent = msg;
+        errorEl.classList.remove('hidden');
+      }
+    }
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+    if (genBtn) genBtn.disabled = false;
+  }
+}
+
+const btnNsSave = document.getElementById('btn-ns-save');
+if (btnNsSave) {
+  btnNsSave.addEventListener('click', () => {
+    const inputEl = document.getElementById('ns-name-input') || document.getElementById('ns-input');
+    const val = inputEl ? inputEl.value.trim() : '';
+    handleNameSubmit(val);
+  });
+}
+
+const btnNsGenerated = document.getElementById('btn-ns-generated');
+if (btnNsGenerated) {
+  btnNsGenerated.addEventListener('click', () => {
+    handleNameSubmit(null);
+  });
+}
+
+const btnNsCancel = document.getElementById('btn-ns-cancel');
+if (btnNsCancel) {
+  btnNsCancel.addEventListener('click', () => {
+    closeNameSheet();
+  });
+}
+
+const nsOverlay = document.getElementById('name-sheet-overlay');
+if (nsOverlay) {
+  nsOverlay.addEventListener('click', (e) => {
+    if (e.target === nsOverlay) {
+      closeNameSheet();
+    }
+  });
+}
+
+const nsInput = document.getElementById('ns-name-input') || document.getElementById('ns-input');
+if (nsInput) {
+  nsInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = nsInput.value.trim();
+      handleNameSubmit(val);
+    }
+  });
+}
+
+// Window test hooks for automated verification
+if (typeof window !== 'undefined') {
+  window.__testRenderRankingCard = renderGameOverRankingCard;
+  window.__testOpenLeaderboard = openLeaderboardOverlay;
+  window.__testCloseLeaderboard = closeLeaderboardOverlay;
+  window.__testRenderLeaderboardTab = renderLeaderboardTab;
+  window.__testRenderTabContent = renderTabContent;
+  window.__testOpenNameSheet = openNameSheet;
+  window.__testCloseNameSheet = closeNameSheet;
+  window.__testHandleNameSubmit = handleNameSubmit;
+  window.__testTabCache = () => tabCache;
+  window.__testSetTabCache = (key, data, time = Date.now()) => {
+    tabCache[key] = data;
+    lastBoardFetchTime[key] = time;
+  };
+  window.__testActiveTab = () => activeLeaderboardTab;
+  window.__testUpdateStartLeaderboard = updateStartOverlayLeaderboardControls;
+}
 
 window.getTopRuns = getTopRuns;
 window.saveTopRun = saveTopRun;

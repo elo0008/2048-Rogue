@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { build } from './build.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,6 +13,12 @@ const isDev = process.argv[2] === 'dev' || process.env.BUILD_TARGET === 'dev';
 const targetDir = isDev
   ? (fs.existsSync(path.join(rootDir, 'dist-dev')) ? path.join(rootDir, 'dist-dev') : path.join(rootDir, 'dist'))
   : path.join(rootDir, 'dist');
+
+// Auto-build guard: ensure dist and dist/icons exist before serving
+if (!fs.existsSync(targetDir) || !fs.existsSync(path.join(targetDir, 'icons')) || !fs.existsSync(path.join(targetDir, 'index.html'))) {
+  console.log(`[serve] Target ${path.relative(rootDir, targetDir) || 'dist/'} is missing or incomplete. Building first...`);
+  await build({ target: isDev ? 'dev' : 'prod' });
+}
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = isDev ? '0.0.0.0' : '0.0.0.0';

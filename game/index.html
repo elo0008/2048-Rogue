@@ -149,6 +149,13 @@
     <!-- Start Screen Overlay -->
     <div id="start-overlay" class="overlay modal-overlay" role="dialog" aria-modal="true">
       <div class="modal start-card">
+        <button id="btn-start-leaderboard" class="trophy-btn leaderboard-btn hidden" type="button" aria-label="Global leaderboard">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+        </button>
         <button id="btn-start-trophy" class="trophy-btn" type="button" aria-label="Best runs">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
@@ -255,44 +262,170 @@
     </div>
 
     <!-- Game Over Screen Overlay -->
-    <div id="end-overlay" class="overlay modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="end-title">
-      <div class="modal end-card">
-        <div class="end-header-row" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-          <div class="eyebrow" style="margin:0">Run complete · score</div>
-          <span id="end-clean-slate-chip" class="clean-slate-chip hidden">CLEAN SLATE x 1</span>
+    <div id="end-overlay" class="overlay modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="end-score">
+      <div class="modal end-card gameover-card">
+        <div class="end-header-row card-header-row" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+          <div class="eyebrow run-complete-tag" style="margin:0">Run complete · score</div>
+          <span id="end-clean-slate-chip" class="clean-slate-chip modifier-badge hidden">CLEAN SLATE x 1</span>
         </div>
-        <div id="end-score" class="final end-score-val">0</div>
+        <div id="end-score" class="final end-score-val score-display">0</div>
         <div style="text-align:center"><span id="end-new-best-badge" class="newbest badge-new-best hidden">✦ NEW BEST</span></div>
-        <div id="end-mini-board" class="mini"></div>
-        <div class="finalstats end-summary-grid">
-          <div class="finalstat end-summary-item">
-            <small class="summary-label">TIME</small>
-            <strong id="end-time" class="summary-val">0:00</strong>
+        <div class="mini-board-wrapper">
+          <div id="end-mini-board" class="mini mini-board" aria-label="Final 4 by 4 board snapshot"></div>
+        </div>
+        <div class="finalstats end-summary-grid stats-grid">
+          <div class="finalstat end-summary-item stat-cell">
+            <small class="summary-label stat-label">TIME</small>
+            <strong id="end-time" class="summary-val stat-value">0:00</strong>
           </div>
-          <div class="finalstat end-summary-item">
-            <small class="summary-label">MOVES SURVIVED</small>
-            <strong id="end-moves" class="summary-val">0</strong>
+          <div class="finalstat end-summary-item stat-cell">
+            <small class="summary-label stat-label">MOVES SURVIVED</small>
+            <strong id="end-moves" class="summary-val stat-value">0</strong>
           </div>
-          <div class="finalstat end-summary-item">
-            <small class="summary-label">MAX TILE</small>
-            <strong id="end-max-tile" class="summary-val">0</strong>
+          <div class="finalstat end-summary-item stat-cell">
+            <small class="summary-label stat-label">MAX TILE</small>
+            <strong id="end-max-tile" class="summary-val stat-value">0</strong>
           </div>
-          <div class="finalstat end-summary-item">
-            <small class="summary-label">DRAFTS SEEN</small>
-            <strong id="end-drafts" class="summary-val">0</strong>
+          <div class="finalstat end-summary-item stat-cell">
+            <small class="summary-label stat-label">DRAFTS SEEN</small>
+            <strong id="end-drafts" class="summary-val stat-value">0</strong>
           </div>
-          <div class="finalstat end-summary-item">
-            <small class="summary-label">RUN SEED</small>
-            <strong id="end-seed" class="summary-val">0</strong>
+          <div class="finalstat end-summary-item stat-cell span-full stat-seed-cell" id="end-seed-cell">
+            <small class="summary-label stat-label" id="end-seed-label">RUN SEED</small>
+            <strong id="end-seed" class="summary-val stat-value" style="font-family: monospace; letter-spacing: 0.05em;">0</strong>
           </div>
         </div>
-        <div class="eyebrow">Relics collected</div>
-        <div id="end-relics-list" class="ownedicons end-relics-list" style="justify-content:center"></div>
+        <div class="relics-section" aria-label="Relics Collected">
+          <div class="eyebrow relics-title">Relics collected</div>
+          <div id="end-relics-list" class="ownedicons end-relics-list relics-row" style="justify-content:center"></div>
+        </div>
+
+        <!-- Ranking Card Panel (B1) -->
+        <section class="global-ranking-panel rk-card hidden" id="global-ranking-panel" aria-label="Daily Ranking">
+          <div class="glass-shimmer" aria-hidden="true"></div>
+          <div class="ranking-header">
+            <span class="ranking-header-title">
+              <svg viewBox="0 0 24 24" aria-hidden="true" width="13" height="13">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+              </svg>
+              <span id="ranking-header-title-text">DAILY RANKING</span>
+            </span>
+            <div id="ranking-header-action"></div>
+          </div>
+          <div class="ranking-content" id="ranking-content-body"></div>
+          <div class="ranking-footer-status" id="ranking-footer-status"></div>
+        </section>
+
+        <!-- Keep #end-leaderboard-status for backwards test compatibility -->
         <div id="end-leaderboard-status" class="end-leaderboard-status hidden" aria-live="polite"></div>
-        <div class="end-actions" style="margin-top:14px; display:flex; flex-direction:column; gap:8px;">
-          <button id="btn-play-daily-again" class="primary btn btn-primary hidden" type="button">PLAY DAILY AGAIN ↗</button>
-          <button id="btn-play-again" class="primary btn btn-primary" type="button">PLAY AGAIN ↗</button>
-          <button id="btn-copy-log" class="secondary btn btn-secondary" type="button">COPY RUN LOG</button>
+
+        <div class="end-actions action-buttons">
+          <button id="btn-play-daily-again" class="primary btn btn-primary btn-play-again hidden" type="button">
+            <span>PLAY DAILY AGAIN</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4h12v2H6V4zm0 14h12v2H6v-2zm10.59-8.41L12 14.17l-4.59-4.58L6 11l6 6 6-6-1.41-1.41z" transform="rotate(-90 12 12)"/></svg>
+          </button>
+          <button id="btn-play-again" class="primary btn btn-primary btn-play-again" type="button">
+            <span>PLAY AGAIN</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4h12v2H6V4zm0 14h12v2H6v-2zm10.59-8.41L12 14.17l-4.59-4.58L6 11l6 6 6-6-1.41-1.41z" transform="rotate(-90 12 12)"/></svg>
+          </button>
+          <div class="secondary-action-row">
+            <button id="btn-end-home" class="secondary btn btn-secondary btn-home" type="button" title="Return to Main Menu">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+              <span>HOME</span>
+            </button>
+            <button id="btn-copy-log" class="secondary btn btn-secondary btn-copy-log-half" type="button" title="Copy run log summary">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+              <span>COPY LOG</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Global Leaderboard Overlay (B2) -->
+    <div id="leaderboard-overlay" class="overlay modal-overlay leaderboard-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="lb-title">
+      <div class="modal leaderboard-modal lb-modal" id="leaderboard-modal">
+        <!-- Header -->
+        <div class="modal-header lb-header">
+          <div class="header-text-group lb-header-text">
+            <div class="header-eyebrow lb-eyebrow">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="var(--accent)" aria-hidden="true">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+              </svg>
+              <span>GLOBAL RANKINGS</span>
+            </div>
+            <h1 class="header-title lb-title shimmer-text" id="lb-title">LEADERBOARD</h1>
+            <p class="header-subtitle lb-subtitle" id="lb-subtitle">Same daily seed for everyone</p>
+          </div>
+          <button class="close-btn lb-close-btn" id="btn-leaderboard-close" type="button" title="Close Leaderboard (Esc)" aria-label="Close modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Category Selector Tabs: TODAY, THIS WEEK, ALL TIME -->
+        <nav class="category-tabs-wrapper lb-tabs-wrapper" aria-label="Leaderboard timeframe">
+          <div class="category-tabs lb-tabs" role="tablist">
+            <button class="category-tab-btn lb-tab-btn active" role="tab" aria-selected="true" data-tab="today" id="tab-today">TODAY</button>
+            <button class="category-tab-btn lb-tab-btn" role="tab" aria-selected="false" data-tab="week" id="tab-week">THIS WEEK</button>
+            <button class="category-tab-btn lb-tab-btn" role="tab" aria-selected="false" data-tab="alltime" id="tab-alltime">ALL TIME</button>
+          </div>
+        </nav>
+
+        <!-- Top 3 Podium Section -->
+        <section class="podium-section lb-podium" id="lb-podium" aria-label="Top 3 players podium"></section>
+
+        <!-- Subheading for rankings table -->
+        <div class="list-header-bar lb-list-header">
+          <span>RANK &amp; PLAYER</span>
+          <span>SCORE / TILE</span>
+        </div>
+
+        <!-- Independently Scrollable Rankings List (ranks 4-100 or state messages) -->
+        <div class="rankings-scroll-area lb-scroll-list" id="lb-scroll-list" role="feed" aria-label="Global player rankings list"></div>
+
+        <!-- Bottom Pinned: Current User Standing -->
+        <section class="current-user-pinned lb-pinned" id="lb-pinned-section" aria-label="Your ranking">
+          <div class="pinned-eyebrow lb-pinned-eyebrow">
+            <span class="pinned-label lb-pinned-label">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+              </svg>
+              <span>YOUR CURRENT RANK</span>
+            </span>
+            <div class="pinned-sync lb-sync-bar">
+              <span id="lb-sync-text">Updated just now</span>
+              <button id="btn-lb-refresh" class="lb-refresh-btn" type="button" aria-label="Refresh leaderboard" title="Refresh">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M23 4v6h-6"></path>
+                  <path d="M1 20v-6h6"></path>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="pinned-row-card lb-pinned-card" id="lb-pinned-card"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Name Sheet Modal (B3) -->
+    <div id="name-sheet-overlay" class="overlay modal-overlay ns-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ns-title">
+      <div class="modal ns-sheet" id="name-sheet">
+        <div class="ns-header">
+          <h2 class="ns-title" id="ns-title">EDIT DISPLAY NAME</h2>
+          <p class="ns-subtitle">Set your name on global leaderboards</p>
+        </div>
+        <div class="ns-body">
+          <input type="text" id="ns-name-input" class="ns-input" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Enter display name" aria-label="Display name">
+          <div id="ns-error-box" class="ns-error ns-error-box hidden" role="alert"></div>
+        </div>
+        <div class="ns-actions">
+          <button id="btn-ns-save" class="primary btn btn-primary ns-btn-save" type="button">SAVE</button>
+          <button id="btn-ns-generated" class="secondary btn btn-secondary ns-btn-generated" type="button">USE GENERATED NAME</button>
+          <button id="btn-ns-cancel" class="link ns-btn-cancel" type="button">CANCEL</button>
         </div>
       </div>
     </div>

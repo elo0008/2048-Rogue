@@ -63,12 +63,12 @@
     "inkCoveragePct": 30
   },
   "siphon": {
-    "sha256": "6d9b7263cdeb41468b5de77a40c91721403584b015a2ceb4d5654dca0f476583",
+    "sha256": "1df91368552100d747d6a0e52655a8e44be2a0544d18acefa0f5d2a09a328813",
     "scale": 0.88,
     "xPercent": 0.1,
     "yPercent": 0.1,
     "rawBboxPct": 100,
     "finalBboxPct": 88,
-    "inkCoveragePct": 19.5
+    "inkCoveragePct": 26.6
   }
 }

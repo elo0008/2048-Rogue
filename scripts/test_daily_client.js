@@ -222,12 +222,19 @@ async function main() {
   // T2. BUILD WITHOUT CONFIG: Daily button absent, 0 requests
   // ---------------------------------------------------------------------------
   console.log('[T2] Testing Build without Leaderboard Config...');
-  // Build dist with empty env (no leaderboard)
-  delete process.env.LEADERBOARD_URL;
-  delete process.env.LEADERBOARD_ANON_KEY;
-  build('prod');
+  // Build into isolated temp directory with empty config
+  const t2DistDir = path.join(rootDir, `.temp_dist_daily_t2_${Date.now()}`);
+  await build({
+    distDir: t2DistDir,
+    target: 'prod',
+    leaderboardUrl: null,
+    leaderboardAnonKey: null,
+  });
 
-  const t2Server = await startStaticServer(distDir);
+  const t2Cfg = fs.readFileSync(path.join(t2DistDir, 'leaderboard-config.js'), 'utf8');
+  assert.strictEqual(t2Cfg.trim(), 'window.__LB = null;', 'T2 private build must have window.__LB = null;');
+
+  const t2Server = await startStaticServer(t2DistDir);
   const chromePath = findChrome();
   if (!chromePath) throw new Error('Chrome binary not found');
 
@@ -281,11 +288,12 @@ async function main() {
   assert.strictEqual(t2NetworkRequests.length > 0, true, 'Vacuity guard: static requests were recorded');
 
   t2Server.server.close();
+  try { fs.rmSync(t2DistDir, { recursive: true, force: true }); } catch {}
   console.log(`✔ T2 PASSED: Daily button hidden, window.__LB is null, 0 external requests.\n`);
   passedCount++;
 
   // ---------------------------------------------------------------------------
-  // SETUP MOCK LEADERBOARD & BUILD WITH CONFIG FOR T3 - T14
+  // SETUP MOCK LEADERBOARD & BUILD WITH CONFIG FOR T3 - T17
   // ---------------------------------------------------------------------------
   const mockDb = new SecurityDatabaseEngine();
   const mock = createMockLeaderboardServer(mockDb);
@@ -294,11 +302,18 @@ async function main() {
   const mockUrl = `http://localhost:${mockPort}`;
   const mockAnonKey = 'sb_publishable_test_key_for_client_suite';
 
-  process.env.LEADERBOARD_URL = mockUrl;
-  process.env.LEADERBOARD_ANON_KEY = mockAnonKey;
-  build('prod');
+  const mockDistDir = path.join(rootDir, `.temp_dist_daily_mock_${Date.now()}`);
+  await build({
+    distDir: mockDistDir,
+    target: 'prod',
+    leaderboardUrl: mockUrl,
+    leaderboardAnonKey: mockAnonKey,
+  });
 
-  const mainServer = await startStaticServer(distDir);
+  const mockCfg = fs.readFileSync(path.join(mockDistDir, 'leaderboard-config.js'), 'utf8');
+  assert.strictEqual(mockCfg.includes(mockAnonKey), true, 'Mock private build must contain mock anon key');
+
+  const mainServer = await startStaticServer(mockDistDir);
   const baseUrl = `http://127.0.0.1:${mainServer.port}/`;
 
   // ---------------------------------------------------------------------------
@@ -647,12 +662,14 @@ async function main() {
 
   mock.clearRequests();
 
-  // Start daily run and end it with a score lower than 5000 (e.g. 8 points)
+  // Start daily run and end it with a score lower than 5000 (e.g. 2 points)
   await cdp.eval(`document.getElementById('btn-play-daily')?.click()`);
   await sleep(100);
 
   for (let i = 0; i < 2; i++) {
-    const k = km['D'];
+    const validMoves = await cdp.eval(`window.controller ? window.controller.getValidMoves() : []`);
+    const dir = validMoves && validMoves.length > 0 ? (validMoves.includes('D') ? 'D' : validMoves[0]) : 'D';
+    const k = km[dir] || km['D'];
     await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...k });
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...k });
     await sleep(20);
@@ -685,15 +702,41 @@ async function main() {
   `);
 
   mock.clearRequests();
+
+  // Vacuity guard: verify btn-play-daily-again exists and is visible
+  const btnDailyAgainCheck = await cdp.eval(`
+    (() => {
+      const b = document.getElementById('btn-play-daily-again');
+      return { exists: Boolean(b), hidden: b ? b.classList.contains('hidden') : true };
+    })()
+  `);
+  assert.strictEqual(btnDailyAgainCheck.exists, true, 'btn-play-daily-again must exist in DOM');
+  assert.strictEqual(btnDailyAgainCheck.hidden, false, 'btn-play-daily-again must not be hidden on daily end screen');
+
   await cdp.eval(`document.getElementById('btn-play-daily-again')?.click()`);
   await sleep(100);
 
-  for (let i = 0; i < 5; i++) {
-    const k = km['D'];
+  // Date-independent: play legal moves until score exceeds stored best of 2 or cap of 60 moves
+  let t7MovesPlayed = 0;
+  const t7MaxMoves = 60;
+  while (t7MovesPlayed < t7MaxMoves) {
+    const score = await cdp.eval(`window.controller ? window.controller.state.score : 0`);
+    const isOver = await cdp.eval(`window.controller ? window.controller.isGameOver() : false`);
+    if (score > 2 || isOver) break;
+
+    const validMoves = await cdp.eval(`window.controller ? window.controller.getValidMoves() : []`);
+    if (!validMoves || validMoves.length === 0) break;
+    const preferredOrder = ['D', 'L', 'R', 'U'];
+    const dir = preferredOrder.find(m => validMoves.includes(m)) || validMoves[0];
+    const k = km[dir] || km['D'];
     await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...k });
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...k });
     await sleep(20);
+    t7MovesPlayed++;
   }
+
+  const t7BetterScore = await cdp.eval(`window.controller ? window.controller.state.score : 0`);
+  assert.strictEqual(t7BetterScore > 2, true, `Vacuity guard: run 2 score must exceed previous best 2 (got ${t7BetterScore} after ${t7MovesPlayed} moves)`);
 
   await cdp.eval(`
     (async () => {
@@ -1222,6 +1265,7 @@ async function main() {
   chromeProcess.kill();
   mainServer.server.close();
   await mock.close();
+  try { fs.rmSync(mockDistDir, { recursive: true, force: true }); } catch {}
 
   console.log('================================================================================');
   console.log(`ALL TESTS PASSED: ${passedCount}/${totalCount} scenarios successful.`);
