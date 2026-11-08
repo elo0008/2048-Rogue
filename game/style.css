@@ -2874,11 +2874,11 @@ button:focus-visible {
   inset: 0;
   min-height: 100vh;
   min-height: 100dvh;
-  padding: clamp(6px, 1.2vh, 16px) clamp(8px, 2vw, 12px);
-  padding-top: max(clamp(6px, 1.2vh, 16px), env(safe-area-inset-top));
-  padding-bottom: max(clamp(6px, 1.2vh, 16px), env(safe-area-inset-bottom));
-  padding-left: max(clamp(8px, 2vw, 12px), env(safe-area-inset-left));
-  padding-right: max(clamp(8px, 2vw, 12px), env(safe-area-inset-right));
+  padding: 0 12px;
+  padding-top: max(0px, env(safe-area-inset-top));
+  padding-bottom: max(0px, env(safe-area-inset-bottom));
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2901,10 +2901,17 @@ button:focus-visible {
   padding: clamp(10px, 1.8vh, 22px) 20px;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
+  gap: clamp(0px, calc(0.8cqh - 2px), 8px);
   box-shadow: 0 20px 45px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
   position: relative;
   box-sizing: border-box;
   margin: auto;
+  container-name: gameover-card;
+  container-type: size;
+  height: min(calc(100vh - 2 * clamp(12px, 2.5vh, 24px)), 860px);
+  height: min(calc(100dvh - 2 * clamp(12px, 2.5dvh, 24px) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)), 860px);
+  max-height: 860px;
 }
 
 .card-header-row {
@@ -2936,6 +2943,8 @@ button:focus-visible {
 
 .score-display {
   font-size: clamp(30px, 4.8vh, 52px);
+  font-size: clamp(30px, 4.8dvh, 52px);
+  font-size: clamp(30px, 5.2cqh, 52px);
   font-weight: 700;
   line-height: 1.05;
   text-align: center;
@@ -2951,8 +2960,12 @@ button:focus-visible {
 }
 
 .mini-board {
-  width: clamp(80px, 12.5vh, 124px);
-  height: clamp(80px, 12.5vh, 124px);
+  width: clamp(80px, 15vh, 140px);
+  width: clamp(80px, 15dvh, 140px);
+  width: clamp(80px, 15cqh, 140px);
+  height: clamp(80px, 15vh, 140px);
+  height: clamp(80px, 15dvh, 140px);
+  height: clamp(80px, 15cqh, 140px);
   margin: 0 auto;
   background: #141012;
   border-radius: 6px;
@@ -3459,7 +3472,8 @@ button:focus-visible {
 
 @media (max-height: 760px) {
   #end-overlay.modal-overlay {
-    padding: clamp(4px, 1vh, 10px) 12px;
+    padding-top: max(0px, env(safe-area-inset-top));
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
   }
   .gameover-card {
     padding: clamp(8px, 1.4vh, 16px) clamp(12px, 2.5vw, 18px);
@@ -3467,14 +3481,20 @@ button:focus-visible {
   }
   .score-display {
     font-size: clamp(30px, 4.8vh, 52px);
-    margin: 0 0 clamp(2px, 0.4vh, 6px) 0;
+    font-size: clamp(30px, 4.8dvh, 52px);
+    font-size: clamp(30px, 5.2cqh, 52px);
+    margin: 0;
   }
   .mini-board-wrapper {
-    margin-bottom: clamp(4px, 0.6vh, 8px);
+    margin: 0;
   }
   .mini-board {
-    width: clamp(80px, 12vh, 96px);
-    height: clamp(80px, 12vh, 96px);
+    width: clamp(80px, 15vh, 140px);
+    width: clamp(80px, 15dvh, 140px);
+    width: clamp(80px, 15cqh, 140px);
+    height: clamp(80px, 15vh, 140px);
+    height: clamp(80px, 15dvh, 140px);
+    height: clamp(80px, 15cqh, 140px);
     gap: 2px;
     padding: 3px;
   }
@@ -3483,7 +3503,7 @@ button:focus-visible {
   }
   .stats-grid {
     gap: clamp(3px, 0.5vh, 5px);
-    margin-bottom: clamp(4px, 0.7vh, 8px);
+    margin: 0;
   }
   .stat-cell {
     padding: clamp(3px, 0.5vh, 6px) clamp(6px, 1.2vw, 10px);
@@ -3497,7 +3517,7 @@ button:focus-visible {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    margin-bottom: clamp(4px, 0.6vh, 8px);
+    margin: 0;
   }
   .relics-title {
     display: none;
@@ -3523,14 +3543,39 @@ button:focus-visible {
     height: clamp(14px, 2vh, 18px);
   }
   .global-ranking-panel {
-    margin-bottom: clamp(4px, 0.7vh, 8px);
+    margin: 0;
+    flex-shrink: 0;
     padding: clamp(6px, 1vh, 9px) clamp(8px, 1.5vw, 12px);
+  }
+  .action-buttons {
+    margin: 0;
+    flex-shrink: 0;
+  }
+}
+
+@container gameover-card (min-height: 650px) {
+  #end-seed-cell,
+  .stat-seed-cell {
+    display: flex !important;
+  }
+  .relics-title {
+    display: block !important;
+  }
+  .relics-section {
+    display: block !important;
   }
 }
 
 @media (max-height: 560px) {
   #end-overlay.modal-overlay {
     align-items: flex-start;
+    padding-top: clamp(6px, 1.2vh, 16px);
+    padding-bottom: clamp(6px, 1.2vh, 16px);
+  }
+  .gameover-card, .modal.gameover-card {
+    height: auto;
+    min-height: min-content;
+    margin: auto 0;
   }
   .action-buttons {
     position: sticky;

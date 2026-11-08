@@ -39,7 +39,9 @@ if (!fs.existsSync(outDir)) {
   fs.mkdirSync(outDir, { recursive: true });
 }
 
-const isSelfCheckFail = process.argv.includes('--self-check-fail');
+const selfCheckArg = process.argv.find(a => a.startsWith('--self-check-fail'));
+const selfCheckTarget = selfCheckArg ? (selfCheckArg.includes('=') ? selfCheckArg.split('=')[1] : 'all') : null;
+const isSelfCheckFail = !!selfCheckArg;
 const isWriteReference = process.argv.includes('--write-reference');
 const baselinePath = path.join(rootDir, 'scripts', 'baselines', 'parity_reference.json');
 
@@ -198,8 +200,8 @@ async function main() {
   console.log(`Timestamp:            ${new Date().toISOString()}`);
   console.log('================================================================================\n');
 
-  // Self-check failure test: if --self-check-fail is passed, fail deliberately
-  if (isSelfCheckFail) {
+  // Self-check failure test: if --self-check-fail is passed bare (or --self-check-fail=preflight), fail deliberately
+  if (selfCheckTarget === 'all' || selfCheckTarget === 'preflight') {
     console.log('Deliberately triggering self-check assertion failure as requested...');
     assert.strictEqual('actual_self_check', 'deliberately_wrong_expectation', 'Self-check failure triggered as expected');
   }
@@ -1019,7 +1021,7 @@ async function main() {
     console.log(`  [Self-Check missing_icon] src: icons/missing_icon.svg | naturalWidth: ${missingImgCheck.naturalWidth} | complete: ${missingImgCheck.complete} | HTTP: ${missingStatus}`);
     assert.strictEqual(missingStatus, 404, `Self-check: missing image must return HTTP 404 (got ${missingStatus})`);
 
-    if (isSelfCheckFail) {
+    if (isSelfCheckFail && (selfCheckTarget === 'all' || selfCheckTarget === 't1.1')) {
       console.log('Deliberately triggering self-check failure for relic icon check...');
       assert.strictEqual(missingImgCheck.naturalWidth > 0, true, 'Self-check failure: missing image naturalWidth must be > 0 (expected to fail)');
     }
@@ -1209,7 +1211,7 @@ async function main() {
       `Self-check: dark icon on dark background must fail WCAG contrast >= 3:1 (got ${selfCheckRatio}:1)`
     );
 
-    if (isSelfCheckFail) {
+    if (isSelfCheckFail && (selfCheckTarget === 'all' || selfCheckTarget === 't1.1')) {
       console.log('Deliberately triggering self-check failure for icon contrast assertion...');
       assert.strictEqual(selfCheckDarkOnDarkPass, true, 'Self-check failure forced: dark icon on dark background should fail');
     }
@@ -1505,7 +1507,7 @@ async function main() {
       assert.strictEqual(statusPair.activeLiveCount, 1, `Exactly one live region must carry status on end overlay (got ${statusPair.activeLiveCount})`);
       assert.strictEqual(statusPair.activeLiveId, 'ranking-footer-status', `Active live region must be #ranking-footer-status`);
 
-      if (isSelfCheckFail) {
+      if (isSelfCheckFail && (selfCheckTarget === 'all' || selfCheckTarget === 't1.1')) {
         console.log('Deliberately triggering self-check failure for R10.6 announcement assertion...');
         assert.strictEqual(statusPair.footerAriaLive, 'assertive', 'Self-check failure forced: live region should not be assertive');
       }
@@ -1629,7 +1631,7 @@ async function main() {
 
     assert.strictEqual(configuredGlobeCheck.globeHidden, false, 'Proof: globe button is NOT hidden when build has config');
 
-    if (isSelfCheckFail) {
+    if (isSelfCheckFail && (selfCheckTarget === 'all' || selfCheckTarget === 't1.1')) {
       console.log('Deliberately triggering self-check failure for globe assertion...');
       assert.strictEqual(configuredGlobeCheck.globeHidden, true, 'Self-check failure: globe button must be hidden (expected to fail on configured build)');
     }
@@ -1935,7 +1937,7 @@ async function main() {
     // Deliberately failing self-check proof:
     const r91SelfCheckPassed = r91Check.allRowsValid;
     assert.strictEqual(r91SelfCheckPassed, true, 'R9.1 list rank style verification passed');
-    if (isSelfCheckFail) {
+    if (isSelfCheckFail && (selfCheckTarget === 'all' || selfCheckTarget === 't1.1')) {
       console.log('Deliberately triggering self-check failure for R9.1 list rank color...');
       assert.strictEqual('rgb(118, 106, 100)', 'rgb(244, 199, 127)', 'Self-check failure forced: rank color should not be gold');
     }
@@ -2004,7 +2006,7 @@ async function main() {
     }
     assert.strictEqual(selfCheckTapPassed, true, 'Tamper self-check: tap target assertion must catch smaller hit area');
 
-    if (isSelfCheckFail) {
+    if (isSelfCheckFail && (selfCheckTarget === 'all' || selfCheckTarget === 't1.1')) {
       console.log('Deliberately triggering self-check failure for refresh tap target...');
       assert.strictEqual(selfCheckTapPassed, false, 'Forced self-check failure');
     }
@@ -2315,7 +2317,7 @@ async function main() {
     }
     assert.strictEqual(selfCheckFailedAsExpected, true, 'Self-check: T13 logic must fail if a baseline keyframe is missing');
 
-    if (isSelfCheckFail) {
+    if (isSelfCheckFail && (selfCheckTarget === 'all' || selfCheckTarget === 't1.1')) {
       console.log('Deliberately triggering self-check failure for animation check...');
       assert.strictEqual(selfCheckFailedAsExpected, false, 'Self-check failure forced');
     }
@@ -2910,7 +2912,7 @@ async function main() {
     assert.strictEqual(safetyNet.homeHit, true, 'HOME button must be visible when scrolled to bottom at 320x400');
     assert.strictEqual(safetyNet.copyHit, true, 'COPY LOG button must be visible when scrolled to bottom at 320x400');
 
-    if (isSelfCheckFail) {
+    if (isSelfCheckFail && (selfCheckTarget === 'all' || selfCheckTarget === 't1.1')) {
       console.log('Deliberately triggering self-check failure for safety net assertion...');
       assert.strictEqual(safetyNet.overflowY, 'hidden', 'Self-check failure forced: overflowY should not be hidden');
     }
@@ -2919,6 +2921,287 @@ async function main() {
     fs.writeFileSync(path.join(outDir, 'r10_fit_matrix.txt'), fitReportLines.join('\n'), 'utf8');
     fs.writeFileSync(path.join(outDir, 'r9_fit_matrix.txt'), fitReportLines.join('\n'), 'utf8');
     console.log(`✔ T21 PASSED: Verified all 280 worst-case combinations fit without scrolling, safety net verified, review screenshots captured (written to scripts/out/r10_fit_matrix.txt and scripts/out/review/).\n`);
+    passedTests++;
+
+    // -------------------------------------------------------------------------
+    // 25. BEHAVIOUR TEST T22: GAME-OVER CARD FILLS THE SCREEN MATRIX (R11)
+    // -------------------------------------------------------------------------
+    console.log('[T22] Testing Game-Over Card Fills The Screen across 8 viewports x 8 outcomes x 5 variants (320 combinations, R11 Fill Matrix)...');
+    const fillReportLines = [];
+    fillReportLines.push('================================================================================================================================================================');
+    fillReportLines.push('R11 GAME-OVER CARD FILL THE SCREEN MATRIX (320 COMBINATIONS)');
+    fillReportLines.push('================================================================================================================================================================');
+    fillReportLines.push(
+      'Viewport'.padEnd(12) +
+      'Variant'.padEnd(16) +
+      'Outcome'.padEnd(12) +
+      'Card Top/Bot'.padEnd(20) +
+      'Card H'.padStart(9) +
+      'Exp H'.padStart(9) +
+      'Top/Bot M'.padEnd(18) +
+      'Scroll vs Client'.padEnd(19) +
+      'Relics Title'.padEnd(15) +
+      'Seed Tile'.padEnd(15) +
+      'Status'
+    );
+    fillReportLines.push('-'.repeat(160));
+
+    const fillVps = [
+      { w: 320, h: 568 },
+      { w: 360, h: 640 },
+      { w: 390, h: 742 },
+      { w: 433, h: 846 },
+      { w: 1366, h: 657 },
+      { w: 1535, h: 740 },
+      { w: 1535, h: 900 },
+      { w: 1920, h: 1080 }
+    ];
+
+    const baselineBeforeHeights = {
+      '320x568': 447.0,
+      '360x640': 460.2,
+      '390x742': 492.1,
+      '433x846': 640.8,
+      '1366x657': 464.1,
+      '1535x740': 492.4,
+      '1535x900': 659.3,
+      '1920x1080': 709.5
+    };
+
+    const beforeAfterLines = [];
+    beforeAfterLines.push('========================================================================================================================');
+    beforeAfterLines.push('R11 GAME-OVER CARD HEIGHT COMPARISON (BEFORE vs AFTER)');
+    beforeAfterLines.push('========================================================================================================================');
+    beforeAfterLines.push(
+      'Viewport'.padEnd(14) +
+      'Target Height'.padEnd(16) +
+      'Before Height'.padEnd(16) +
+      'After Height'.padEnd(16) +
+      'Growth (px)'.padEnd(15) +
+      'Growth (%)'.padEnd(15) +
+      'Fill Ratio'
+    );
+    beforeAfterLines.push('-'.repeat(120));
+
+    const measuredAfterHeights = {};
+    let totalFillChecks = 0;
+
+    for (const vp of fillVps) {
+      await cdp.setViewport(vp.w, vp.h);
+      await sleep(40);
+
+      const m = Math.min(Math.max(12, 0.025 * vp.h), 24);
+      const expH = Math.min(vp.h - 2 * m, 860);
+
+      for (const v of fitVariants) {
+        for (const oc of auditOutcomes) {
+          await cdp.eval(`
+            (() => {
+              const lb = document.getElementById('leaderboard-overlay');
+              if (lb) lb.classList.add('hidden');
+              const so = document.getElementById('start-overlay');
+              if (so) so.classList.add('hidden');
+              const eo = document.getElementById('end-overlay');
+              if (eo) {
+                eo.classList.remove('hidden');
+                eo.scrollTop = 0;
+              }
+              const card = eo ? eo.querySelector('.gameover-card') : null;
+              if (card) card.style.animation = 'none';
+              window.__testConfigureGameOverCard(${JSON.stringify(v.conf)});
+              window.__testRenderRankingCard(${oc.num}, ${JSON.stringify(oc.data)});
+            })()
+          `);
+          await sleep(15);
+
+          const metrics = await cdp.eval(`
+            (() => {
+              const eo = document.getElementById('end-overlay');
+              const card = eo.querySelector('.gameover-card');
+              const r = card.getBoundingClientRect();
+              const ch = eo.clientHeight;
+              const sh = eo.scrollHeight;
+
+              function checkHit(el) {
+                if (!el) return false;
+                const b = el.getBoundingClientRect();
+                const cx = b.left + b.width / 2;
+                const cy = b.top + b.height / 2;
+                if (cy < 0 || cy > window.innerHeight) return false;
+                const topEl = document.elementFromPoint(cx, cy);
+                return topEl === el || el.contains(topEl);
+              }
+
+              const score = document.getElementById('end-score');
+              const rkCard = document.getElementById('global-ranking-panel');
+              const rkFooter = document.getElementById('ranking-footer-status');
+              const playBtn = document.querySelector('.btn-play-again:not(.hidden)');
+              const homeBtn = document.getElementById('btn-end-home');
+              const copyBtn = document.getElementById('btn-copy-log');
+
+              const scoreHit = checkHit(score);
+              const rkHit = checkHit(rkCard);
+              const footerHit = checkHit(rkFooter);
+              const playHit = checkHit(playBtn);
+              const homeHit = checkHit(homeBtn);
+              const copyHit = checkHit(copyBtn);
+
+              const seedEl = document.getElementById('end-seed-cell');
+              const relicsTitleEl = document.querySelector('.relics-title');
+              const seedVisible = seedEl ? seedEl.offsetParent !== null && getComputedStyle(seedEl).display !== 'none' : false;
+              const relicsTitleVisible = relicsTitleEl ? relicsTitleEl.offsetParent !== null && getComputedStyle(relicsTitleEl).display !== 'none' : false;
+
+              let minFont = 999;
+              const walker = document.createTreeWalker(card, NodeFilter.SHOW_ELEMENT);
+              let node;
+              while ((node = walker.nextNode())) {
+                if (node.closest('#end-mini-board') || node.offsetParent === null) continue;
+                const textNodes = Array.from(node.childNodes).filter(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 0);
+                if (textNodes.length > 0) {
+                  const fs = parseFloat(getComputedStyle(node).fontSize);
+                  if (fs < minFont) minFont = fs;
+                }
+              }
+
+              const topMargin = r.top;
+              const bottomMargin = window.innerHeight - r.bottom;
+
+              return {
+                ch,
+                sh,
+                cardTop: +r.top.toFixed(1),
+                cardBottom: +r.bottom.toFixed(1),
+                cardHeight: +r.height.toFixed(1),
+                topMargin: +topMargin.toFixed(1),
+                bottomMargin: +bottomMargin.toFixed(1),
+                scoreHit,
+                rkHit,
+                footerHit,
+                playHit,
+                homeHit,
+                copyHit,
+                seedVisible,
+                relicsTitleVisible,
+                minFont: minFont < 999 ? +minFont.toFixed(1) : 10
+              };
+            })()
+          `);
+
+          // Sizing Assertions
+          const hDiff = Math.abs(metrics.cardHeight - expH);
+          assert.ok(hDiff <= 2.0, `Card height must equal ${expH.toFixed(1)}px (within 2px) at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num} (got ${metrics.cardHeight}px, diff=${hDiff.toFixed(1)}px)`);
+
+          assert.ok(metrics.topMargin >= 7.9, `Top margin must be >= 8px at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num} (got ${metrics.topMargin}px)`);
+          assert.ok(metrics.bottomMargin >= 7.9, `Bottom margin must be >= 8px at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num} (got ${metrics.bottomMargin}px)`);
+
+          const marginDiff = Math.abs(metrics.topMargin - metrics.bottomMargin);
+          assert.ok(marginDiff <= 2.0, `Card must be vertically centered (|topMargin - bottomMargin| <= 2px) at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num} (tm=${metrics.topMargin} bm=${metrics.bottomMargin} diff=${marginDiff.toFixed(1)}px)`);
+
+          // T21 Fit Rules
+          assert.ok(metrics.sh <= metrics.ch + 1, `Card must fit without scrolling at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num} (sh=${metrics.sh} <= ch=${metrics.ch})`);
+          assert.strictEqual(metrics.scoreHit, true, `Score must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+          assert.strictEqual(metrics.rkHit, true, `Ranking card must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+          assert.strictEqual(metrics.footerHit, true, `Ranking card footer must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+          assert.strictEqual(metrics.playHit, true, `Play button must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+          assert.strictEqual(metrics.homeHit, true, `Home button must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+          assert.strictEqual(metrics.copyHit, true, `Copy Log button must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+          assert.ok(metrics.minFont >= 10, `No visible text below 10px font size at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num} (got ${metrics.minFont}px)`);
+
+          // Container Query restoration rules
+          if (expH >= 650) {
+            assert.strictEqual(metrics.relicsTitleVisible, true, `Relics title must be restored when card height >= 650px at ${vp.w}x${vp.h}`);
+            assert.strictEqual(metrics.seedVisible, true, `Seed cell must be restored when card height >= 650px at ${vp.w}x${vp.h}`);
+          } else {
+            assert.strictEqual(metrics.relicsTitleVisible, false, `Relics title must remain hidden when card height < 650px at ${vp.w}x${vp.h}`);
+            assert.strictEqual(metrics.seedVisible, false, `Seed cell must remain hidden when card height < 650px at ${vp.w}x${vp.h}`);
+          }
+
+          // Record representative height for before/after comparison (variant e, outcome 2)
+          if (v.id === 'e' && oc.num === 2) {
+            measuredAfterHeights[`${vp.w}x${vp.h}`] = metrics.cardHeight;
+          }
+
+          // Capture R11.3 review screenshots
+          // Viewports: 1535x740, 1920x1080, 390x742, 320x568
+          // Outcomes: 2, 4, 8 for combined variant (e)
+          const isReviewVp =
+            (vp.w === 1535 && vp.h === 740) ||
+            (vp.w === 1920 && vp.h === 1080) ||
+            (vp.w === 390 && vp.h === 742) ||
+            (vp.w === 320 && vp.h === 568);
+          const isReviewOc = oc.num === 2 || oc.num === 4 || oc.num === 8;
+          if (v.id === 'e' && isReviewVp && isReviewOc) {
+            const shotName = `review_r11_combined_${vp.w}x${vp.h}_outcome_${oc.num}.png`;
+            const shotPath = path.join(reviewDir, shotName);
+            await cdp.screenshot(shotPath);
+            reviewIndexLines.push(
+              `${shotName.padEnd(46)} | ${vp.w}x${vp.h} | Outcome ${oc.num} | Variant (e) combined | R11 Screen Fill`
+            );
+          }
+
+          fillReportLines.push(
+            `${vp.w}x${vp.h}`.padEnd(12) +
+            `(${v.id}) ${v.name}`.padEnd(16) +
+            `Outcome ${oc.num}`.padEnd(12) +
+            `${metrics.cardTop}/${metrics.cardBottom}`.padEnd(20) +
+            `${metrics.cardHeight}px`.padStart(9) +
+            `${expH.toFixed(1)}px`.padStart(9) +
+            `  ${metrics.topMargin}/${metrics.bottomMargin}px`.padEnd(18) +
+            `  ${metrics.sh}/${metrics.ch}px`.padEnd(19) +
+            `  ${metrics.relicsTitleVisible ? 'VISIBLE' : 'HIDDEN'}`.padEnd(15) +
+            `  ${metrics.seedVisible ? 'VISIBLE' : 'HIDDEN'}`.padEnd(15) +
+            'PASS'
+          );
+          totalFillChecks++;
+        }
+      }
+    }
+
+    assert.strictEqual(totalFillChecks, 320, 'Vacuity guard: all 320 combinations (8 viewports x 8 outcomes x 5 variants) verified');
+    fillReportLines.push('================================================================================================================================================================');
+    fs.writeFileSync(path.join(outDir, 'r11_fill_matrix.txt'), fillReportLines.join('\n'), 'utf8');
+
+    // Build Before/After comparison table
+    for (const vp of fillVps) {
+      const key = `${vp.w}x${vp.h}`;
+      const m = Math.min(Math.max(12, 0.025 * vp.h), 24);
+      const targetH = Math.min(vp.h - 2 * m, 860);
+      const beforeH = baselineBeforeHeights[key] || 0;
+      const afterH = measuredAfterHeights[key] || targetH;
+      const growthPx = +(afterH - beforeH).toFixed(1);
+      const growthPct = +((growthPx / beforeH) * 100).toFixed(1);
+      const fillRatio = +((afterH / vp.h) * 100).toFixed(1);
+
+      beforeAfterLines.push(
+        key.padEnd(14) +
+        `${targetH.toFixed(1)}px`.padEnd(16) +
+        `${beforeH.toFixed(1)}px`.padEnd(16) +
+        `${afterH.toFixed(1)}px`.padEnd(16) +
+        `+${growthPx}px`.padEnd(15) +
+        `+${growthPct}%`.padEnd(15) +
+        `${fillRatio}%`
+      );
+    }
+    beforeAfterLines.push('========================================================================================================================');
+    fs.writeFileSync(path.join(outDir, 'r11_before_after.txt'), beforeAfterLines.join('\n'), 'utf8');
+
+    // Update review index file
+    fs.writeFileSync(path.join(reviewDir, 'index.txt'), reviewIndexLines.join('\n'), 'utf8');
+
+    // R11 Deliberately failing self-check
+    if (selfCheckTarget === 't22' || selfCheckTarget === 'r11' || selfCheckTarget === 'fill') {
+      console.log('Deliberately triggering self-check failure for card fill assertion at 320x400...');
+      await cdp.setViewport(320, 400);
+      await sleep(40);
+      const cardHeightAt400 = await cdp.eval(`(() => {
+        const c = document.querySelector('.gameover-card');
+        return c ? Math.round(c.getBoundingClientRect().height) : 0;
+      })()`);
+      // At 320x400, expected formula height would be 376px, but card cannot fit and uses scroll fallback
+      assert.strictEqual(cardHeightAt400, 376, 'Self-check failure forced: card cannot fill 376px at 320x400 (scroll fallback active)');
+    }
+
+    console.log(`✔ T22 PASSED: Verified all 320 combinations fill the screen, container queries restore elements when >=650px, review screenshots captured, comparison table written (written to scripts/out/r11_fill_matrix.txt and scripts/out/r11_before_after.txt).\n`);
     passedTests++;
 
     // Write screenshot inventory table
