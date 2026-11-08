@@ -2955,7 +2955,7 @@ button:focus-visible {
   height: clamp(80px, 12.5vh, 124px);
   margin: 0 auto;
   background: #141012;
-  border-radius: 12px;
+  border-radius: 6px;
   padding: clamp(3px, 0.5vh, 5px);
   display: grid;
   grid-template-columns: repeat(4, 1fr);
