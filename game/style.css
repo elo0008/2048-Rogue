@@ -1609,18 +1609,9 @@ button:focus-visible {
   color: var(--soft);
 }
 
-.end-leaderboard-status {
-  text-align: center;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .06em;
-  color: var(--accent);
-  margin-top: 10px;
-  min-height: 18px;
-}
-
-.end-leaderboard-status.hidden {
-  display: none;
+.end-leaderboard-status,
+#end-leaderboard-status {
+  display: none !important;
 }
 
 /* Draft Modal Cards */
@@ -2881,8 +2872,16 @@ button:focus-visible {
 #end-overlay.modal-overlay {
   position: fixed;
   inset: 0;
-  padding: 16px 12px 20px 12px;
-  align-items: flex-start;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: clamp(6px, 1.2vh, 16px) clamp(8px, 2vw, 12px);
+  padding-top: max(clamp(6px, 1.2vh, 16px), env(safe-area-inset-top));
+  padding-bottom: max(clamp(6px, 1.2vh, 16px), env(safe-area-inset-bottom));
+  padding-left: max(clamp(8px, 2vw, 12px), env(safe-area-inset-left));
+  padding-right: max(clamp(8px, 2vw, 12px), env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  justify-content: center;
   box-sizing: border-box;
   overflow-y: auto;
   scrollbar-width: none;
@@ -2898,24 +2897,25 @@ button:focus-visible {
   max-width: 400px;
   background: #261f22;
   border: 1.5px solid #3d3134;
-  border-radius: 28px;
-  padding: 24px 20px 20px 20px;
+  border-radius: clamp(16px, 2.8vh, 28px);
+  padding: clamp(10px, 1.8vh, 22px) 20px;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 45px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
   position: relative;
   box-sizing: border-box;
+  margin: auto;
 }
 
 .card-header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  margin-bottom: clamp(2px, 0.4vh, 4px);
 }
 
 .run-complete-tag {
-  font-size: 11px;
+  font-size: clamp(10px, 1.5vh, 11px);
   font-weight: 700;
   letter-spacing: 0.14em;
   color: var(--accent);
@@ -2935,32 +2935,32 @@ button:focus-visible {
 }
 
 .score-display {
-  font-size: 52px;
+  font-size: clamp(30px, 4.8vh, 52px);
   font-weight: 700;
   line-height: 1.05;
   text-align: center;
   color: var(--text);
-  margin: 2px 0 16px 0;
+  margin: 0 0 clamp(4px, 0.8vh, 16px) 0;
   letter-spacing: -0.02em;
 }
 
 .mini-board-wrapper {
   display: flex;
   justify-content: center;
-  margin-bottom: 18px;
+  margin-bottom: clamp(4px, 0.8vh, 16px);
 }
 
 .mini-board {
-  width: 124px;
-  height: 124px;
+  width: clamp(80px, 12.5vh, 124px);
+  height: clamp(80px, 12.5vh, 124px);
   margin: 0 auto;
   background: #141012;
   border-radius: 12px;
-  padding: 5px;
+  padding: clamp(3px, 0.5vh, 5px);
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(4, 1fr);
-  gap: 4px;
+  gap: clamp(2px, 0.4vh, 4px);
   border: 1px solid #33282b;
   box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
   box-sizing: border-box;
@@ -2972,7 +2972,7 @@ button:focus-visible {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 10px;
+  font-size: clamp(8px, 1.2vh, 10px);
   user-select: none;
   background: #2a2527;
   color: var(--text);
@@ -2981,15 +2981,15 @@ button:focus-visible {
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 7px;
-  margin: 0 0 14px 0;
+  gap: clamp(4px, 0.7vh, 7px);
+  margin: 0 0 clamp(6px, 1vh, 14px) 0;
 }
 
 .stat-cell {
   background: #1c1618;
   border: 1px solid #3d3134;
   border-radius: 10px;
-  padding: 9px 12px;
+  padding: clamp(4px, 0.7vh, 8px) clamp(6px, 1.2vw, 12px);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -3010,7 +3010,7 @@ button:focus-visible {
 }
 
 .stat-value {
-  font-size: 16px;
+  font-size: clamp(13px, 2vh, 16px);
   font-weight: 700;
   color: var(--text);
   letter-spacing: 0.02em;
@@ -3018,16 +3018,16 @@ button:focus-visible {
 
 .relics-section {
   text-align: center;
-  margin-bottom: 14px;
+  margin-bottom: clamp(6px, 1vh, 14px);
 }
 
 .relics-title {
-  font-size: 11px;
+  font-size: clamp(10px, 1.5vh, 11px);
   font-weight: 700;
   letter-spacing: 0.14em;
   color: var(--accent);
   text-transform: uppercase;
-  margin-bottom: 8px;
+  margin-bottom: clamp(3px, 0.5vh, 8px);
 }
 
 .relics-row {
@@ -3035,6 +3035,21 @@ button:focus-visible {
   justify-content: center;
   align-items: center;
   gap: 10px;
+}
+
+.end-relics-list {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  max-width: 100%;
+  scrollbar-width: none;
+  gap: clamp(3px, 0.8vw, 6px);
+  margin: 0;
+  padding: 1px 0;
+}
+
+.end-relics-list::-webkit-scrollbar {
+  display: none;
 }
 
 .relic-slot {
@@ -3149,15 +3164,15 @@ button:focus-visible {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
+  margin-bottom: clamp(3px, 0.6vh, 8px);
+  padding-bottom: clamp(2px, 0.4vh, 6px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   position: relative;
   z-index: 3;
 }
 
 .ranking-header-title {
-  font-size: 11px;
+  font-size: clamp(10px, 1.5vh, 11px);
   font-weight: 700;
   letter-spacing: 0.14em;
   color: var(--accent);
@@ -3167,8 +3182,15 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+.ranking-header-title svg {
+  fill: currentColor;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
 .ranking-meta-pill {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -3209,7 +3231,7 @@ button:focus-visible {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  min-height: 52px;
+  min-height: clamp(36px, 5.5vh, 52px);
   position: relative;
   z-index: 3;
 }
@@ -3221,7 +3243,7 @@ button:focus-visible {
 }
 
 .rank-number {
-  font-size: 32px;
+  font-size: clamp(24px, 3.8vh, 32px);
   font-weight: 700;
   line-height: 1;
   color: var(--accent);
@@ -3230,7 +3252,7 @@ button:focus-visible {
 }
 
 .rank-label {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -3283,10 +3305,10 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 9px;
-  padding-top: 7px;
+  margin-top: clamp(4px, 0.7vh, 8px);
+  padding-top: clamp(3px, 0.5vh, 6px);
   border-top: 1px dashed rgba(255, 255, 255, 0.08);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -3415,44 +3437,44 @@ button:focus-visible {
 /* Compact Responsive Variants for Game-Over */
 @media (max-width: 380px) {
   .gameover-card {
-    padding: 18px 14px 16px 14px;
-    border-radius: 20px;
+    padding: clamp(8px, 1.4vh, 14px) 14px;
+    border-radius: 18px;
   }
   .score-display {
-    font-size: 44px;
+    font-size: clamp(30px, 4.8vh, 52px);
   }
-  .rank-number {
+  #global-ranking-panel .rank-number {
     font-size: 28px;
   }
   .mini-board {
-    width: 112px;
-    height: 112px;
+    width: clamp(80px, 13vh, 100px);
+    height: clamp(80px, 13vh, 100px);
   }
   .btn-home,
   .btn-copy-log-half {
     font-size: 11px;
-    padding: 10px 6px;
+    padding: 8px 6px;
   }
 }
 
-@media (max-height: 700px) {
-  #end-overlay {
-    padding: 8px;
+@media (max-height: 760px) {
+  #end-overlay.modal-overlay {
+    padding: clamp(4px, 1vh, 10px) 12px;
   }
   .gameover-card {
-    padding: 14px 12px 10px 12px;
-    border-radius: 16px;
+    padding: clamp(8px, 1.4vh, 16px) clamp(12px, 2.5vw, 18px);
+    border-radius: 18px;
   }
   .score-display {
-    font-size: 36px;
-    margin: 0 0 6px 0;
+    font-size: clamp(30px, 4.8vh, 52px);
+    margin: 0 0 clamp(2px, 0.4vh, 6px) 0;
   }
   .mini-board-wrapper {
-    margin-bottom: 8px;
+    margin-bottom: clamp(4px, 0.6vh, 8px);
   }
   .mini-board {
-    width: 80px;
-    height: 80px;
+    width: clamp(80px, 12vh, 96px);
+    height: clamp(80px, 12vh, 96px);
     gap: 2px;
     padding: 3px;
   }
@@ -3460,25 +3482,55 @@ button:focus-visible {
     font-size: 8px;
   }
   .stats-grid {
-    gap: 4px;
-    margin-bottom: 8px;
+    gap: clamp(3px, 0.5vh, 5px);
+    margin-bottom: clamp(4px, 0.7vh, 8px);
   }
   .stat-cell {
-    padding: 5px 8px;
+    padding: clamp(3px, 0.5vh, 6px) clamp(6px, 1.2vw, 10px);
   }
-  .stat-seed-cell {
+  .stat-seed-cell,
+  #end-seed-cell {
     display: none !important;
   }
   .relics-section {
-    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: clamp(4px, 0.6vh, 8px);
+  }
+  .relics-title {
+    display: none;
+  }
+  .end-relics-list {
+    margin: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    max-width: 100%;
+    scrollbar-width: none;
+    gap: clamp(3px, 0.8vw, 6px);
+  }
+  .end-relics-list::-webkit-scrollbar {
+    display: none;
   }
   .relic-chip {
-    width: 32px;
-    height: 32px;
+    width: clamp(26px, 3.8vh, 32px);
+    height: clamp(26px, 3.8vh, 32px);
+    border-radius: 6px;
+  }
+  .relic-chip svg {
+    width: clamp(14px, 2vh, 18px);
+    height: clamp(14px, 2vh, 18px);
   }
   .global-ranking-panel {
-    margin-bottom: 8px;
-    padding: 8px 10px;
+    margin-bottom: clamp(4px, 0.7vh, 8px);
+    padding: clamp(6px, 1vh, 9px) clamp(8px, 1.5vw, 12px);
+  }
+}
+
+@media (max-height: 560px) {
+  #end-overlay.modal-overlay {
+    align-items: flex-start;
   }
   .action-buttons {
     position: sticky;
@@ -3956,6 +4008,18 @@ button:focus-visible {
 .ranking-row.is-current-user {
   background: rgba(244, 200, 121, 0.08);
   border-color: rgba(244, 200, 121, 0.5);
+}
+
+.ranking-row .rank-number {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  color: #766a64;
+  letter-spacing: -0.3px;
+  text-shadow: none;
+  min-width: 32px;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .row-avatar-box {

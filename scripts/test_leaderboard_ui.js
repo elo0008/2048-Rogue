@@ -370,6 +370,7 @@ async function main() {
       const baselineOutput = {
         generatedAt: new Date().toISOString(),
         source: 'design/v2',
+        note: 'R9.5: End-card boxes at 390x742 and below maintain x and width parity (<= 4px); y and height comparisons are replaced by T21 fit assertions (no-scroll requirement across all 8 outcomes).',
         card: cardRef,
         leaderboard: lbRefs,
       };
@@ -533,13 +534,44 @@ async function main() {
       totalParityChecks++;
     }
 
-    assertBoxParity('Card Container', refCardBoxes.card, liveCardBoxes.card);
-    assertBoxParity('Score Display', refCardBoxes.score, liveCardBoxes.score);
-    assertBoxParity('Mini Board', refCardBoxes.miniBoard, liveCardBoxes.miniBoard);
-    assertBoxParity('Stats Grid', refCardBoxes.statsGrid, liveCardBoxes.statsGrid, false);
-    assertBoxParity('Ranking Card', refCardBoxes.rankingCard, liveCardBoxes.rankingCard, false);
-    assertBoxParity('Play Button', refCardBoxes.buttons, liveCardBoxes.buttons, false);
-    assertBoxParity('Secondary Row', refCardBoxes.secondaryRow, liveCardBoxes.secondaryRow, false);
+    // R9.5 (a): B5 End-Card Parity vs Leaderboard Overlay Parity
+    // The B5 parity gate compares the game-over card against the mock at 390x742, but the mock's
+    // card is 804px tall in a 742px viewport, so no-scroll contradicts it. Keep x and width
+    // parity (<= 4px) for the end card elements; for y and height of the end-card boxes
+    // (card container, score, mini board, stats grid, ranking card, play button, secondary row)
+    // at 390x742 and below, replace the mock comparison with the T21 fit assertions.
+    // Leaderboard overlay parity stays untouched (the 4px gate stays for every LB element).
+    function assertEndCardParity(name, ref, live) {
+      assert.ok(ref, `Reference box for ${name} must exist`);
+      assert.ok(live, `Live box for ${name} must exist`);
+      const dx = Math.abs(ref.x - live.x);
+      const dy = Math.abs(ref.y - live.y);
+      const dw = Math.abs(ref.width - live.width);
+      const dh = Math.abs(ref.height - live.height);
+      const maxElDelta = Math.max(dx, dw);
+
+      runDeltas[name] = { dx, dy, dw, dh, max: maxElDelta };
+      maxDeltaSeen = Math.max(maxDeltaSeen, maxElDelta);
+
+      assert.ok(dx <= 4, `${name} x delta (${dx}px) must be <= 4px`);
+      assert.ok(dw <= 4, `${name} width delta (${dw}px) must be <= 4px`);
+
+      parityTableRows.push(
+        `${name.padEnd(16)} | ` +
+        `(${ref.x},${ref.y},${ref.width},${ref.height})`.padEnd(20) + ' | ' +
+        `(${live.x},${live.y},${live.width},${live.height})`.padEnd(20) + ' | ' +
+        `(${dx},fit,${dw},fit)`.padEnd(19) + ' | PASS (T21 FIT)'
+      );
+      totalParityChecks++;
+    }
+
+    assertEndCardParity('Card Container', refCardBoxes.card, liveCardBoxes.card);
+    assertEndCardParity('Score Display', refCardBoxes.score, liveCardBoxes.score);
+    assertEndCardParity('Mini Board', refCardBoxes.miniBoard, liveCardBoxes.miniBoard);
+    assertEndCardParity('Stats Grid', refCardBoxes.statsGrid, liveCardBoxes.statsGrid);
+    assertEndCardParity('Ranking Card', refCardBoxes.rankingCard, liveCardBoxes.rankingCard);
+    assertEndCardParity('Play Button', refCardBoxes.buttons, liveCardBoxes.buttons);
+    assertEndCardParity('Secondary Row', refCardBoxes.secondaryRow, liveCardBoxes.secondaryRow);
 
     assertBoxParity('LB Modal', refLbBoxes.modal, liveLbBoxes.modal);
     assertBoxParity('LB Header', refLbBoxes.header, liveLbBoxes.header);
@@ -996,6 +1028,507 @@ async function main() {
     passedTests++;
 
     // -------------------------------------------------------------------------
+    // 4b. BEHAVIOUR TEST T1.2: ICON AUDIT & GLOBE COLOR (R9.2 / R9b.4)
+    // -------------------------------------------------------------------------
+    console.log('[T1.2] Testing Icon Audit & Globe Color (fill, stroke, color, WCAG contrast ratio)...');
+    const iconAuditLines = [];
+    iconAuditLines.push('========================================================================================================================');
+    iconAuditLines.push('ROGUE 2048 ICON COLOR & WCAG CONTRAST RATIO AUDIT (R9.2 / R9b.4)');
+    iconAuditLines.push('========================================================================================================================');
+    iconAuditLines.push(
+      'Overlay / Modal'.padEnd(24) +
+      'Icon Element'.padEnd(30) +
+      'Icon Color'.padEnd(22) +
+      'Effective BG'.padEnd(22) +
+      'Icon Lum'.padEnd(10) +
+      'BG Lum'.padEnd(10) +
+      'Contrast'.padStart(10) +
+      '  Status'
+    );
+    iconAuditLines.push('-'.repeat(136));
+
+    const auditOutcomes = [
+      { num: 1, name: 'Outcome 1 (SENDING)', data: { day: '2026-11-04' } },
+      { num: 2, name: 'Outcome 2 (ACCEPTED)', data: { rank: 2, total: 20, points: 3000, day: '2026-11-04' } },
+      { num: 3, name: 'Outcome 3 (UNCONFIRMED)', data: { points: 3000, day: '2026-11-04' } },
+      { num: 4, name: 'Outcome 4 (NOT BETTER)', data: { points: 2000, bestPoints: 4000, bestRank: 1, day: '2026-11-04' } },
+      { num: 5, name: 'Outcome 5 (QUEUED)', data: { points: 3000, day: '2026-11-04' } },
+      { num: 6, name: 'Outcome 6 (UPDATING)', data: { points: 3000, day: '2026-11-04' } },
+      { num: 7, name: 'Outcome 7 (REJECTED)', data: { day: '2026-11-04' } },
+      { num: 8, name: 'Outcome 8 (FREE RUN)', data: { isForbidden: false, day: '2026-11-04' } },
+    ];
+
+    for (const oc of auditOutcomes) {
+      const ocAudit = await cdp.eval(`
+        (() => {
+          const eo = document.getElementById('end-overlay');
+          if (eo) eo.classList.remove('hidden');
+          window.__testRenderRankingCard(${oc.num}, ${JSON.stringify(oc.data)});
+
+          function parseRgba(str) {
+            if (!str || str === 'transparent' || str === 'none') return [0, 0, 0, 0];
+            const m = str.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+            if (!m) return [0, 0, 0, 0];
+            return [+m[1], +m[2], +m[3], m[4] !== undefined ? +m[4] : 1];
+          }
+
+          function relLum(r, g, b) {
+            const rL = r <= 0.04045 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4);
+            const gL = g <= 0.04045 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4);
+            const bL = b <= 0.04045 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4);
+            return +(0.2126 * rL + 0.7152 * gL + 0.0722 * bL).toFixed(4);
+          }
+
+          function getEffectiveBg(element, rootContainer) {
+            let compR = 16, compG = 12, compB = 14;
+            const chain = [];
+            let cur = element;
+            while (cur) {
+              chain.push(cur);
+              if (cur === rootContainer || cur === document.body) break;
+              cur = cur.parentElement;
+            }
+            chain.reverse();
+            for (const el of chain) {
+              const cs = getComputedStyle(el);
+              const bgImg = cs.backgroundImage;
+              if (bgImg && bgImg.includes('gradient')) {
+                const rgbMatches = bgImg.match(/rgba?\\([^)]+\\)/g);
+                if (rgbMatches && rgbMatches.length > 0) {
+                  let sumR = 0, sumG = 0, sumB = 0;
+                  for (const rm of rgbMatches) {
+                    const [r, g, b] = parseRgba(rm);
+                    sumR += r; sumG += g; sumB += b;
+                  }
+                  compR = Math.round(sumR / rgbMatches.length);
+                  compG = Math.round(sumG / rgbMatches.length);
+                  compB = Math.round(sumB / rgbMatches.length);
+                  continue;
+                }
+              }
+              const [r, g, b, alpha] = parseRgba(cs.backgroundColor);
+              if (alpha > 0) {
+                compR = Math.round(compR * (1 - alpha) + r * alpha);
+                compG = Math.round(compG * (1 - alpha) + g * alpha);
+                compB = Math.round(compB * (1 - alpha) + b * alpha);
+              }
+            }
+            return [compR, compG, compB];
+          }
+
+          const icons = [];
+          const svgs = eo.querySelectorAll('svg');
+          svgs.forEach((svg) => {
+            const p = svg.parentElement;
+            const idOrClass = p?.id || p?.className || svg.className?.baseVal || 'svg';
+            const cs = getComputedStyle(svg);
+            const path = svg.querySelector('path');
+            const pathCs = path ? getComputedStyle(path) : null;
+            let effColorStr = (pathCs && pathCs.fill !== 'none' && pathCs.fill)
+              ? pathCs.fill
+              : (cs.fill !== 'none' && cs.fill ? cs.fill : (cs.stroke !== 'none' && cs.stroke ? cs.stroke : cs.color));
+            if (effColorStr === 'currentColor') effColorStr = cs.color;
+
+            const [compR, compG, compB] = getEffectiveBg(p, eo);
+            const [iR, iG, iB] = parseRgba(effColorStr);
+            const iconLum = relLum(iR / 255, iG / 255, iB / 255);
+            const bgLum = relLum(compR / 255, compG / 255, compB / 255);
+            const l1 = Math.max(iconLum, bgLum);
+            const l2 = Math.min(iconLum, bgLum);
+            const contrastRatio = +((l1 + 0.05) / (l2 + 0.05)).toFixed(2);
+
+            const isDisabled = svg.disabled || p?.disabled ||
+              svg.getAttribute('aria-disabled') === 'true' || p?.getAttribute('aria-disabled') === 'true' ||
+              svg.classList?.contains('disabled') || p?.classList?.contains('disabled') || false;
+
+            icons.push({
+              name: String(idOrClass).substring(0, 28),
+              iconColor: effColorStr,
+              effectiveBg: \`rgb(\${compR}, \${compG}, \${compB})\`,
+              iconLum,
+              bgLum,
+              contrastRatio,
+              isDisabled
+            });
+          });
+
+          const globeSvg = document.querySelector('.ranking-header-title svg');
+          const globeCs = globeSvg ? getComputedStyle(globeSvg) : null;
+          const globePath = globeSvg ? globeSvg.querySelector('path') : null;
+          const globePathCs = globePath ? getComputedStyle(globePath) : null;
+          const title = document.querySelector('.ranking-header-title');
+          const titleColor = title ? getComputedStyle(title).color : null;
+
+          return {
+            icons,
+            globeFill: globePathCs?.fill || globeCs?.fill,
+            globeColor: globeCs?.color,
+            titleColor
+          };
+        })()
+      `);
+
+      // Assert globe icon color equals accent color in all 8 outcomes!
+      assert.strictEqual(
+        ocAudit.globeFill,
+        ocAudit.titleColor,
+        `Globe icon fill in ${oc.name} must equal header title accent color (${ocAudit.titleColor})`
+      );
+
+      for (const ic of ocAudit.icons) {
+        // WCAG 2.1 AA Non-text Contrast (>= 3:1) with intentional-disabled allowance only for elements actually disabled
+        const isContrastOk = ic.contrastRatio >= 3.0 || ic.isDisabled;
+        assert.ok(
+          isContrastOk,
+          `Icon ${ic.name} in ${oc.name} must have WCAG contrast >= 3:1 against background (got ${ic.contrastRatio}:1, iconLum=${ic.iconLum}, bgLum=${ic.bgLum})`
+        );
+        iconAuditLines.push(
+          oc.name.padEnd(24) +
+          ic.name.padEnd(30) +
+          ic.iconColor.padEnd(22) +
+          ic.effectiveBg.padEnd(22) +
+          String(ic.iconLum).padEnd(10) +
+          String(ic.bgLum).padEnd(10) +
+          (ic.contrastRatio + ':1').padStart(10) +
+          (isContrastOk ? '  PASS' : '  FAIL')
+        );
+      }
+    }
+
+    // Deliberately failing self-check (R9b.4): a dark icon on a dark background must fail the >= 3:1 contrast check
+    // rgb(23, 17, 19) (lum=0.0063) on rgb(38, 31, 34) (lum=0.0150) -> contrast ratio = 1.15:1 < 3:1
+    const darkIconLum = 0.0063;
+    const darkBgLum = 0.0150;
+    const selfCheckL1 = Math.max(darkIconLum, darkBgLum);
+    const selfCheckL2 = Math.min(darkIconLum, darkBgLum);
+    const selfCheckRatio = +((selfCheckL1 + 0.05) / (selfCheckL2 + 0.05)).toFixed(2);
+    const selfCheckDarkOnDarkPass = selfCheckRatio >= 3.0;
+    assert.strictEqual(
+      selfCheckDarkOnDarkPass,
+      false,
+      `Self-check: dark icon on dark background must fail WCAG contrast >= 3:1 (got ${selfCheckRatio}:1)`
+    );
+
+    if (isSelfCheckFail) {
+      console.log('Deliberately triggering self-check failure for icon contrast assertion...');
+      assert.strictEqual(selfCheckDarkOnDarkPass, true, 'Self-check failure forced: dark icon on dark background should fail');
+    }
+
+    // Leaderboard Overlay Icons Audit
+    await cdp.eval(`
+      (() => {
+        window.__testOpenLeaderboard('start');
+        window.__testRenderTabContent('today', {
+          rows: [
+            { rank: 1, name: 'Alice', points: 5000, moves: 200, maxTile: 1024 },
+            { rank: 2, name: 'Bob', points: 4000, moves: 180, maxTile: 512 },
+            { rank: 3, name: 'Charlie', points: 3000, moves: 150, maxTile: 256 },
+            { rank: 4, name: 'David', points: 2000, moves: 120, maxTile: 128 },
+          ],
+          myRank: { rank: 4, name: 'David', points: 2000, moves: 120, maxTile: 128 }
+        });
+      })()
+    `);
+    await sleep(150);
+
+    const lbAudit = await cdp.eval(`
+      (() => {
+        const lb = document.getElementById('leaderboard-overlay');
+        function parseRgba(str) {
+          if (!str || str === 'transparent' || str === 'none') return [0, 0, 0, 0];
+          const m = str.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+          if (!m) return [0, 0, 0, 0];
+          return [+m[1], +m[2], +m[3], m[4] !== undefined ? +m[4] : 1];
+        }
+
+        function relLum(r, g, b) {
+          const rL = r <= 0.04045 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4);
+          const gL = g <= 0.04045 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4);
+          const bL = b <= 0.04045 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4);
+          return +(0.2126 * rL + 0.7152 * gL + 0.0722 * bL).toFixed(4);
+        }
+
+        function getEffectiveBg(element, rootContainer) {
+          let compR = 16, compG = 12, compB = 14;
+          const chain = [];
+          let cur = element;
+          while (cur) {
+            chain.push(cur);
+            if (cur === rootContainer || cur === document.body) break;
+            cur = cur.parentElement;
+          }
+          chain.reverse();
+          for (const el of chain) {
+            const cs = getComputedStyle(el);
+            const bgImg = cs.backgroundImage;
+            if (bgImg && bgImg.includes('gradient')) {
+              const rgbMatches = bgImg.match(/rgba?\\([^)]+\\)/g);
+              if (rgbMatches && rgbMatches.length > 0) {
+                let sumR = 0, sumG = 0, sumB = 0;
+                for (const rm of rgbMatches) {
+                  const [r, g, b] = parseRgba(rm);
+                  sumR += r; sumG += g; sumB += b;
+                }
+                compR = Math.round(sumR / rgbMatches.length);
+                compG = Math.round(sumG / rgbMatches.length);
+                compB = Math.round(sumB / rgbMatches.length);
+                continue;
+              }
+            }
+            const [r, g, b, alpha] = parseRgba(cs.backgroundColor);
+            if (alpha > 0) {
+              compR = Math.round(compR * (1 - alpha) + r * alpha);
+              compG = Math.round(compG * (1 - alpha) + g * alpha);
+              compB = Math.round(compB * (1 - alpha) + b * alpha);
+            }
+          }
+          return [compR, compG, compB];
+        }
+
+        const icons = [];
+        const svgs = lb.querySelectorAll('svg');
+        svgs.forEach((svg) => {
+          const p = svg.parentElement;
+          const idOrClass = p?.id || p?.className || svg.className?.baseVal || 'svg';
+          const cs = getComputedStyle(svg);
+          const path = svg.querySelector('path');
+          const pathCs = path ? getComputedStyle(path) : null;
+          let effColorStr = (pathCs && pathCs.fill !== 'none' && pathCs.fill)
+            ? pathCs.fill
+            : (cs.fill !== 'none' && cs.fill ? cs.fill : (cs.stroke !== 'none' && cs.stroke ? cs.stroke : cs.color));
+          if (effColorStr === 'currentColor') effColorStr = cs.color;
+
+          const [compR, compG, compB] = getEffectiveBg(p, lb);
+          const [iR, iG, iB] = parseRgba(effColorStr);
+          const iconLum = relLum(iR / 255, iG / 255, iB / 255);
+          const bgLum = relLum(compR / 255, compG / 255, compB / 255);
+          const l1 = Math.max(iconLum, bgLum);
+          const l2 = Math.min(iconLum, bgLum);
+          const contrastRatio = +((l1 + 0.05) / (l2 + 0.05)).toFixed(2);
+
+          const isDisabled = svg.disabled || p?.disabled ||
+            svg.getAttribute('aria-disabled') === 'true' || p?.getAttribute('aria-disabled') === 'true' ||
+            svg.classList?.contains('disabled') || p?.classList?.contains('disabled') || false;
+
+          icons.push({
+            name: String(idOrClass).substring(0, 28),
+            iconColor: effColorStr,
+            effectiveBg: \`rgb(\${compR}, \${compG}, \${compB})\`,
+            iconLum,
+            bgLum,
+            contrastRatio,
+            isDisabled
+          });
+        });
+        return icons;
+      })()
+    `);
+
+    for (const ic of lbAudit) {
+      const isContrastOk = ic.contrastRatio >= 3.0 || ic.isDisabled;
+      assert.ok(
+        isContrastOk,
+        `LB Icon ${ic.name} must have WCAG contrast >= 3:1 against background (got ${ic.contrastRatio}:1, iconLum=${ic.iconLum}, bgLum=${ic.bgLum})`
+      );
+      iconAuditLines.push(
+        'Leaderboard Overlay'.padEnd(24) +
+        ic.name.padEnd(30) +
+        ic.iconColor.padEnd(22) +
+        ic.effectiveBg.padEnd(22) +
+        String(ic.iconLum).padEnd(10) +
+        String(ic.bgLum).padEnd(10) +
+        (ic.contrastRatio + ':1').padStart(10) +
+        (isContrastOk ? '  PASS' : '  FAIL')
+      );
+    }
+
+    // Name Sheet Modal Icons Audit
+    await cdp.eval(`window.__testOpenNameSheet();`);
+    await sleep(150);
+    const nsAudit = await cdp.eval(`
+      (() => {
+        const ns = document.getElementById('name-sheet-modal');
+        function parseRgba(str) {
+          if (!str || str === 'transparent' || str === 'none') return [0, 0, 0, 0];
+          const m = str.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+          if (!m) return [0, 0, 0, 0];
+          return [+m[1], +m[2], +m[3], m[4] !== undefined ? +m[4] : 1];
+        }
+
+        function relLum(r, g, b) {
+          const rL = r <= 0.04045 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4);
+          const gL = g <= 0.04045 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4);
+          const bL = b <= 0.04045 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4);
+          return +(0.2126 * rL + 0.7152 * gL + 0.0722 * bL).toFixed(4);
+        }
+
+        function getEffectiveBg(element, rootContainer) {
+          let compR = 16, compG = 12, compB = 14;
+          const chain = [];
+          let cur = element;
+          while (cur) {
+            chain.push(cur);
+            if (cur === rootContainer || cur === document.body) break;
+            cur = cur.parentElement;
+          }
+          chain.reverse();
+          for (const el of chain) {
+            const [r, g, b, alpha] = parseRgba(getComputedStyle(el).backgroundColor);
+            if (alpha > 0) {
+              compR = Math.round(compR * (1 - alpha) + r * alpha);
+              compG = Math.round(compG * (1 - alpha) + g * alpha);
+              compB = Math.round(compB * (1 - alpha) + b * alpha);
+            }
+          }
+          return [compR, compG, compB];
+        }
+
+        const icons = [];
+        const svgs = ns ? ns.querySelectorAll('svg') : [];
+        svgs.forEach((svg) => {
+          const p = svg.parentElement;
+          const idOrClass = p?.id || p?.className || svg.className?.baseVal || 'svg';
+          const cs = getComputedStyle(svg);
+          const path = svg.querySelector('path');
+          const pathCs = path ? getComputedStyle(path) : null;
+          let effColorStr = (pathCs && pathCs.fill !== 'none' && pathCs.fill)
+            ? pathCs.fill
+            : (cs.fill !== 'none' && cs.fill ? cs.fill : (cs.stroke !== 'none' && cs.stroke ? cs.stroke : cs.color));
+          if (effColorStr === 'currentColor') effColorStr = cs.color;
+
+          const [compR, compG, compB] = getEffectiveBg(p, ns);
+          const [iR, iG, iB] = parseRgba(effColorStr);
+          const iconLum = relLum(iR / 255, iG / 255, iB / 255);
+          const bgLum = relLum(compR / 255, compG / 255, compB / 255);
+          const l1 = Math.max(iconLum, bgLum);
+          const l2 = Math.min(iconLum, bgLum);
+          const contrastRatio = +((l1 + 0.05) / (l2 + 0.05)).toFixed(2);
+
+          const isDisabled = svg.disabled || p?.disabled ||
+            svg.getAttribute('aria-disabled') === 'true' || p?.getAttribute('aria-disabled') === 'true' ||
+            svg.classList?.contains('disabled') || p?.classList?.contains('disabled') || false;
+
+          icons.push({
+            name: String(idOrClass).substring(0, 28),
+            iconColor: effColorStr,
+            effectiveBg: \`rgb(\${compR}, \${compG}, \${compB})\`,
+            iconLum,
+            bgLum,
+            contrastRatio,
+            isDisabled
+          });
+        });
+        return icons;
+      })()
+    `);
+
+    for (const ic of nsAudit) {
+      const isContrastOk = ic.contrastRatio >= 3.0 || ic.isDisabled;
+      assert.ok(
+        isContrastOk,
+        `Name Sheet Icon ${ic.name} must have WCAG contrast >= 3:1 against background (got ${ic.contrastRatio}:1, iconLum=${ic.iconLum}, bgLum=${ic.bgLum})`
+      );
+      iconAuditLines.push(
+        'Name Sheet Modal'.padEnd(24) +
+        ic.name.padEnd(30) +
+        ic.iconColor.padEnd(22) +
+        ic.effectiveBg.padEnd(22) +
+        String(ic.iconLum).padEnd(10) +
+        String(ic.bgLum).padEnd(10) +
+        (ic.contrastRatio + ':1').padStart(10) +
+        (isContrastOk ? '  PASS' : '  FAIL')
+      );
+    }
+
+    iconAuditLines.push('========================================================================================================================');
+    fs.writeFileSync(path.join(outDir, 'icon_audit.txt'), iconAuditLines.join('\n'), 'utf8');
+    fs.writeFileSync(path.join(outDir, 'r9_icon_audit.txt'), iconAuditLines.join('\n'), 'utf8');
+    console.log(`✔ T1.2 PASSED: Icon audit completed across end overlay (8 outcomes), leaderboard, and name sheet; globe color verified equal to accent; WCAG contrast >= 3:1 verified.\n`);
+    passedTests++;
+
+    // -------------------------------------------------------------------------
+    // 4c. BEHAVIOUR TEST T1.3: DUPLICATE STATUS LINE AUDIT (R9.3)
+    // -------------------------------------------------------------------------
+    console.log('[T1.3] Testing Duplicate Status Line across all 8 outcomes...');
+    const dupReportLines = [];
+    dupReportLines.push('================================================================================');
+    dupReportLines.push('DUPLICATE STATUS LINE PER-STATE AUDIT (R9.3)');
+    dupReportLines.push('================================================================================');
+    dupReportLines.push(
+      'Outcome'.padEnd(12) +
+      'Ranking Card Footer Text'.padEnd(42) +
+      'Loose Status Line Text'.padEnd(40) +
+      'Duplicate?'.padEnd(14) +
+      'Loose Line Layout'
+    );
+    dupReportLines.push('-'.repeat(128));
+
+    for (const oc of auditOutcomes) {
+      const statusPair = await cdp.eval(`
+        (() => {
+          const eo = document.getElementById('end-overlay');
+          if (eo) eo.classList.remove('hidden');
+          window.__testRenderRankingCard(${oc.num}, ${JSON.stringify(oc.data)});
+
+          const footer = document.getElementById('ranking-footer-status');
+          const loose = document.getElementById('end-leaderboard-status');
+          const csLoose = loose ? getComputedStyle(loose) : null;
+
+          const liveRegions = eo ? Array.from(eo.querySelectorAll('[aria-live], [role="status"]')) : [];
+          const activeLive = liveRegions.filter(el => {
+            const cs = getComputedStyle(el);
+            return el.getAttribute('aria-hidden') !== 'true' && cs.display !== 'none';
+          });
+
+          return {
+            footerText: footer ? footer.textContent.trim() : '',
+            footerRole: footer ? footer.getAttribute('role') : null,
+            footerAriaLive: footer ? footer.getAttribute('aria-live') : null,
+            footerAriaAtomic: footer ? footer.getAttribute('aria-atomic') : null,
+            looseText: loose ? loose.textContent.trim() : '',
+            looseDisplay: csLoose?.display,
+            looseAriaHidden: loose?.getAttribute('aria-hidden'),
+            activeLiveCount: activeLive.length,
+            activeLiveId: activeLive[0]?.id || null
+          };
+        })()
+      `);
+
+      // Verify loose line is removed from layout (display: none) and hidden from screen readers
+      assert.strictEqual(statusPair.looseDisplay, 'none', `Loose status line in Outcome ${oc.num} must have display: none`);
+      assert.strictEqual(statusPair.looseAriaHidden, 'true', `Loose status line in Outcome ${oc.num} must have aria-hidden="true"`);
+
+      // R10.6 Announcements: assert footer has live attributes and is the single active live region
+      assert.strictEqual(statusPair.footerRole, 'status', `Footer in Outcome ${oc.num} must have role="status"`);
+      assert.strictEqual(statusPair.footerAriaLive, 'polite', `Footer in Outcome ${oc.num} must have aria-live="polite"`);
+      assert.strictEqual(statusPair.footerAriaAtomic, 'true', `Footer in Outcome ${oc.num} must have aria-atomic="true"`);
+      assert.strictEqual(statusPair.activeLiveCount, 1, `Exactly one live region must carry status on end overlay (got ${statusPair.activeLiveCount})`);
+      assert.strictEqual(statusPair.activeLiveId, 'ranking-footer-status', `Active live region must be #ranking-footer-status`);
+
+      if (isSelfCheckFail) {
+        console.log('Deliberately triggering self-check failure for R10.6 announcement assertion...');
+        assert.strictEqual(statusPair.footerAriaLive, 'assertive', 'Self-check failure forced: live region should not be assertive');
+      }
+
+      const isDup = statusPair.footerText.length > 0 && statusPair.looseText.length > 0 &&
+                    (statusPair.footerText.toLowerCase().includes(statusPair.looseText.toLowerCase()) ||
+                     statusPair.looseText.toLowerCase().includes(statusPair.footerText.toLowerCase()) ||
+                     (statusPair.footerText.includes('NOT SENT') && statusPair.looseText.includes('Not sent')));
+
+      dupReportLines.push(
+        `Outcome ${oc.num}`.padEnd(12) +
+        statusPair.footerText.padEnd(42) +
+        statusPair.looseText.padEnd(40) +
+        (isDup ? 'YES (DUPLICATE)' : 'NO').padEnd(14) +
+        statusPair.looseDisplay + ' (aria-hidden=' + statusPair.looseAriaHidden + ')'
+      );
+    }
+    dupReportLines.push('================================================================================');
+    fs.writeFileSync(path.join(outDir, 'duplicate_status_audit.txt'), dupReportLines.join('\n'), 'utf8');
+    console.log(`✔ T1.3 PASSED: Verified duplicate status line hidden from layout across all 8 outcomes.\n`);
+    passedTests++;
+
+    // -------------------------------------------------------------------------
     // 5. BEHAVIOUR TEST T2: NO STUCK 'SYNCING' ACROSS ALL PATHS
     // -------------------------------------------------------------------------
     console.log('[T2] Testing No Stuck "SYNCING" / "SUBMITTING RUN TO LEADERBOARD…" across all submission paths...');
@@ -1315,6 +1848,98 @@ async function main() {
     assert.strictEqual(hlInfo.youText, 'YOU', 'User row must have YOU pill');
 
     console.log(`✔ T6 PASSED: Current user row highlighted with .is-current-user and "YOU" badge.\n`);
+    passedTests++;
+
+    // -------------------------------------------------------------------------
+    // 9b. BEHAVIOUR TEST T6.1: LIST RANK STYLE (.ranking-row .rank-number) (R9.1)
+    // -------------------------------------------------------------------------
+    console.log('[T6.1] Testing List Rank Style (Muted Grey, No Glow, 13px font size, #100 alignment)...');
+    await cdp.eval(`
+      (() => {
+        const rows = [];
+        for (let i = 1; i <= 100; i++) {
+          rows.push({
+            rank: i,
+            name: 'Player ' + i,
+            points: 10000 - i * 10,
+            moves: 100 + i,
+            maxTile: 1024,
+            isCurrentUser: i === 5
+          });
+        }
+        window.__testRenderTabContent('today', { rows, myRank: { rank: 5, name: 'Player 5', points: 9950 } });
+      })()
+    `);
+    await sleep(150);
+
+    const r91Check = await cdp.eval(`
+      (() => {
+        const pinnedBadge = document.querySelector('#leaderboard-overlay .pinned-rank-badge');
+        const pinnedFs = pinnedBadge ? getComputedStyle(pinnedBadge).fontSize : '13px';
+
+        const listRows = document.querySelectorAll('#leaderboard-overlay .ranking-row');
+        const checkedRows = [];
+
+        listRows.forEach((r, idx) => {
+          const rankEl = r.querySelector('.rank-number');
+          if (!rankEl) return;
+          const cs = getComputedStyle(rankEl);
+          checkedRows.push({
+            index: idx,
+            text: rankEl.textContent.trim(),
+            fontSize: cs.fontSize,
+            fontWeight: cs.fontWeight,
+            color: cs.color,
+            textShadow: cs.textShadow,
+            isCurrentUser: r.classList.contains('is-current-user'),
+            width: rankEl.getBoundingClientRect().width,
+            height: rankEl.getBoundingClientRect().height,
+            scrollWidth: rankEl.scrollWidth,
+            clientWidth: rankEl.clientWidth,
+            whiteSpace: cs.whiteSpace
+          });
+        });
+
+        const row100 = checkedRows.find(r => r.text === '#100');
+
+        return {
+          pinnedFs,
+          checkedCount: checkedRows.length,
+          checkedRows: checkedRows.slice(0, 10),
+          row100,
+          allRowsValid: checkedRows.every(r =>
+            r.fontSize === pinnedFs &&
+            r.color === 'rgb(118, 106, 100)' &&
+            (r.textShadow === 'none' || r.textShadow === '' || r.textShadow.includes('0px 0px 0px'))
+          )
+        };
+      })()
+    `);
+
+    // Vacuity guard: at least 3 rows checked
+    assert.ok(r91Check.checkedCount >= 3, `Vacuity guard: at least 3 list rows checked (checked ${r91Check.checkedCount})`);
+    assert.strictEqual(r91Check.pinnedFs, '13px', 'Pinned rank badge computed font-size must be 13px');
+
+    for (const r of r91Check.checkedRows) {
+      assert.strictEqual(r.fontSize, r91Check.pinnedFs, `Row ${r.text} font-size must equal pinned font-size (${r91Check.pinnedFs})`);
+      assert.strictEqual(r.color, 'rgb(118, 106, 100)', `Row ${r.text} color must be mock muted grey #766a64 (rgb(118, 106, 100))`);
+      assert.ok(r.textShadow === 'none' || r.textShadow === '' || r.textShadow.includes('0px 0px 0px'), `Row ${r.text} must have no text-shadow`);
+      assert.strictEqual(r.fontWeight, '800', `Row ${r.text} font-weight must match mock (800)`);
+    }
+
+    // Row #100 fixed width, no wrap, no ellipsis
+    assert.ok(r91Check.row100, 'Row #100 must exist');
+    assert.strictEqual(r91Check.row100.whiteSpace, 'nowrap', 'Row #100 must have white-space: nowrap');
+    assert.ok(r91Check.row100.scrollWidth <= r91Check.row100.clientWidth + 1, 'Row #100 must fit within 32px column without overflow');
+
+    // Deliberately failing self-check proof:
+    const r91SelfCheckPassed = r91Check.allRowsValid;
+    assert.strictEqual(r91SelfCheckPassed, true, 'R9.1 list rank style verification passed');
+    if (isSelfCheckFail) {
+      console.log('Deliberately triggering self-check failure for R9.1 list rank color...');
+      assert.strictEqual('rgb(118, 106, 100)', 'rgb(244, 199, 127)', 'Self-check failure forced: rank color should not be gold');
+    }
+    console.log(`✔ T6.1 PASSED: Verified ${r91Check.checkedCount} list rows (font-size=${r91Check.pinnedFs}, color=rgb(118, 106, 100), no text-shadow, row #100 fits).\n`);
     passedTests++;
 
     // -------------------------------------------------------------------------
@@ -2015,21 +2640,16 @@ async function main() {
           })()
         `);
 
-        // At 390x742 and 433x846 without scrolling: footer must be visible and not covered
-        if (vp.w >= 390) {
-          assert.strictEqual(
-            scrollMetrics.unscrolledHit,
-            true,
-            `Footer must be fully visible and not covered without scrolling at ${vp.w}x${vp.h} for Outcome ${oc.outcome}`
-          );
-        } else {
-          // At 320x568 and 360x640: footer is reachable by scrolling and not covered after scrolling
-          assert.strictEqual(
-            scrolledMetrics.scrolledHit,
-            true,
-            `Footer must be reachable by scrolling and not covered at ${vp.w}x${vp.h} for Outcome ${oc.outcome}`
-          );
-        }
+        // R9.5 (b): Footer at >= 568 height requires no scrolling (scrollHeight <= clientHeight + 1 and visible without scrolling)
+        assert.ok(
+          scrollMetrics.sh <= scrollMetrics.ch + 1,
+          `Card must fit without scrolling at ${vp.w}x${vp.h} for Outcome ${oc.outcome} (scrollHeight=${scrollMetrics.sh}px <= clientHeight=${scrollMetrics.ch}px)`
+        );
+        assert.strictEqual(
+          scrollMetrics.unscrolledHit,
+          true,
+          `Footer must be fully visible and not covered without scrolling at ${vp.w}x${vp.h} for Outcome ${oc.outcome}`
+        );
 
         scrollReportLines.push(
           `${vp.w}x${vp.h}`.padEnd(12) +
@@ -2047,7 +2667,258 @@ async function main() {
     const scrollReportText = scrollReportLines.join('\n');
     fs.writeFileSync(path.join(outDir, 'card_footer_scroll.txt'), scrollReportText, 'utf8');
     console.log(scrollReportText + '\n');
-    console.log(`✔ T20 PASSED: Verified card footer visibility and scroll reachability across all 4 viewports.\n`);
+    console.log(`✔ T20 PASSED: Verified card footer visibility and no-scroll fit across all 4 viewports (R9.5 b).\n`);
+    passedTests++;
+
+    // -------------------------------------------------------------------------
+    // 24. BEHAVIOUR TEST T21: GAME-OVER CARD WORST-CASE FIT MATRIX (R10)
+    // -------------------------------------------------------------------------
+    console.log('[T21] Testing Game-Over Card Fits The Screen across 7 viewports x 8 outcomes x 5 variants (280 combinations, R10 Worst-Case Fit)...');
+    const fitReportLines = [];
+    fitReportLines.push('================================================================================================================================');
+    fitReportLines.push('R10 GAME-OVER CARD NO-SCROLL FIT MATRIX (WORST-CASE FIT)');
+    fitReportLines.push('================================================================================================================================');
+    fitReportLines.push(
+      'Viewport'.padEnd(12) +
+      'Variant'.padEnd(16) +
+      'Outcome'.padEnd(14) +
+      'Scroll H'.padStart(10) +
+      'Client H'.padStart(10) +
+      'Card Top'.padStart(11) +
+      'Card Bot'.padStart(11) +
+      'Min Font'.padStart(10) +
+      '  Hidden Elements'.padEnd(60) +
+      'Status'
+    );
+    fitReportLines.push('-'.repeat(156));
+
+    const fitVps = [
+      { w: 320, h: 568 },
+      { w: 360, h: 640 },
+      { w: 390, h: 742 },
+      { w: 433, h: 846 },
+      { w: 1366, h: 657 },
+      { w: 1535, h: 740 },
+      { w: 1535, h: 900 }
+    ];
+
+    const fitVariants = [
+      { id: 'a', name: 'plain', conf: { score: 2000, isNewBest: false, cleanSlateCount: 0, relics: [], moves: 120, timeMs: 105000, maxTile: 1024, drafts: 2, seed: 12345 } },
+      { id: 'b', name: 'badges_score', conf: { score: 9999999, isNewBest: true, cleanSlateCount: 3, relics: [], moves: 1234, timeMs: 7199000, maxTile: 2048, drafts: 3, seed: 12345 } },
+      { id: 'c', name: '6_relics', conf: { score: 2000, isNewBest: false, cleanSlateCount: 0, relics: ['eraser', 'rewind', 'diagonal_charge', 'fault_line', 'mason', 'siphon'], moves: 120, timeMs: 105000, maxTile: 1024, drafts: 6, seed: 12345 } },
+      { id: 'd', name: '8_relics', conf: { score: 2000, isNewBest: false, cleanSlateCount: 0, relics: ['eraser', 'rewind', 'diagonal_charge', 'fault_line', 'mason', 'siphon', 'shatter', 'last_stand'], moves: 120, timeMs: 105000, maxTile: 1024, drafts: 8, seed: 12345 } },
+      { id: 'e', name: 'combined', conf: { score: 9999999, isNewBest: true, cleanSlateCount: 3, relics: ['eraser', 'rewind', 'diagonal_charge', 'fault_line', 'mason', 'siphon', 'shatter', 'last_stand'], moves: 1234, timeMs: 7199000, maxTile: 2048, drafts: 8, seed: 12345 } },
+    ];
+
+    const reviewDir = path.join(outDir, 'review');
+    fs.mkdirSync(reviewDir, { recursive: true });
+    const reviewIndexLines = [];
+    reviewIndexLines.push('File | Viewport | Outcome | Variant | Description');
+    reviewIndexLines.push('--------------------------------------------------------------------------------');
+
+    let totalFitChecks = 0;
+
+    for (const vp of fitVps) {
+      await cdp.setViewport(vp.w, vp.h);
+      await sleep(40);
+
+      for (const v of fitVariants) {
+        for (const oc of auditOutcomes) {
+          await cdp.eval(`
+            (() => {
+              const lb = document.getElementById('leaderboard-overlay');
+              if (lb) lb.classList.add('hidden');
+              const so = document.getElementById('start-overlay');
+              if (so) so.classList.add('hidden');
+              const eo = document.getElementById('end-overlay');
+              if (eo) {
+                eo.classList.remove('hidden');
+                eo.scrollTop = 0;
+              }
+              window.__testConfigureGameOverCard(${JSON.stringify(v.conf)});
+              window.__testRenderRankingCard(${oc.num}, ${JSON.stringify(oc.data)});
+            })()
+          `);
+          await sleep(20);
+
+          const metrics = await cdp.eval(`
+            (() => {
+              const eo = document.getElementById('end-overlay');
+              const card = eo.querySelector('.gameover-card');
+              const r = card.getBoundingClientRect();
+              const ch = eo.clientHeight;
+              const sh = eo.scrollHeight;
+
+              function checkHit(el) {
+                if (!el) return false;
+                const b = el.getBoundingClientRect();
+                const cx = b.left + b.width / 2;
+                const cy = b.top + b.height / 2;
+                if (cy < 0 || cy > window.innerHeight) return false;
+                const topEl = document.elementFromPoint(cx, cy);
+                return topEl === el || el.contains(topEl);
+              }
+
+              const score = document.getElementById('end-score');
+              const rkCard = document.getElementById('global-ranking-panel');
+              const rkFooter = document.getElementById('ranking-footer-status');
+              const playBtn = document.querySelector('.btn-play-again:not(.hidden)');
+              const homeBtn = document.getElementById('btn-end-home');
+              const copyBtn = document.getElementById('btn-copy-log');
+
+              const scoreHit = checkHit(score);
+              const rkHit = checkHit(rkCard);
+              const footerHit = checkHit(rkFooter);
+              const playHit = checkHit(playBtn);
+              const homeHit = checkHit(homeBtn);
+              const copyHit = checkHit(copyBtn);
+
+              const hiddenEls = [];
+              if (document.getElementById('end-seed-cell')?.offsetParent === null) hiddenEls.push('#end-seed-cell');
+              if (document.querySelector('.relics-title')?.offsetParent === null) hiddenEls.push('.relics-title');
+              if (document.getElementById('end-leaderboard-status')?.offsetParent === null) hiddenEls.push('#end-leaderboard-status');
+
+              let minFont = 999;
+              const walker = document.createTreeWalker(card, NodeFilter.SHOW_ELEMENT);
+              let node;
+              while ((node = walker.nextNode())) {
+                if (node.closest('#end-mini-board') || node.offsetParent === null) continue;
+                const textNodes = Array.from(node.childNodes).filter(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 0);
+                if (textNodes.length > 0) {
+                  const fs = parseFloat(getComputedStyle(node).fontSize);
+                  if (fs < minFont) minFont = fs;
+                }
+              }
+
+              return {
+                ch,
+                sh,
+                cardTop: +r.top.toFixed(1),
+                cardBottom: +r.bottom.toFixed(1),
+                cardHeight: +r.height.toFixed(1),
+                scoreHit,
+                rkHit,
+                footerHit,
+                playHit,
+                homeHit,
+                copyHit,
+                hiddenEls: hiddenEls.join(', ') || 'none',
+                minFont: minFont < 999 ? +minFont.toFixed(1) : 10
+              };
+            })()
+          `);
+
+          assert.ok(metrics.sh <= metrics.ch + 1, `Card must fit without scrolling at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num} (sh=${metrics.sh} <= ch=${metrics.ch})`);
+          assert.ok(metrics.cardTop >= 4, `Card top must be >= 4px at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num} (got ${metrics.cardTop}px)`);
+          assert.ok(metrics.cardBottom <= vp.h - 4, `Card bottom must be <= ${vp.h - 4}px at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num} (got ${metrics.cardBottom}px)`);
+
+          assert.strictEqual(metrics.scoreHit, true, `Score must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+          assert.strictEqual(metrics.rkHit, true, `Ranking card must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+          assert.strictEqual(metrics.footerHit, true, `Ranking card footer must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+          assert.strictEqual(metrics.playHit, true, `Play button must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+          assert.strictEqual(metrics.homeHit, true, `Home button must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+          assert.strictEqual(metrics.copyHit, true, `Copy Log button must be visible at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num}`);
+
+          assert.ok(metrics.minFont >= 10, `No visible text below 10px font size at ${vp.w}x${vp.h} for Variant ${v.name} Outcome ${oc.num} (got ${metrics.minFont}px)`);
+
+          // Capture R10.3 review screenshots
+          const shouldCapture =
+            (v.id === 'e' && (oc.num === 2 || oc.num === 8) && ((vp.w === 320 && vp.h === 568) || (vp.w === 390 && vp.h === 742) || (vp.w === 1535 && vp.h === 740))) ||
+            (v.id === 'd' && (oc.num === 2 || oc.num === 8) && (vp.w === 360 && vp.h === 640));
+
+          if (shouldCapture) {
+            const shotName = `review_${v.name}_${vp.w}x${vp.h}_outcome_${oc.num}.png`;
+            const shotPath = path.join(reviewDir, shotName);
+            await cdp.screenshot(shotPath);
+            reviewIndexLines.push(
+              `${shotName.padEnd(42)} | ${vp.w}x${vp.h} | Outcome ${oc.num} | Variant (${v.id}) ${v.name}`
+            );
+          }
+
+          fitReportLines.push(
+            `${vp.w}x${vp.h}`.padEnd(12) +
+            `(${v.id}) ${v.name}`.padEnd(16) +
+            `Outcome ${oc.num}`.padEnd(14) +
+            `${metrics.sh}px`.padStart(10) +
+            `${metrics.ch}px`.padStart(10) +
+            `${metrics.cardTop}px`.padStart(11) +
+            `${metrics.cardBottom}px`.padStart(11) +
+            `${metrics.minFont}px`.padStart(10) +
+            `  ${metrics.hiddenEls}`.padEnd(60) +
+            'PASS'
+          );
+          totalFitChecks++;
+        }
+      }
+    }
+
+    assert.strictEqual(totalFitChecks, 280, 'Vacuity guard: all 280 combinations (7 viewports x 8 outcomes x 5 variants) verified');
+    fs.writeFileSync(path.join(reviewDir, 'index.txt'), reviewIndexLines.join('\n'), 'utf8');
+
+    // -------------------------------------------------------------------------
+    // R10.4 & R10.5 SAFETY NET: SCROLLER OVERFLOW BEHAVIOUR AT SMALL HEIGHTS
+    // -------------------------------------------------------------------------
+    console.log('[T21.1] Testing Safety Net: scroller overflow-y and element visibility at small heights (<568px)...');
+    await cdp.setViewport(320, 400);
+    await sleep(60);
+
+    await cdp.eval(`
+      (() => {
+        window.__testConfigureGameOverCard(${JSON.stringify(fitVariants[4].conf)});
+        window.__testRenderRankingCard(2, { rank: 1, total: 10, points: 9999999 });
+      })()
+    `);
+    await sleep(40);
+
+    const safetyNet = await cdp.eval(`
+      (() => {
+        const eo = document.getElementById('end-overlay');
+        const cs = getComputedStyle(eo);
+        const sh = eo.scrollHeight;
+        const ch = eo.clientHeight;
+        const overflow = sh > ch;
+
+        // Scroll to bottom
+        eo.scrollTop = eo.scrollHeight;
+
+        function checkHit(el) {
+          if (!el) return false;
+          const b = el.getBoundingClientRect();
+          const cx = b.left + b.width / 2;
+          const cy = b.top + b.height / 2;
+          if (cy < 0 || cy > window.innerHeight) return false;
+          const topEl = document.elementFromPoint(cx, cy);
+          return topEl === el || el.contains(topEl);
+        }
+
+        const homeBtn = document.getElementById('btn-end-home');
+        const copyBtn = document.getElementById('btn-copy-log');
+
+        return {
+          sh,
+          ch,
+          overflow,
+          overflowY: cs.overflowY,
+          homeHit: checkHit(homeBtn),
+          copyHit: checkHit(copyBtn)
+        };
+      })()
+    `);
+
+    assert.strictEqual(safetyNet.overflow, true, `Safety net: 320x400 must overflow (sh=${safetyNet.sh} > ch=${safetyNet.ch})`);
+    assert.ok(safetyNet.overflowY === 'auto' || safetyNet.overflowY === 'scroll', `Scroller overflow-y must be auto or scroll when overflowing (got ${safetyNet.overflowY})`);
+    assert.strictEqual(safetyNet.homeHit, true, 'HOME button must be visible when scrolled to bottom at 320x400');
+    assert.strictEqual(safetyNet.copyHit, true, 'COPY LOG button must be visible when scrolled to bottom at 320x400');
+
+    if (isSelfCheckFail) {
+      console.log('Deliberately triggering self-check failure for safety net assertion...');
+      assert.strictEqual(safetyNet.overflowY, 'hidden', 'Self-check failure forced: overflowY should not be hidden');
+    }
+
+    fitReportLines.push('================================================================================================================================');
+    fs.writeFileSync(path.join(outDir, 'r10_fit_matrix.txt'), fitReportLines.join('\n'), 'utf8');
+    fs.writeFileSync(path.join(outDir, 'r9_fit_matrix.txt'), fitReportLines.join('\n'), 'utf8');
+    console.log(`✔ T21 PASSED: Verified all 280 worst-case combinations fit without scrolling, safety net verified, review screenshots captured (written to scripts/out/r10_fit_matrix.txt and scripts/out/review/).\n`);
     passedTests++;
 
     // Write screenshot inventory table

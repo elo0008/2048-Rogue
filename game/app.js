@@ -6949,6 +6949,52 @@ if (typeof window !== 'undefined') {
   };
   window.__testActiveTab = () => activeLeaderboardTab;
   window.__testUpdateStartLeaderboard = updateStartOverlayLeaderboardControls;
+  window.__testConfigureGameOverCard = ({
+    score = 0,
+    isNewBest = false,
+    cleanSlateCount = 0,
+    relics = [],
+    moves = 0,
+    timeMs = 0,
+    maxTile = 2,
+    drafts = 0,
+    seed = 0
+  } = {}) => {
+    if (endScoreEl) endScoreEl.textContent = Number(score).toLocaleString('en-US');
+    if (endNewBestBadge) {
+      if (isNewBest) endNewBestBadge.classList.remove('hidden');
+      else endNewBestBadge.classList.add('hidden');
+    }
+    if (endCleanSlateChip) {
+      if (cleanSlateCount >= 1) {
+        endCleanSlateChip.textContent = `CLEAN SLATE x ${cleanSlateCount}`;
+        endCleanSlateChip.classList.remove('hidden');
+      } else {
+        endCleanSlateChip.classList.add('hidden');
+      }
+    }
+    if (endMovesEl) endMovesEl.textContent = Number(moves).toLocaleString('en-US');
+    if (endTimeEl) endTimeEl.textContent = formatPlayTime(timeMs);
+    if (endMaxTileEl) endMaxTileEl.textContent = maxTile;
+    if (endDraftsEl) endDraftsEl.textContent = drafts;
+    if (endSeedEl) endSeedEl.textContent = seed;
+
+    if (endRelicsList) {
+      endRelicsList.innerHTML = '';
+      if (!relics || relics.length === 0) {
+        endRelicsList.innerHTML = '<span class="no-relics-msg" style="font-size:11px; color:var(--muted);">No relics drafted</span>';
+      } else {
+        for (const rid of relics) {
+          const chip = document.createElement('div');
+          chip.className = 'relic-mini art relic-chip';
+          chip.setAttribute('data-relic', rid);
+          chip.setAttribute('title', RELIC_NAMES[rid] || rid);
+          chip.appendChild(getRelicIconElement(rid, 22));
+          endRelicsList.appendChild(chip);
+        }
+      }
+    }
+  };
 }
 
 window.getTopRuns = getTopRuns;

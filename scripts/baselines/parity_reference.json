@@ -1,6 +1,7 @@
 {
-  "generatedAt": "2026-11-07T11:18:08.035Z",
+  "generatedAt": "2026-11-07T17:01:04.344Z",
   "source": "design/v2",
+  "note": "R9.5: End-card boxes at 390x742 and below maintain x and width parity (<= 4px); y and height comparisons are replaced by T21 fit assertions (no-scroll requirement across all 8 outcomes).",
   "card": {
     "card": {
       "x": 12,
