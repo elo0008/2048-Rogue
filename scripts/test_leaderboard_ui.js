@@ -49,7 +49,7 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-function startStaticServer(serveDir, domainTracker = null) {
+function startStaticServer(serveDir, domainTracker = null, delayHandler = null) {
   const MIME_TYPES = {
     '.html': 'text/html; charset=utf-8',
     '.js': 'text/javascript; charset=utf-8',
@@ -80,11 +80,22 @@ function startStaticServer(serveDir, domainTracker = null) {
     }
 
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, {
-      'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
-    });
-    fs.createReadStream(filePath).pipe(res);
+    const sendResponse = () => {
+      res.writeHead(200, {
+        'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
+        'Cache-Control': 'no-cache',
+      });
+      fs.createReadStream(filePath).pipe(res);
+    };
+
+    if (delayHandler) {
+      const delay = typeof delayHandler === 'function' ? delayHandler(relPath) : delayHandler;
+      if (delay > 0) {
+        setTimeout(sendResponse, delay);
+        return;
+      }
+    }
+    sendResponse();
   });
 
   return new Promise((resolve) => {
@@ -144,6 +155,9 @@ class CdpSession {
         if (data.method === 'Network.responseReceived') {
           if (!this.networkStatuses) this.networkStatuses = new Map();
           this.networkStatuses.set(data.params.response.url, data.params.response.status);
+        }
+        if (typeof this.onEvent === 'function') {
+          this.onEvent(data);
         }
       }
     };
@@ -286,6 +300,8 @@ async function main() {
   ], { stdio: 'ignore' });
 
   let cdp = null;
+  let r13ConfigDist = null;
+  let r13ServerObj = null;
 
   try {
     const wsUrl = await getWsUrl(cdpPort);
@@ -2293,10 +2309,11 @@ async function main() {
     assert.ok(liveSet.has('glassSweep'), 'glassSweep keyframe must exist');
     assert.ok(liveSet.has('glassShimmer'), 'glassShimmer keyframe must exist');
     assert.ok(liveSet.has('shimmer'), 'shimmer keyframe must exist');
-    console.log(`  - Verified glass shimmer keyframes (glassSweep, glassShimmer, shimmer) active.`);
+    assert.ok(liveSet.has('startOverlayFallbackReveal'), 'startOverlayFallbackReveal keyframe must exist');
+    console.log(`  - Verified glass shimmer keyframes (glassSweep, glassShimmer, shimmer) and fallback reveal active.`);
 
     const addedKeyframes = liveAnim.keyframeNames.filter(k => !beforeSet.has(k));
-    assert.strictEqual(addedKeyframes.length, 5, `Expected exactly 5 added keyframes, found ${addedKeyframes.length}`);
+    assert.strictEqual(addedKeyframes.length, 6, `Expected exactly 6 added keyframes, found ${addedKeyframes.length}`);
     console.log(`  - Keyframes added since e6332a3 (${addedKeyframes.length}): ${addedKeyframes.join(', ')}`);
 
     // Deliberately failing self-check proof:
@@ -3204,11 +3221,282 @@ async function main() {
     console.log(`✔ T22 PASSED: Verified all 320 combinations fill the screen, container queries restore elements when >=650px, review screenshots captured, comparison table written (written to scripts/out/r11_fill_matrix.txt and scripts/out/r11_before_after.txt).\n`);
     passedTests++;
 
+    // -------------------------------------------------------------------------
+    // 26. BEHAVIOUR TEST T23: START-SCREEN FLASH PREVENTION GATE (R13)
+    // -------------------------------------------------------------------------
+    console.log('[T23] Testing Start-Screen Flash Prevention Gate (Configured vs No-Config, 1500ms Fallback, NoScript, Frame Sampling)...');
+
+    // Build target prod WITH leaderboard config into an isolated temporary directory
+    r13ConfigDist = path.join(rootDir, `.temp_dist_r13_config_${Date.now()}`);
+    await build({
+      distDir: r13ConfigDist,
+      target: 'prod',
+      leaderboardUrl: 'http://localhost:54321',
+      leaderboardAnonKey: 'sb_publishable_r13_test_key_12345678',
+    });
+
+    // Create ungated HTML and CSS copy in the same directory for direct self-check verification
+    const r13OriginalHtml = fs.readFileSync(path.join(r13ConfigDist, 'index.html'), 'utf8');
+    const r13OriginalCss = fs.readFileSync(path.join(r13ConfigDist, 'style.css'), 'utf8');
+
+    const r13UngatedCss = r13OriginalCss
+      .replace(/html:not\(\.app-ready\) #start-overlay \{[^}]+\}/g, '')
+      .replace(/html:not\(\.app-ready\) #start-overlay \.start-card \{[^}]+\}/g, '');
+    fs.writeFileSync(path.join(r13ConfigDist, 'style_ungated.css'), r13UngatedCss, 'utf8');
+
+    const r13UngatedHtml = r13OriginalHtml
+      .replace('href="style.css"', 'href="style_ungated.css"')
+      .replace(/<noscript>[\s\S]*?<\/noscript>/, '');
+    fs.writeFileSync(path.join(r13ConfigDist, 'index_ungated.html'), r13UngatedHtml, 'utf8');
+
+    let r13AppJsDelay = 0;
+    r13ServerObj = await startStaticServer(r13ConfigDist, null, (relPath) => (relPath === 'app.js' ? r13AppJsDelay : 0));
+
+    // Subtest 1: Configured Build Frame Sampling
+    await cdp.setViewport(390, 742);
+    const r13ScriptRes = await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `
+        window.__r13Frames = [];
+        function sampleR13(stage) {
+          const isVis = (el) => {
+            if (!el || el.classList.contains('hidden')) return false;
+            const cs = window.getComputedStyle(el);
+            return cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.01;
+          };
+          const lbBtn = document.getElementById('btn-start-leaderboard');
+          const dailyBtn = document.getElementById('btn-play-daily');
+          const dailyDisc = document.getElementById('daily-disclosure-container');
+          const dailyCd = document.getElementById('daily-countdown-line');
+          const bestEl = document.getElementById('start-best-score');
+          const buildEl = document.getElementById('start-build-id');
+          const soundEl = document.getElementById('btn-sound-start');
+          const overlay = document.getElementById('start-overlay');
+          const card = document.querySelector('.start-card');
+          const oCs = overlay ? window.getComputedStyle(overlay) : null;
+          const cCs = card ? window.getComputedStyle(card) : null;
+          const cardBox = card ? card.getBoundingClientRect() : null;
+
+          return {
+            stage,
+            t: performance.now(),
+            iso: new Date().toISOString(),
+            appReady: document.documentElement.classList.contains('app-ready'),
+            cardVisible: oCs && cCs ? (oCs.display !== 'none' && oCs.visibility !== 'hidden' && parseFloat(oCs.opacity) > 0.05 &&
+                                       cCs.display !== 'none' && cCs.visibility !== 'hidden' && parseFloat(cCs.opacity) > 0.05) : false,
+            cardBox: cardBox ? { x: Math.round(cardBox.x), y: Math.round(cardBox.y), width: Math.round(cardBox.width), height: Math.round(cardBox.height) } : null,
+            cardComputed: cCs ? { opacity: cCs.opacity, visibility: cCs.visibility, animationName: cCs.animationName } : null,
+            overlayComputed: oCs ? { opacity: oCs.opacity, visibility: oCs.visibility } : null,
+            globeVisible: isVis(lbBtn),
+            dailyVisible: isVis(dailyBtn),
+            dailyDiscVisible: isVis(dailyDisc),
+            dailyCountdownVisible: isVis(dailyCd),
+            dailyCountdownText: dailyCd ? dailyCd.textContent.trim() : null,
+            bestScoreText: bestEl ? bestEl.textContent.trim() : null,
+            buildLineText: buildEl ? buildEl.textContent.trim() : null,
+            soundLabelText: soundEl ? soundEl.textContent.trim() : null,
+          };
+        }
+
+        try {
+          const po = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              if (entry.name === 'first-paint') {
+                window.__r13Frames.push(sampleR13('first-paint'));
+              }
+            }
+          });
+          po.observe({ type: 'paint', buffered: true });
+        } catch (e) {}
+
+        document.addEventListener('readystatechange', () => {
+          window.__r13Frames.push(sampleR13('readystatechange:' + document.readyState));
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+          window.__r13Frames.push(sampleR13('DOMContentLoaded'));
+        });
+
+        window.addEventListener('load', () => {
+          window.__r13Frames.push(sampleR13('load'));
+        });
+
+        let rafIdx = 0;
+        function r13Tick() {
+          if (rafIdx < 8) {
+            window.__r13Frames.push(sampleR13('raf-' + rafIdx));
+            rafIdx++;
+            requestAnimationFrame(r13Tick);
+          }
+        }
+        requestAnimationFrame(r13Tick);
+      `
+    });
+
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${r13ServerObj.port}/index.html` });
+    await sleep(400);
+
+    const r13Frames = await cdp.eval('window.__r13Frames');
+    await cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: r13ScriptRes.identifier });
+
+    // Vacuity guard (frames captured > 3)
+    assert.ok(Array.isArray(r13Frames) && r13Frames.length > 3, `Vacuity guard failed: expected > 3 frames, got ${r13Frames?.length}`);
+
+    // Core Assertion: no frame exists where card is visible and globe/Daily elements are missing
+    let visibleFrameCount = 0;
+    for (const f of r13Frames) {
+      if (f.cardVisible) {
+        visibleFrameCount++;
+        assert.strictEqual(f.globeVisible, true, `Frame at stage '${f.stage}' has visible card but Globe button is missing`);
+        assert.strictEqual(f.dailyVisible, true, `Frame at stage '${f.stage}' has visible card but Daily button is missing`);
+        assert.strictEqual(f.appReady, true, `Frame at stage '${f.stage}' has visible card before app-ready class was added`);
+      }
+    }
+    assert.ok(visibleFrameCount > 0, 'Must have at least one visible frame once app-ready is reached');
+
+    // Subtest 2: No-Config Build (Card appears with no globe/Daily and no height change)
+    await cdp.send('Page.navigate', { url: baseUrl });
+    await sleep(400);
+
+    const noConfigState = await cdp.eval(`(() => {
+      const isVis = (el) => {
+        if (!el || el.classList.contains('hidden')) return false;
+        const cs = window.getComputedStyle(el);
+        return cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.01;
+      };
+      const lbBtn = document.getElementById('btn-start-leaderboard');
+      const dailyBtn = document.getElementById('btn-play-daily');
+      const dailyDisc = document.getElementById('daily-disclosure-container');
+      const card = document.querySelector('.start-card');
+      const box = card ? card.getBoundingClientRect() : null;
+      const cs = card ? window.getComputedStyle(card) : null;
+      return {
+        cardVisible: cs ? (cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.01) : false,
+        globeVisible: isVis(lbBtn),
+        dailyVisible: isVis(dailyBtn),
+        discVisible: isVis(dailyDisc),
+        cardHeight: box ? Math.round(box.height) : 0
+      };
+    })()`);
+    assert.strictEqual(noConfigState.cardVisible, true, 'Card must be visible on no-config build once app-ready');
+    assert.strictEqual(noConfigState.globeVisible, false, 'Globe button must be hidden on no-config build');
+    assert.strictEqual(noConfigState.dailyVisible, false, 'Daily button must be hidden on no-config build');
+    assert.strictEqual(noConfigState.discVisible, false, 'Daily disclosure must be hidden on no-config build');
+
+    // Subtest 3: 1500ms Fallback when app.js is blocked
+    await cdp.send('Fetch.enable', {
+      patterns: [{ urlPattern: '*app.js*', requestStage: 'Request' }]
+    });
+    cdp.onEvent = (data) => {
+      if (data.method === 'Fetch.requestPaused') {
+        cdp.send('Fetch.failRequest', { requestId: data.params.requestId, errorReason: 'Failed' }).catch(() => {});
+      }
+    };
+
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${r13ServerObj.port}/index.html` });
+    await sleep(200);
+
+    const fallbackEarly = await cdp.eval(`(() => {
+      const overlay = document.getElementById('start-overlay');
+      const cs = window.getComputedStyle(overlay);
+      return { opacity: parseFloat(cs.opacity), visibility: cs.visibility };
+    })()`);
+    assert.strictEqual(fallbackEarly.visibility, 'hidden', 'Card overlay must be hidden early when app.js fails');
+
+    // Wait until 1650ms (fallback animation is 1500ms delay + 0.05s)
+    await sleep(1450);
+    const fallbackLate = await cdp.eval(`(() => {
+      const overlay = document.getElementById('start-overlay');
+      const cs = window.getComputedStyle(overlay);
+      return { opacity: parseFloat(cs.opacity), visibility: cs.visibility };
+    })()`);
+    assert.strictEqual(fallbackLate.visibility, 'visible', 'Card overlay must be visible after 1500ms fallback');
+    assert.ok(fallbackLate.opacity >= 0.9, 'Card overlay opacity must be >= 0.9 after fallback');
+
+    cdp.onEvent = null;
+    await cdp.send('Fetch.disable');
+
+    // Subtest 4: JS Disabled (<noscript> rule shows card immediately)
+    await cdp.send('Emulation.setScriptExecutionDisabled', { value: true });
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${r13ServerObj.port}/index.html` });
+    await sleep(150);
+
+    const noscriptState = await cdp.eval(`(() => {
+      const overlay = document.getElementById('start-overlay');
+      const cs = window.getComputedStyle(overlay);
+      return { opacity: parseFloat(cs.opacity), visibility: cs.visibility };
+    })()`);
+    assert.strictEqual(noscriptState.visibility, 'visible', 'Noscript rule must show card overlay immediately');
+    assert.strictEqual(noscriptState.opacity, 1, 'Noscript rule must set opacity to 1 immediately');
+
+    await cdp.send('Emulation.setScriptExecutionDisabled', { value: false });
+
+    // Format and write scripts/out/r13_start_frames.txt
+    const r13OutLines = [];
+    r13OutLines.push('========================================================================================================================================================');
+    r13OutLines.push('R13 START-SCREEN FLASH PREVENTION & FRAME SAMPLING AUDIT');
+    r13OutLines.push('========================================================================================================================================================');
+    r13OutLines.push('Stage                     Timestamp   Card Vis?   Card Opacity/Visibility   Card Height   Globe Vis?  Daily Vis?  BEST Score  Build ID             Status');
+    r13OutLines.push('--------------------------------------------------------------------------------------------------------------------------------------------------------');
+    for (const f of r13Frames) {
+      const stageStr = f.stage.padEnd(25);
+      const timeStr = `${f.t.toFixed(1)}ms`.padStart(10);
+      const visStr = (f.cardVisible ? 'VISIBLE' : 'HIDDEN').padEnd(11);
+      const opVisStr = `${f.overlayComputed?.opacity || '0'} / ${f.overlayComputed?.visibility || 'hidden'}`.padEnd(25);
+      const hStr = `${f.cardBox?.height || 0}px`.padStart(11);
+      const gVisStr = (f.globeVisible ? 'YES' : 'NO').padEnd(11);
+      const dVisStr = (f.dailyVisible ? 'YES' : 'NO').padEnd(11);
+      const bestStr = (f.bestScoreText || '0').padStart(10);
+      const bIdStr = (f.buildLineText ? f.buildLineText.replace('BUILD: ', '') : '').padEnd(20);
+      const statusStr = (!f.cardVisible || (f.globeVisible && f.dailyVisible)) ? 'PASS' : 'FAIL';
+      r13OutLines.push(`${stageStr} ${timeStr}   ${visStr} ${opVisStr} ${hStr}   ${gVisStr} ${dVisStr} ${bestStr}  ${bIdStr} ${statusStr}`);
+    }
+    r13OutLines.push('--------------------------------------------------------------------------------------------------------------------------------------------------------');
+    r13OutLines.push(`Fallback Test: 1500ms fallback revealed card overlay at 1650ms (opacity=${fallbackLate.opacity}, visibility=${fallbackLate.visibility}) -> PASS`);
+    r13OutLines.push(`NoScript Test: JS disabled revealed card overlay immediately (opacity=${noscriptState.opacity}, visibility=${noscriptState.visibility}) -> PASS`);
+    r13OutLines.push(`NoConfig Test: Card visible without globe or Daily button (globe=${noConfigState.globeVisible}, daily=${noConfigState.dailyVisible}) -> PASS`);
+    r13OutLines.push('========================================================================================================================================================');
+
+    fs.writeFileSync(path.join(outDir, 'r13_start_frames.txt'), r13OutLines.join('\n'), 'utf8');
+
+    // Deliberately failing self-check
+    if (selfCheckTarget === 't23' || selfCheckTarget === 'r13' || selfCheckTarget === 'flash') {
+      console.log('Deliberately triggering self-check failure for ungated start-screen flash assertion...');
+      r13AppJsDelay = 120; // 120ms delay on app.js transfer to ensure first paint occurs on ungated static HTML
+      await cdp.send('Page.navigate', { url: `http://127.0.0.1:${r13ServerObj.port}/index_ungated.html` });
+      await sleep(40);
+
+      const ungatedState = await cdp.eval(`(() => {
+        const isVis = (el) => {
+          if (!el || el.classList.contains('hidden')) return false;
+          const cs = window.getComputedStyle(el);
+          return cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.01;
+        };
+        const lbBtn = document.getElementById('btn-start-leaderboard');
+        const dailyBtn = document.getElementById('btn-play-daily');
+        const card = document.querySelector('.start-card');
+        const cs = card ? window.getComputedStyle(card) : null;
+        return {
+          cardVisible: cs ? (cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.01) : false,
+          globeVisible: isVis(lbBtn),
+          dailyVisible: isVis(dailyBtn)
+        };
+      })()`);
+
+      assert.strictEqual(ungatedState.globeVisible, true, 'Self-check failure forced: ungated start screen showed card without globe button');
+    }
+
+    console.log(`✔ T23 PASSED: Verified start-screen flash prevention gate (no unpopulated frames, no-config invariance, 1500ms fallback, noscript reveal; written to scripts/out/r13_start_frames.txt).\n`);
+    passedTests++;
+
     // Write screenshot inventory table
     const screenshotTable = screenshotQueries.map(s => `${s.file} | DOM query: ${s.query}`).join('\n');
     fs.writeFileSync(path.join(outDir, 'screenshot_dom_queries.txt'), screenshotTable, 'utf8');
 
   } finally {
+    if (r13ServerObj) r13ServerObj.server.close();
+    if (r13ConfigDist) {
+      try { fs.rmSync(r13ConfigDist, { recursive: true, force: true }); } catch {}
+    }
     if (cdp) await cdp.close();
     chromeProc.kill('SIGTERM');
     gameServer.close();

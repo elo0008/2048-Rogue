@@ -11,6 +11,21 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="preload" href="fonts/outfit-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
+  <noscript>
+    <style>
+      html:not(.app-ready) #start-overlay {
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        animation: none !important;
+      }
+      html:not(.app-ready) #start-overlay .start-card {
+        animation: none !important;
+        opacity: 1 !important;
+        transform: none !important;
+      }
+    </style>
+  </noscript>
 </head>
 <body>
   <noscript>

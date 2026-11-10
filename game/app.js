@@ -7050,6 +7050,24 @@ if (hasLaunchParams) {
   }
 }
 
+// R13 Start Screen Setup: Ensure all initial content is set synchronously before revealing
+updateStartOverlayLeaderboardControls();
+if (canShowDailyButton()) {
+  if (btnPlayDaily) btnPlayDaily.classList.remove('hidden');
+  if (dailyDisclosureContainer) dailyDisclosureContainer.classList.remove('hidden');
+  startDailyCountdown();
+}
+if (startBestScoreEl) {
+  startBestScoreEl.textContent = getStoredBestScore().toLocaleString('en-US');
+}
+if (buildIdEl) {
+  buildIdEl.textContent = `BUILD: ${BUILD_ID}`;
+}
+updateSoundButtons(isSoundEnabled());
+
+// Reveal start screen at its final layout with zero flash or layout jump
+document.documentElement.classList.add('app-ready');
+
 /*DEV_LAB_BEGIN*/
 (function initDevLabModule() {
   if (typeof window === 'undefined') return;
