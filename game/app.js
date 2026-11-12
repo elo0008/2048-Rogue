@@ -689,7 +689,6 @@ const startBestScoreEl = document.getElementById('start-best-score');
 const btnPlayStart = document.getElementById('btn-play-start');
 const btnSoundStart = document.getElementById('btn-sound-start');
 const btnStartHow = document.getElementById('btn-start-how');
-const startHowList = document.getElementById('start-how-list');
 
 const draftOverlay = document.getElementById('draft-overlay');
 const draftTitleEl = document.getElementById('draft-title');
@@ -704,7 +703,6 @@ const btnPauseRestart = document.getElementById('btn-pause-restart');
 const btnPauseEndRun = document.getElementById('btn-pause-end-run');
 const btnPauseSound = document.getElementById('btn-pause-sound');
 const btnPauseHow = document.getElementById('btn-pause-how');
-const pauseHowList = document.getElementById('pause-how-list');
 
 const endOverlay = document.getElementById('end-overlay');
 const endScoreEl = document.getElementById('end-score');
@@ -738,6 +736,7 @@ const FORBIDDEN_DAILY_PARAMS = [
   'seed', 'stones', 'start', 'ascension', 'shatter', 'siphon',
   'diag', 'eraser', 'rewind', 'maxcharges', 'cap', 'laststand',
   'pool', 'draft', 'first', 'debug', 'nodraft', 'lab',
+  'ramp', 'hints',
 ];
 
 function canShowDailyButton() {
@@ -5373,17 +5372,24 @@ if (btnPauseEndRun && pauseOverlay) {
   });
 }
 
-if (btnPauseHow && pauseHowList) {
+if (btnPauseHow) {
   btnPauseHow.addEventListener('click', () => {
-    pauseHowList.classList.toggle('hidden');
+    initAudio();
+    playClick();
+    if (window.TutorialController) {
+      window.TutorialController.open('pause');
+    }
   });
 }
 
 // How to play on Start screen
-if (btnStartHow && startHowList) {
+if (btnStartHow) {
   btnStartHow.addEventListener('click', () => {
-    const isHidden = startHowList.classList.toggle('hidden');
-    btnStartHow.setAttribute('aria-expanded', String(!isHidden));
+    initAudio();
+    playClick();
+    if (window.TutorialController) {
+      window.TutorialController.open('start');
+    }
   });
 }
 
@@ -7064,6 +7070,15 @@ if (buildIdEl) {
   buildIdEl.textContent = `BUILD: ${BUILD_ID}`;
 }
 updateSoundButtons(isSoundEnabled());
+
+if (window.TutorialController) {
+  window.TutorialController.setRelicProvider({
+    RELIC_NAMES,
+    getRelicOneLiner: (id) => getRelicOneLiner(id, (controller && controller.config) ? controller.config : (activeConfig || {})),
+    ICON_MAP,
+    isAbility: (id) => id === 'diagonal_charge' || id === 'eraser' || id === 'rewind'
+  });
+}
 
 // Reveal start screen at its final layout with zero flash or layout jump
 document.documentElement.classList.add('app-ready');

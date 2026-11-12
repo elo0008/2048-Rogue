@@ -116,7 +116,7 @@ async function getWsUrl(cdpPort) {
           return page.webSocketDebuggerUrl;
         }
       }
-    } catch {}
+    } catch { }
     await sleep(100);
   }
   throw new Error('Timed out waiting for Chrome CDP');
@@ -190,7 +190,7 @@ class CdpSession {
       deviceScaleFactor: 1,
       mobile: true,
     });
-    await this.send('Emulation.setVisibleSize', { width, height }).catch(() => {});
+    await this.send('Emulation.setVisibleSize', { width, height }).catch(() => { });
   }
 
   async screenshot(filePath) {
@@ -203,7 +203,7 @@ class CdpSession {
   async close() {
     try {
       this.ws.close();
-    } catch {}
+    } catch { }
   }
 }
 
@@ -646,7 +646,7 @@ async function main() {
           if (d < summaryStats[elemName].min) summaryStats[elemName].min = d;
           if (d > summaryStats[elemName].max) summaryStats[elemName].max = d;
         }
-      } catch {}
+      } catch { }
     }
 
     const summaryLines = [];
@@ -1529,9 +1529,9 @@ async function main() {
       }
 
       const isDup = statusPair.footerText.length > 0 && statusPair.looseText.length > 0 &&
-                    (statusPair.footerText.toLowerCase().includes(statusPair.looseText.toLowerCase()) ||
-                     statusPair.looseText.toLowerCase().includes(statusPair.footerText.toLowerCase()) ||
-                     (statusPair.footerText.includes('NOT SENT') && statusPair.looseText.includes('Not sent')));
+        (statusPair.footerText.toLowerCase().includes(statusPair.looseText.toLowerCase()) ||
+          statusPair.looseText.toLowerCase().includes(statusPair.footerText.toLowerCase()) ||
+          (statusPair.footerText.includes('NOT SENT') && statusPair.looseText.includes('Not sent')));
 
       dupReportLines.push(
         `Outcome ${oc.num}`.padEnd(12) +
@@ -1643,7 +1643,7 @@ async function main() {
       })()
     `);
     checkServer.server.close();
-    try { fs.rmSync(selfCheckDistDir, { recursive: true, force: true }); } catch {}
+    try { fs.rmSync(selfCheckDistDir, { recursive: true, force: true }); } catch { }
 
     assert.strictEqual(configuredGlobeCheck.globeHidden, false, 'Proof: globe button is NOT hidden when build has config');
 
@@ -2313,7 +2313,20 @@ async function main() {
     console.log(`  - Verified glass shimmer keyframes (glassSweep, glassShimmer, shimmer) and fallback reveal active.`);
 
     const addedKeyframes = liveAnim.keyframeNames.filter(k => !beforeSet.has(k));
-    assert.strictEqual(addedKeyframes.length, 6, `Expected exactly 6 added keyframes, found ${addedKeyframes.length}`);
+    const tutorialKeyframes = addedKeyframes.filter(k => k.startsWith('tut-'));
+    const nonTutorialAdded = addedKeyframes.filter(k => !k.startsWith('tut-'));
+    assert.strictEqual(nonTutorialAdded.length, 6, `Expected exactly 6 non-tutorial added keyframes, found ${nonTutorialAdded.length}`);
+    assert.strictEqual(tutorialKeyframes.length, 5, `Expected exactly 5 tut- prefixed keyframes, found ${tutorialKeyframes.length}`);
+    const expectedTutKeyframes = [
+      'tut-stepFadeIn',
+      'tut-layerFadeIn',
+      'tut-mergeScalePop',
+      'tut-stoneRingGrow',
+      'tut-glassShine'
+    ];
+    for (const kf of expectedTutKeyframes) {
+      assert.ok(liveSet.has(kf), `Tutorial keyframe "${kf}" must exist`);
+    }
     console.log(`  - Keyframes added since e6332a3 (${addedKeyframes.length}): ${addedKeyframes.join(', ')}`);
 
     // Deliberately failing self-check proof:
@@ -3291,6 +3304,11 @@ async function main() {
     // Set mobile viewport
     await cdp.setViewport(390, 742);
 
+    // Ensure tutorial seen flag is set for start-screen flash testing on configured build
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `try { localStorage.setItem('2048_rogue_tutorial_seen', 'true'); } catch (e) {}`
+    });
+
     // 1. Establish reference settled state
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${r13ServerObj.port}/index.html` });
     await sleep(400);
@@ -3504,7 +3522,7 @@ async function main() {
     });
     cdp.onEvent = (data) => {
       if (data.method === 'Fetch.requestPaused') {
-        cdp.send('Fetch.failRequest', { requestId: data.params.requestId, errorReason: 'Failed' }).catch(() => {});
+        cdp.send('Fetch.failRequest', { requestId: data.params.requestId, errorReason: 'Failed' }).catch(() => { });
       }
     };
 
@@ -3593,8 +3611,8 @@ async function main() {
       const dVisStr = (f.dailyVisible ? 'YES' : 'NO').padEnd(11);
       const bestStr = (f.bestScoreText || '0').padStart(10);
       const pass = Math.abs(f.scrimAlpha - settledScrimAlpha) <= 0.02 &&
-                   f.titleLuminance <= settledTitleLuminance * 1.03 &&
-                   (!f.cardVisible || (f.globeVisible && f.dailyVisible));
+        f.titleLuminance <= settledTitleLuminance * 1.03 &&
+        (!f.cardVisible || (f.globeVisible && f.dailyVisible));
       const statusStr = pass ? 'PASS' : 'FAIL';
       r14OutLines.push(`${stageStr} ${timeStr}   ${scrimStr} ${visStr} ${cardOpStr} ${lumStr} ${deltaStr}   ${gVisStr} ${dVisStr} ${bestStr}  ${statusStr}`);
     }
@@ -3633,7 +3651,7 @@ async function main() {
   } finally {
     if (r13ServerObj) r13ServerObj.server.close();
     if (r13ConfigDist) {
-      try { fs.rmSync(r13ConfigDist, { recursive: true, force: true }); } catch {}
+      try { fs.rmSync(r13ConfigDist, { recursive: true, force: true }); } catch { }
     }
     if (cdp) await cdp.close();
     chromeProc.kill('SIGTERM');
@@ -3642,10 +3660,10 @@ async function main() {
     await mock.close();
     try {
       fs.rmSync(tempUserData, { recursive: true, force: true });
-    } catch {}
+    } catch { }
     try {
       if (uiDistDir) fs.rmSync(uiDistDir, { recursive: true, force: true });
-    } catch {}
+    } catch { }
   }
 
   console.log('================================================================================');

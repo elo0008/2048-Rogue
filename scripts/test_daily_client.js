@@ -183,13 +183,13 @@ class CdpSession {
 
 async function main() {
   console.log('================================================================================');
-  console.log('ROGUE 2048 DAILY LEADERBOARD CLIENT TEST SUITE (T1 - T17)');
+  console.log('ROGUE 2048 DAILY LEADERBOARD CLIENT TEST SUITE (T1 - T18)');
   console.log(`Self-Check Fail Mode: ${isSelfCheckFail ? 'ENABLED' : 'DISABLED'}`);
   console.log(`Timestamp:            ${new Date().toISOString()}`);
   console.log('================================================================================\n');
 
   let passedCount = 0;
-  let totalCount = 17;
+  let totalCount = 18;
 
   // ---------------------------------------------------------------------------
   // T1. SEED PARITY
@@ -315,6 +315,11 @@ async function main() {
 
   const mainServer = await startStaticServer(mockDistDir);
   const baseUrl = `http://127.0.0.1:${mainServer.port}/`;
+
+  // Pre-seed tutorial seen flag before all non-tutorial tests (T3 - T17) across navigations & reloads
+  const seenScriptRes = await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: "try { localStorage.setItem('2048_rogue_tutorial_seen','true'); } catch (e) {}",
+  });
 
   // ---------------------------------------------------------------------------
   // T3. FREE RUN: ZERO requests to mock
@@ -1378,6 +1383,164 @@ async function main() {
   assert.strictEqual(gameActiveStill, false, 'Countdown interval must remain cleared during gameplay');
 
   console.log(`✔ T17 PASSED: 10s gameplay produced exactly 0 mutations and no active countdown interval.\n`);
+  passedCount++;
+
+  // ---------------------------------------------------------------------------
+  // T18. FIRST-VISIT TUTORIAL GATING: blocks Play until skipped, then allows run
+  // ---------------------------------------------------------------------------
+  console.log('[T18] Testing first-visit tutorial gating (blocks start until skipped)...');
+
+  const inspectT18StateExpr = `(() => {
+    const tut = document.getElementById('tutorial-overlay');
+    const start = document.getElementById('start-overlay');
+    const card = document.querySelector('.start-card');
+    const play = document.getElementById('btn-play-start');
+    const skip = document.getElementById('btn-skip-tutorial');
+    const isVis = (el) => {
+      if (!el) return false;
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return !el.classList.contains('hidden') &&
+        cs.display !== 'none' &&
+        cs.visibility !== 'hidden' &&
+        parseFloat(cs.opacity) > 0.9 &&
+        r.width > 0 && r.height > 0;
+    };
+    const rectCenter = (el) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
+    };
+    return {
+      seenKey: localStorage.getItem('2048_rogue_tutorial_seen'),
+      tutorialActiveClass: document.documentElement.classList.contains('tutorial-active'),
+      tutorialVisible: isVis(tut),
+      startOverlayHiddenClass: start ? start.classList.contains('hidden') : null,
+      startOverlayVisible: isVis(start),
+      startCardVisible: isVis(card),
+      playVisible: isVis(play),
+      playCenter: rectCenter(play),
+      skipVisible: isVis(skip),
+      skipCenter: rectCenter(skip),
+      moveCount: window.controller ? window.controller.state.moveCount : 0,
+      score: window.controller ? window.controller.state.score : 0,
+      gridJson: window.controller ? JSON.stringify(window.controller.state.grid) : null,
+    };
+  })()`;
+
+  const assertFirstVisitState = (st) => {
+    assert.strictEqual(st.seenKey, null, 'First visit must have 2048_rogue_tutorial_seen unset');
+    assert.strictEqual(st.tutorialActiveClass, true, 'html must have tutorial-active class on first visit');
+    assert.strictEqual(st.tutorialVisible, true, 'Tutorial overlay must be visible on first visit');
+    assert.strictEqual(st.startCardVisible, false, 'Start card must NOT be visible while tutorial overlay is open');
+  };
+
+  // Phase A (self-check + capture real Play coordinates with seen='true')
+  await cdp.send('Page.navigate', { url: baseUrl });
+  await sleep(400);
+  const t18PresetSeenState = await cdp.eval(inspectT18StateExpr);
+  assert.strictEqual(t18PresetSeenState.seenKey, 'true', 'Pre-seeded control navigation must have seenKey === "true"');
+  assert.strictEqual(t18PresetSeenState.startCardVisible, true, 'Start card must be visible when tutorial seen flag is pre-set');
+  assert.strictEqual(t18PresetSeenState.playVisible, true, 'Play button must be visible when tutorial seen flag is pre-set');
+  assert.throws(
+    () => assertFirstVisitState(t18PresetSeenState),
+    /AssertionError/,
+    'Self-check: first-visit tutorial assertion must fail if 2048_rogue_tutorial_seen is pre-set'
+  );
+  const playCoords = t18PresetSeenState.playCenter;
+  assert.strictEqual(playCoords && playCoords.w > 0 && playCoords.h > 0, true, 'Play button must have valid coordinates');
+
+  // Phase B (true first visit without seen script / localStorage flag)
+  await cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: seenScriptRes.identifier });
+  await cdp.eval(`localStorage.removeItem('2048_rogue_tutorial_seen')`);
+  await cdp.send('Page.navigate', { url: baseUrl });
+  await sleep(400);
+
+  const t18BeforePlayClick = await cdp.eval(`
+    (() => {
+      window.__t18PreController = window.controller;
+      return ${inspectT18StateExpr};
+    })()
+  `);
+  assertFirstVisitState(t18BeforePlayClick);
+
+  // Verify clicking where Play sits hits the tutorial overlay and does NOT start a run
+  const hitAtPlayCoords = await cdp.eval(`
+    (() => {
+      const hit = document.elementFromPoint(${playCoords.x}, ${playCoords.y});
+      const tut = document.getElementById('tutorial-overlay');
+      const play = document.getElementById('btn-play-start');
+      return {
+        isPlay: hit === play || (play && play.contains(hit)),
+        isInsideTutorial: Boolean(hit && tut && (hit === tut || tut.contains(hit))),
+      };
+    })()
+  `);
+  assert.strictEqual(hitAtPlayCoords.isPlay, false, 'Play button must not be hit at its coordinates while tutorial is active');
+  assert.strictEqual(hitAtPlayCoords.isInsideTutorial, true, 'Tutorial overlay must intercept clicks at Play coordinates');
+
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: playCoords.x, y: playCoords.y, button: 'left', clickCount: 1 });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: playCoords.x, y: playCoords.y, button: 'left', clickCount: 1 });
+  await sleep(150);
+
+  const km18 = {
+    'U': { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
+    'D': { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+    'L': { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
+    'R': { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+  };
+  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...km18['D'] });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...km18['D'] });
+  await sleep(80);
+
+  const t18AfterBlockedPlay = await cdp.eval(`
+    (() => {
+      const st = ${inspectT18StateExpr};
+      st.sameControllerInstance = (window.controller === window.__t18PreController);
+      return st;
+    })()
+  `);
+  assert.strictEqual(t18AfterBlockedPlay.tutorialVisible, true, 'Tutorial overlay must stay visible after blocked Play click');
+  assert.strictEqual(t18AfterBlockedPlay.startCardVisible, false, 'Start card must stay hidden after blocked Play click');
+  assert.strictEqual(t18AfterBlockedPlay.moveCount, 0, 'Moves must remain 0 while tutorial blocks Play');
+  assert.strictEqual(t18AfterBlockedPlay.sameControllerInstance, true, 'Controller instance must remain untouched while tutorial blocks Play');
+  assert.strictEqual(t18AfterBlockedPlay.gridJson, t18BeforePlayClick.gridJson, 'Board state must remain untouched while tutorial blocks Play');
+
+  // Phase C (press Skip -> start card appears -> Play starts run -> >= 1 move succeeds)
+  assert.strictEqual(t18AfterBlockedPlay.skipVisible, true, 'Skip button must be visible on tutorial overlay');
+  const skipCoords = t18AfterBlockedPlay.skipCenter;
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: skipCoords.x, y: skipCoords.y, button: 'left', clickCount: 1 });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: skipCoords.x, y: skipCoords.y, button: 'left', clickCount: 1 });
+  await sleep(300);
+
+  const t18AfterSkip = await cdp.eval(inspectT18StateExpr);
+  assert.strictEqual(t18AfterSkip.tutorialVisible, false, 'Tutorial overlay must hide after pressing Skip');
+  assert.strictEqual(t18AfterSkip.tutorialActiveClass, false, 'html.tutorial-active must clear after pressing Skip');
+  assert.strictEqual(t18AfterSkip.seenKey, 'true', 'Skip must persist 2048_rogue_tutorial_seen="true"');
+  assert.strictEqual(t18AfterSkip.startCardVisible, true, 'Start card must appear after pressing Skip');
+  assert.strictEqual(t18AfterSkip.playVisible, true, 'Play button must be visible after pressing Skip');
+
+  const livePlayCoords = t18AfterSkip.playCenter;
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: livePlayCoords.x, y: livePlayCoords.y, button: 'left', clickCount: 1 });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: livePlayCoords.x, y: livePlayCoords.y, button: 'left', clickCount: 1 });
+  await sleep(150);
+
+  for (let i = 0; i < 6; i++) {
+    const curMoves = await cdp.eval(`window.controller ? window.controller.state.moveCount : 0`);
+    if (curMoves >= 1) break;
+    const validMoves = await cdp.eval(`window.controller ? window.controller.getValidMoves() : []`);
+    const k = km18[validMoves[0] || 'D'] || km18['D'];
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...k });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...k });
+    await sleep(50);
+  }
+
+  const t18Moves = await cdp.eval(`window.controller ? window.controller.state.moveCount : 0`);
+  const t18StartOverlayHidden = await cdp.eval(`document.getElementById('start-overlay')?.classList.contains('hidden')`);
+  assert.strictEqual(t18StartOverlayHidden, true, 'Start overlay must close when Play is clicked after Skip');
+  assert.strictEqual(t18Moves >= 1, true, `Vacuity guard: expected >= 1 move after Skip + Play (got ${t18Moves})`);
+
+  console.log(`✔ T18 PASSED: First-visit tutorial blocked Play until Skip, then Play started run (${t18Moves} move(s)).\n`);
   passedCount++;
 
   // Cleanup

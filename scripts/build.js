@@ -250,6 +250,12 @@ export async function build(options = {}) {
     fs.writeFileSync(path.join(targetDistDir, 'leaderboard.js'), leaderboardJs, 'utf-8');
   }
 
+  // Copy tutorial.js
+  if (fs.existsSync(path.join(targetRootDir, 'game', 'tutorial.js'))) {
+    const tutorialJs = fs.readFileSync(path.join(targetRootDir, 'game', 'tutorial.js'), 'utf-8');
+    fs.writeFileSync(path.join(targetDistDir, 'tutorial.js'), tutorialJs, 'utf-8');
+  }
+
   // Generate and emit leaderboard-config.js (ALWAYS emitted)
   const lbConfig = validateLeaderboardConfig(
     options.leaderboardUrl ?? process.env.LEADERBOARD_URL,

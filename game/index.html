@@ -11,6 +11,32 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="preload" href="fonts/outfit-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
+  <script src="leaderboard-config.js"></script>
+  <script>
+    (function() {
+      try {
+        var lb = window.__LB;
+        if (!lb || !lb.url || !lb.anonKey) return;
+        var q = window.location.search;
+        if (q) {
+          var params = ['seed', 'stones', 'start', 'ascension', 'shatter', 'siphon', 'diag', 'eraser', 'rewind', 'maxcharges', 'cap', 'laststand', 'pool', 'draft', 'first', 'debug', 'nodraft', 'lab', 'ramp', 'hints'];
+          for (var i = 0; i < params.length; i++) {
+            if (new RegExp('[?&]' + params[i] + '(=|&|$)').test(q)) return;
+          }
+        }
+        var seen = localStorage.getItem('2048_rogue_tutorial_seen');
+        if (!seen) {
+          document.documentElement.classList.add('tutorial-active');
+          // 1500ms Fallback: If tutorial.js fails to load or throws, drop tutorial-active so start card shows
+          setTimeout(function() {
+            if (!window.TutorialController || !window.TutorialController.isActive || !window.TutorialController.isActive()) {
+              document.documentElement.classList.remove('tutorial-active');
+            }
+          }, 1500);
+        }
+      } catch (e) {}
+    })();
+  </script>
   <noscript>
     <style>
       html:not(.app-ready) #start-overlay .start-card {
@@ -19,6 +45,9 @@
         visibility: visible !important;
         pointer-events: auto !important;
         transform: none !important;
+      }
+      #tutorial-overlay {
+        display: none !important;
       }
     </style>
   </noscript>
@@ -190,16 +219,160 @@
           <div class="best">BEST: <b id="start-best-score">0</b></div>
         </div>
         <button class="sheetbutton btn-sound-toggle" id="btn-sound-start" type="button" aria-label="Toggle sound">SOUND: ON <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: middle; display: inline-block; margin-left: 6px;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg></button>
-        <button class="link" id="btn-start-how" type="button" aria-expanded="false">How to play</button>
-        <ul class="how hidden" id="start-how-list">
-          <li>Swipe and merge matching tiles.</li>
-          <li>Stones are permanent hazards.</li>
-          <li>Pick a relic every 60 moves.</li>
-          <li>Abilities are free actions.</li>
-        </ul>
+        <button class="link" id="btn-start-how" type="button">How to play</button>
         <div id="start-build-id" class="foot start-build-footer">BUILD: __BUILD_ID__</div>
       </div>
     </div>
+
+    <!-- Tutorial Modal Overlay -->
+    <section id="tutorial-overlay" class="overlay modal-overlay tutorial-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="step-title-text">
+      <header class="tutorial-header">
+        <div class="tutorial-progress-meta">
+          <span class="tutorial-tag">TUTORIAL</span>
+          <div class="progress-dots" role="tablist" aria-label="Tutorial Steps">
+            <button class="progress-dot active" data-step="0" role="tab" aria-selected="true" aria-label="Step 1: Swipe and Merge" type="button"></button>
+            <button class="progress-dot" data-step="1" role="tab" aria-selected="false" aria-label="Step 2: Watch Out for Stones" type="button"></button>
+            <button class="progress-dot" data-step="2" role="tab" aria-selected="false" aria-label="Step 3: Relics and Abilities" type="button"></button>
+          </div>
+        </div>
+        <button class="btn-skip" id="btn-skip-tutorial" type="button" aria-label="Skip Tutorial">SKIP</button>
+      </header>
+
+      <main class="tutorial-stage" id="tutorial-stage">
+        <!-- STEP 1: SWIPE AND MERGE -->
+        <div class="step-view active" id="step-view-1" data-step-index="0">
+          <div class="mini-boardwrap">
+            <div class="mini-grid" id="grid-step-1">
+              <div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div>
+              <div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div>
+              <div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div>
+              <div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div>
+              <div class="tiles-overlay-layer" id="step1-tiles-layer"></div>
+              <div class="pointer-indicator-wrap" id="step1-pointer-indicator" aria-hidden="true">
+                <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 752 752" width="100%" height="100%">
+                  <path d="M335.77,164.1c6.36,5.43,10.63,12.5,11.42,20.92c.08,2.27,.09,4.53,.09,6.79c0,.87,.01,1.73,.02,2.62c.01,2.88,.02,5.76,.02,8.64c.01,2.07,.02,4.14,.03,6.21c.03,5.61,.04,11.22,.05,16.83c.02,5.87,.05,11.74,.07,17.61c.05,11.1,.09,22.21,.12,33.31c.04,12.65,.09,25.3,.14,37.94c.1,26.01,.19,52.02,.27,78.03c4.75,1,4.75,1,7,1c0-1.03,.01-2.06,.01-3.12c.04-9.74,.1-19.48,.17-29.22c.04-5,.08-10.01,.09-15.02c.02-4.83,.05-9.67,.1-14.51c.01-1.84,.02-3.68,.02-5.52c.01-11.28,.39-20.15,6.74-29.86c8.37-8.01,16.01-10.14,27.33-10.02c8.45,.65,14.95,5.04,20.54,11.27c4.76,7,6.14,12.56,6.19,20.97c0,.39,0,.39,.02,2.42c.02,1.73,.04,3.46,.05,5.19c.02,2.73,.05,5.47,.08,8.2c.07,6.79,.13,13.58,.19,20.37c.05,5.75,.1,11.49,.16,17.23c.03,2.7,.05,5.41,.07,8.11c.02,1.64,.03,3.29,.05,4.93c0,.76,.01,1.52,.01,2.3c.07,5.17,.07,5.17,1.18,6.28c1.67,.04,3.33,.04,5,0c1.34-2.68,1.13-4.76,1.14-7.76c.01-1.21,.02-2.42,.02-3.66c.01-.66,.01-.66,.02-3.99c.01-1.36,.02-2.72,.03-4.09c.05-5.79,.1-11.58,.12-17.37c.01-3.54,.04-7.08,.08-10.62c.02-1.99,.01-3.98,.01-5.98c.13-9.95,1.82-18.54,8.82-26c6.98-6.08,15.37-8.91,24.57-8.53c8.29,1.14,15.89,4.85,21.25,11.31c6.32,8.44,6.39,17.94,6.42,28.1c.01,1.37,.03,2.75,.04,4.12c.05,3.59,.07,7.18,.09,10.77c.04,5.77,.1,11.55,.16,17.32c.02,2.02,.03,4.03,.04,6.04c.01,.61,.01,.61,.03,3.68c.01,.53,.01,.53,.02,3.25C486,393,486,393,487,394c1.67,.04,3.33,.04,5,0c1.7-3.4,1.16-7.29,1.18-11.03c.02-1.86,.04-3.73,.07-5.59c.03-2.93,.06-5.86,.08-8.79c.13-24.73,.13-24.73,9.6-34.83c6.76-5.75,14.56-8.16,23.28-8.03c8.72,.85,16.09,4.65,21.79,11.27c4.7,6.93,6.15,12.41,6.15,20.73c0,.79,0,1.57,.01,2.38c.01,2.63,.01,5.25,.02,7.88c0,1.89,.01,3.77,.02,5.66c.02,6.19,.03,12.39,.04,18.58c0,2.14,.01,4.27,.01,6.41c.02,10.05,.03,20.1,.04,30.15c.01,11.57,.04,23.14,.08,34.71c.03,8.95,.04,17.91,.05,26.87c0,5.34,.01,10.68,.03,16.03c.03,5.03,.03,10.07,.02,15.11c0,1.83,.01,3.67,.02,5.51c.1,14.62-1.12,29.39-8.3,42.48c-.35,.66-.69,1.31-1.04,1.99c-2.85,5.29-6.2,9.98-10.15,14.51c-.77,.97-1.54,1.94-2.34,2.93c-12.17,14.59-31.99,22.66-50.55,24.44c-3.97,.14-7.93,.17-11.9,.15c-1.5,0-3.01,.01-4.51,.02c-4.03,.02-8.06,.01-12.09,0c-4.26-.01-8.51,0-12.76,0c-7.13,.01-14.27,0-21.4-.02c-8.21-.02-16.42-.01-24.62,.01c-7.09,.02-14.18,.02-21.28,.01c-4.21-.01-8.43-.01-12.64,.01c-3.97,.01-7.93,0-11.9-.02c-1.44-.01-2.88-.01-4.32,0c-13.21,.08-26.38-1.99-38.13-8.34c-.33-.18-.33-.18-2.01-1.05c-5.32-2.86-10.08-6.06-14.55-10.14c-.81-.72-1.61-1.43-2.45-2.17c-4.64-4.36-8.39-8.84-11.8-14.22c-.38-.61-.77-1.22-1.16-1.84c-3.93-6.23-7.68-12.55-11.42-18.9c-2.06-3.5-4.13-7-6.2-10.5c-.42-.71-.84-1.42-1.27-2.15c-4.02-6.77-8.1-13.5-12.2-20.22c-6.94-11.38-13.76-22.82-20.55-34.29c-4.79-8.08-9.61-16.16-14.45-24.21c-5.51-9.16-11-18.34-16.46-27.53c-.85-1.42-1.7-2.85-2.55-4.27c-1.19-2-2.38-4-3.57-5.99c-.17-.3-.17-.3-1.07-1.79c-5.39-9.09-8.64-16.71-6.32-27.36c2.61-8.37,7.31-14.52,14.47-19.56c5.31-2.75,9.53-3.5,15.38-3.44c.7-.02,1.4-.04,2.13-.06c10.52,.01,18.94,6.42,27.55,11.81c1.14,.71,2.28,1.42,3.41,2.12c2.94,1.82,5.86,3.65,8.79,5.48c2.81,1.76,5.62,3.51,8.42,5.27c3.08,1.92,6.15,3.84,9.23,5.77c.91,.58,1.83,1.15,2.78,1.75c.79,.49,1.57,.99,2.38,1.5c2.7,1.66,5.4,3.29,8.11,4.91c.45,.27,.45,.27,2.74,1.64c.68,.41,1.37,.83,2.08,1.25c0-1.21,0-2.41,0-3.65c-.01-28.65,.01-57.29,.08-85.93c0-3.53,.01-7.06,.02-10.59c0-.35,0-.35,0-2.13c.02-11.36,.03-22.72,.02-34.08c-.01-11.67,.01-23.33,.05-35c.02-6.55,.03-13.1,.01-19.65c-.01-6.16,0-12.33,.03-18.5c.01-2.26,.01-4.52,0-6.78c-.13-24-.13-24,8.8-33.92c11.04-10.83,28.15-11.07,40.76-2.67Z" fill="#f2c77e"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="reduced-motion-annotation">
+            <strong>Static Overview:</strong> Swiping slides tiles across the grid. Matching adjacent tiles merge into their sum (e.g. 2 + 2 = 4) and a new 2 tile spawns on an open cell.
+          </div>
+        </div>
+
+        <!-- STEP 2: WATCH OUT FOR STONES -->
+        <div class="step-view" id="step-view-2" data-step-index="1">
+          <div class="demo-telegraph" id="step2-telegraph">
+            <span class="haz">⬟</span>
+            <span class="haztext" id="step2-haztext">Next stone in <strong id="step2-stone-count">3</strong> <span id="step2-stone-unit">moves</span></span>
+            <div class="track"><div class="fill" id="step2-fill" style="width: 25%;"></div></div>
+          </div>
+          <div class="mini-boardwrap" id="step2-boardwrap" title="Tap board to advance move">
+            <div class="mini-grid" id="grid-step-2">
+              <div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div>
+              <div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div>
+              <div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div>
+              <div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div><div class="mini-cell"></div>
+              <div class="tiles-overlay-layer" id="step2-tiles-layer"></div>
+            </div>
+          </div>
+          <div class="interactive-cue-tag" id="step2-interactive-cue">▶ Auto-playing moves · Tap board to step</div>
+          <div class="reduced-motion-annotation">
+            <strong>Static Overview:</strong> Moves count down the clock. When the countdown reaches 0, a stone lands in an empty cell. Stones don't move or merge. They're the clock. Survive as long as you can.
+          </div>
+        </div>
+
+        <!-- STEP 3: RELICS AND ABILITIES -->
+        <div class="step-view" id="step-view-3" data-step-index="2">
+          <div class="step3-composite-stage">
+            <div class="stage-section-label" id="step3-label-1">
+              RELIC DRAFT (EVERY 60 MOVES)
+            </div>
+            <div class="relic-draft-group" id="demo-relic-group">
+              <div class="demo-draft-card highlight selected" id="draft-card-1" tabindex="0">
+                <div class="demo-draft-icon" id="icon-diagonal-merge"></div>
+                <div class="demo-draft-info">
+                  <div class="demo-draft-name" id="draft-name-1">DIAGONAL MERGE</div>
+                  <div class="demo-draft-desc" id="draft-desc-1"></div>
+                </div>
+                <div class="demo-draft-tag" id="draft-tag-1">ACTIVE</div>
+              </div>
+              <div class="demo-draft-card" id="draft-card-2" tabindex="0">
+                <div class="demo-draft-icon" id="icon-shatter"></div>
+                <div class="demo-draft-info">
+                  <div class="demo-draft-name" id="draft-name-2">SHATTER</div>
+                  <div class="demo-draft-desc" id="draft-desc-2"></div>
+                </div>
+                <div class="demo-draft-tag" id="draft-tag-2">PASSIVE</div>
+              </div>
+              <div class="demo-draft-card" id="draft-card-3" tabindex="0">
+                <div class="demo-draft-icon" id="icon-last-stand"></div>
+                <div class="demo-draft-info">
+                  <div class="demo-draft-name" id="draft-name-3">LAST STAND</div>
+                  <div class="demo-draft-desc" id="draft-desc-3"></div>
+                </div>
+                <div class="demo-draft-tag" id="draft-tag-3">PASSIVE</div>
+              </div>
+            </div>
+
+            <div class="stage-section-label" id="step3-label-2">
+              FREE ACTIONS (NO MOVE COST)
+            </div>
+            <div class="demo-abilities-container" id="demo-abilities-box">
+              <div class="demo-ability-grid">
+                <div class="demo-ability-card highlight" id="demo-ability-1">
+                  <div class="demo-ability-icon" id="icon-ability-diagonal"></div>
+                  <div class="demo-ability-name" id="ability-name-1">DIAGONAL</div>
+                  <div class="demo-ability-pips">
+                    <span class="demo-pip on"></span>
+                    <span class="demo-pip on"></span>
+                    <span class="demo-pip on"></span>
+                  </div>
+                  <div class="demo-ability-refill" id="ability-refill-1" style="color:var(--accent); font-weight:800;">MAX</div>
+                </div>
+                <div class="demo-ability-card" id="demo-ability-2">
+                  <div class="demo-ability-icon" id="icon-ability-eraser"></div>
+                  <div class="demo-ability-name" id="ability-name-2">ERASER</div>
+                  <div class="demo-ability-pips">
+                    <span class="demo-pip on"></span>
+                    <span class="demo-pip on"></span>
+                    <span class="demo-pip"></span>
+                  </div>
+                  <div class="demo-ability-refill" id="ability-refill-2">+1 in 18</div>
+                </div>
+                <div class="demo-ability-card" id="demo-ability-3">
+                  <div class="demo-ability-icon" id="icon-ability-rewind"></div>
+                  <div class="demo-ability-name" id="ability-name-3">REWIND</div>
+                  <div class="demo-ability-pips">
+                    <span class="demo-pip on"></span>
+                    <span class="demo-pip"></span>
+                    <span class="demo-pip"></span>
+                  </div>
+                  <div class="demo-ability-refill" id="ability-refill-3">+1 in 7</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="reduced-motion-annotation">
+            <strong>Static Overview:</strong> Relics offer persistent run perks. Active abilities (Diagonal Merge, Eraser, Rewind) consume charge pips and execute without consuming regular moves.
+          </div>
+        </div>
+      </main>
+
+      <footer class="tutorial-bottom-card">
+        <div class="tutorial-title-row">
+          <h2 class="tutorial-title" id="step-title-text">SWIPE AND MERGE</h2>
+          <span class="tutorial-step-counter" id="step-counter-text">STEP 1 OF 3</span>
+        </div>
+        <p class="tutorial-caption" id="step-caption-text">
+          Swipe to slide tiles. Equal tiles merge.
+        </p>
+        <div class="tutorial-action-row">
+          <button class="btn-step-prev disabled" id="btn-tutorial-prev" type="button" aria-label="Previous Step">←</button>
+          <button class="btn-tutorial-next" id="btn-tutorial-next" type="button">NEXT →</button>
+        </div>
+      </footer>
+    </section>
 
     <!-- Draft Modal Overlay -->
     <div id="draft-overlay" class="overlay modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="draft-title">
@@ -236,12 +409,6 @@
         <button class="sheetbutton" id="btn-pause-end-run" type="button">End run</button>
         <button class="sheetbutton btn-sound-toggle" id="btn-pause-sound" type="button" aria-label="Toggle sound">Sound: On <span style="float:right"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: middle;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg></span></button>
         <button class="sheetbutton" id="btn-pause-how" type="button">How to play</button>
-        <ul class="how hidden" id="pause-how-list">
-          <li>Swipe and merge matching tiles.</li>
-          <li>Stones are permanent hazards.</li>
-          <li>Pick a relic every 60 moves.</li>
-          <li>Abilities are free actions.</li>
-        </ul>
       </div>
     </div>
 
@@ -457,7 +624,7 @@
     </aside>
   </div>
 
-  <script src="leaderboard-config.js"></script>
+  <script src="tutorial.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
