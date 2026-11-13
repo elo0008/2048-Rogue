@@ -47,6 +47,7 @@ export function createRealDatabaseAdapter(supabase: SupabaseClient): DatabaseAda
         p_flags: params.flags,
         p_dev_key: params.devKey,
         p_dev_limit: params.devLimit,
+        p_final_board: params.finalBoard ?? null,
       });
 
       if (error) {

@@ -181,7 +181,7 @@ async function runCpuBenchmark() {
   for (let i = 0; i < 20; i++) {
     const req = new Request('http://localhost:54321/functions/v1/submit-run', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '127.0.0.1' },
       body: JSON.stringify({ runLog: oversizeRunLog, deviceId: 'oversize_bench_dev', mode: 'any' }),
     });
     const t0 = performance.now();

@@ -5,6 +5,8 @@
 import http from 'node:http';
 import { handleSubmissionRequest } from '../supabase/functions/submit-run/handler.ts';
 import { handleSetNameRequest } from '../supabase/functions/set-name/handler.ts';
+import { handleCreateChallengeRequest } from '../supabase/functions/create-challenge/handler.ts';
+import { handleChallengeEventRequest } from '../supabase/functions/challenge-event/handler.ts';
 import { SecurityDatabaseEngine } from './lib/inmemory_db.js';
 
 export function createMockLeaderboardServer(initialDb = null) {
@@ -203,6 +205,14 @@ export function createMockLeaderboardServer(initialDb = null) {
         res.end(JSON.stringify(result));
         return;
       }
+
+      if (pathname === '/rest/v1/rpc/get_challenge') {
+        const code = bodyJson?.code || bodyJson?.p_code;
+        const result = db.rpcGetChallenge(code);
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
     }
 
     // 6. Submit-Run Edge Function
@@ -260,6 +270,84 @@ export function createMockLeaderboardServer(initialDb = null) {
       });
 
       const webRes = await handleSetNameRequest(webReq, db);
+      const resBody = await webRes.text();
+
+      const outHeaders = {};
+      for (const [k, v] of Object.entries(corsHeaders)) {
+        outHeaders[k.toLowerCase()] = v;
+      }
+      webRes.headers.forEach((val, key) => {
+        outHeaders[key.toLowerCase()] = val;
+      });
+
+      res.writeHead(webRes.status, outHeaders);
+      res.end(resBody);
+      return;
+    }
+
+    // 8. Create-Challenge Edge Function
+    if (pathname === '/functions/v1/create-challenge') {
+      if (behaviour === 'offline') {
+        req.socket.destroy();
+        return;
+      }
+      if (behaviour === 'status:500') {
+        res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INTERNAL_SERVER_ERROR', message: 'Mock 500 error' }));
+        return;
+      }
+      const webHeaders = new Headers();
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (v !== undefined) webHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
+      }
+      webHeaders.set('cf-connecting-ip', '198.51.100.42');
+
+      const webReq = new Request(`http://localhost${req.url}`, {
+        method: req.method,
+        headers: webHeaders,
+        body: req.method !== 'GET' && req.method !== 'HEAD' ? rawBody : undefined,
+      });
+
+      const webRes = await handleCreateChallengeRequest(webReq, db);
+      const resBody = await webRes.text();
+
+      const outHeaders = {};
+      for (const [k, v] of Object.entries(corsHeaders)) {
+        outHeaders[k.toLowerCase()] = v;
+      }
+      webRes.headers.forEach((val, key) => {
+        outHeaders[key.toLowerCase()] = val;
+      });
+
+      res.writeHead(webRes.status, outHeaders);
+      res.end(resBody);
+      return;
+    }
+
+    // 9. Challenge-Event Edge Function
+    if (pathname === '/functions/v1/challenge-event') {
+      if (behaviour === 'offline') {
+        req.socket.destroy();
+        return;
+      }
+      if (behaviour === 'status:500') {
+        res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'INTERNAL_SERVER_ERROR', message: 'Mock 500 error' }));
+        return;
+      }
+      const webHeaders = new Headers();
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (v !== undefined) webHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
+      }
+      webHeaders.set('cf-connecting-ip', '198.51.100.42');
+
+      const webReq = new Request(`http://localhost${req.url}`, {
+        method: req.method,
+        headers: webHeaders,
+        body: req.method !== 'GET' && req.method !== 'HEAD' ? rawBody : undefined,
+      });
+
+      const webRes = await handleChallengeEventRequest(webReq, db);
       const resBody = await webRes.text();
 
       const outHeaders = {};

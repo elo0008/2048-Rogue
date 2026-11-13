@@ -10,7 +10,7 @@
     "build:dev": "node scripts/build.js dev",
     "icons": "node scripts/icon_metrics.js",
     "sim": "node sim/run.js",
-    "test:edge": "node scripts/test_edge_parity.js && node scripts/test_edge_cpu.js && node scripts/test_edge_security.js && node scripts/test_edge_rank.js && node scripts/test_names.js && node scripts/test_ip_norm.js",
+    "test:edge": "node scripts/test_edge_parity.js && node scripts/test_edge_cpu.js && node scripts/test_edge_security.js && node scripts/test_edge_rank.js && node scripts/test_names.js && node scripts/test_ip_norm.js && node scripts/test_edge_challenge.js",
     "test:live": "node scripts/run_live_suite.js",
     "check:deployed": "node scripts/check_deployed.js"
   },

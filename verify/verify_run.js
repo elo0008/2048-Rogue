@@ -74,6 +74,7 @@ function extractReplay(ctrl) {
       capped: false,
       endedByPlayer: false,
       ascensions: [],
+      finalBoard: null,
     };
   }
   return {
@@ -90,6 +91,7 @@ function extractReplay(ctrl) {
       value: a.value,
       payout: a.payout,
     })) : [],
+    finalBoard: ctrl && typeof ctrl.getBoard === 'function' ? ctrl.getBoard() : (ctrl?.state?.board ? [...ctrl.state.board] : null),
   };
 }
 
@@ -965,6 +967,7 @@ export async function extractSubmission(runLog, verdict) {
     moves: verdict.replay.moves,
     maxTile: verdict.replay.maxTile,
     relicsOwned: Array.isArray(verdict.replay.relicsOwned) ? [...verdict.replay.relicsOwned] : [],
+    finalBoard: verdict.replay.finalBoard || null,
     replayVersion: runLog.replayVersion,
     eventsHash,
   };

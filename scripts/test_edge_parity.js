@@ -91,6 +91,7 @@ async function run() {
       headers: {
         'Content-Type': 'application/json',
         'Origin': 'https://rogue2048.vercel.app',
+        'cf-connecting-ip': '127.0.0.1',
       },
       body: JSON.stringify({
         runLog,

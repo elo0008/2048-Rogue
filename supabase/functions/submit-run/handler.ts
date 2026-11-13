@@ -96,6 +96,7 @@ export interface RecordSubmissionParams {
   flags: string[];
   devKey: string;
   devLimit: number;
+  finalBoard?: any;
 }
 
 export interface RecordSubmissionResult {
@@ -407,6 +408,7 @@ export async function handleSubmissionRequest(
     flags: verdict.flags || [],
     devKey: devSubKey,
     devLimit: DEVICE_SUBMISSION_LIMIT_DAILY,
+    finalBoard: (submission as any).finalBoard ?? null,
   });
 
   if (recordResult.status === 'ALREADY_SUBMITTED') {

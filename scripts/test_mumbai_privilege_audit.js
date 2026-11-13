@@ -64,6 +64,11 @@ async function audit() {
     { target: 'table: abuse_rate_limits', op: 'INSERT', method: 'POST', url: `${SUPABASE_URL}/rest/v1/abuse_rate_limits`, body: { key: 'audit_test', count: 1, window_start: '2026-11-03T00:00:00Z' } },
     { target: 'table: abuse_rate_limits', op: 'UPDATE', method: 'PATCH', url: `${SUPABASE_URL}/rest/v1/abuse_rate_limits?key=eq.audit_test`, body: { count: 2 } },
     { target: 'table: abuse_rate_limits', op: 'DELETE', method: 'DELETE', url: `${SUPABASE_URL}/rest/v1/abuse_rate_limits?key=eq.audit_test` },
+
+    { target: 'table: challenges', op: 'SELECT', method: 'GET', url: `${SUPABASE_URL}/rest/v1/challenges?select=*` },
+    { target: 'table: challenges', op: 'INSERT', method: 'POST', url: `${SUPABASE_URL}/rest/v1/challenges`, body: { code: 'audit1234567', creator_device_id: 'audit_test', mode: 'daily', expires_at: '2026-11-20T00:00:00Z' } },
+    { target: 'table: challenges', op: 'UPDATE', method: 'PATCH', url: `${SUPABASE_URL}/rest/v1/challenges?code=eq.audit1234567`, body: { open_count: 1 } },
+    { target: 'table: challenges', op: 'DELETE', method: 'DELETE', url: `${SUPABASE_URL}/rest/v1/challenges?code=eq.audit1234567` },
   ];
 
   for (const t of tableTests) {
@@ -102,6 +107,9 @@ async function audit() {
     { name: 'set_display_name', body: { p_device_id: 'test_dev', p_display_name: 'test', p_name_norm: 'test' } },
     { name: 'set_display_name_limited', body: { p_device_id: 'test_dev', p_display_name: 'test', p_name_norm: 'test', p_limit_key: 'k', p_limit: 3 } },
     { name: 'cleanup_rate_limits', body: {} },
+    { name: 'create_daily_challenge', body: { p_device_id: 'test_dev', p_code: 'audit1234567' } },
+    { name: 'create_free_challenge', body: { p_device_id: 'test_dev', p_display_name: 'test', p_code: 'audit1234567', p_points: 0, p_total_moves: 0, p_max_tile: 2, p_relics: [], p_seed: '1', p_final_board: null, p_replay_version: '3C7C88F57E5B29A1DFA196A55C054F40D748CF948101C50E4E834FBFAD33EE98', p_events_hash: 'h', p_expires_at: '2026-11-20T00:00:00Z' } },
+    { name: 'record_challenge_event', body: { p_code: 'audit1234567', p_kind: 'open' } },
   ];
 
   for (const rpc of deniedRPCs) {
@@ -139,6 +147,7 @@ async function audit() {
     { name: 'weekly_best', body: { target_week_start: '2026-11-02', p_limit: 10 } },
     { name: 'my_daily_rank', body: { target_day: '2026-11-03', p_device_id: '00000000-0000-0000-0000-000000000000' } },
     { name: 'my_weekly_rank', body: { target_week_start: '2026-11-02', p_device_id: '00000000-0000-0000-0000-000000000000' } },
+    { name: 'get_challenge', body: { code: '000000000000' } },
   ];
 
   for (const rpc of allowedRPCs) {

@@ -265,7 +265,7 @@ for (const c of p1Cases) {
   }
   const req = new Request('http://localhost/functions/v1/set-name', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'cf-connecting-ip': '127.0.0.1' },
     body: JSON.stringify({ deviceId: 'test_device_p1_leak', name: c.input })
   });
   const res = await handleSetNameRequest(req, mockDb, {});

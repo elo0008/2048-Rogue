@@ -33,6 +33,15 @@ if (!fs.existsSync(outDir)) {
 import { SecurityDatabaseEngine } from './lib/inmemory_db.js';
 export { SecurityDatabaseEngine };
 
+// Silence test noise from getClientIp fallback warnings in unit test runs
+const _origWarn = console.warn;
+console.warn = (...args) => {
+  if (typeof args[0] === 'string' && args[0].includes('[getClientIp] cf-connecting-ip header missing')) {
+    return;
+  }
+  _origWarn.apply(console, args);
+};
+
 async function runTests(selfCheckMode = false) {
   console.log(`[test_edge_security] Running Edge Security Suite (selfCheckMode=${selfCheckMode})...`);
 
