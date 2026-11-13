@@ -861,3 +861,135 @@ export async function setDisplayName({
     return { ok: false, code: 'NETWORK' };
   }
 }
+
+/**
+ * Creates a challenge link for a completed Daily or Free run.
+ *
+ * @param {object} [params={}]
+ * @param {string} [params.url] - Leaderboard base URL (falls back to window.__LB.url)
+ * @param {string} [params.anonKey] - Supabase anon key (falls back to window.__LB.anonKey)
+ * @param {string} [params.deviceId] - Device identifier
+ * @param {'daily'|'free'} [params.mode='daily']
+ * @param {object|null} [params.runLog=null] - Run log for free runs
+ * @param {string|null} [params.dayUtc=null] - Optional day for daily run
+ * @param {typeof fetch} [params.fetchFn=globalThis.fetch]
+ * @param {number} [params.timeoutMs=20000]
+ * @returns {Promise<{ ok: true, code: string, mode: string, expiresAt: string, url: string } | { ok: false, error: 'not_found'|'too_short'|'rejected'|'rate_limited'|'version'|'network'|'server', retryAfter?: number }>}
+ */
+export async function createChallenge({
+  url,
+  anonKey,
+  deviceId,
+  mode = 'daily',
+  runLog = null,
+  dayUtc = null,
+  fetchFn = globalThis.fetch,
+  timeoutMs = SUBMIT_TIMEOUT_MS,
+} = {}) {
+  const baseUrl = url || (typeof window !== 'undefined' && window.__LB?.url) || '';
+  const key = anonKey || (typeof window !== 'undefined' && window.__LB?.anonKey) || '';
+  const devId = deviceId || (typeof localStorage !== 'undefined' ? getDeviceId(localStorage) : null);
+
+  if (!baseUrl || !key) {
+    return { ok: false, error: 'network' };
+  }
+  if (!devId) {
+    return { ok: false, error: 'rejected' };
+  }
+
+  const cleanBase = baseUrl.replace(/\/+$/, '');
+  const endpoint = `${cleanBase}/functions/v1/create-challenge`;
+
+  let bodyPayload = { deviceId: devId };
+  if (mode === 'daily') {
+    bodyPayload.mode = 'daily';
+    if (dayUtc) bodyPayload.dayUtc = dayUtc;
+  } else {
+    bodyPayload.mode = 'free';
+    const minimalLog = buildSubmission(runLog);
+    if (!minimalLog) {
+      return { ok: false, error: 'rejected' };
+    }
+    bodyPayload.runLog = minimalLog;
+  }
+
+  // Up to 2 attempts: exactly 1 automatic retry on network error (backend is idempotent)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    let timer = null;
+    if (controller && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        try { controller.abort(); } catch {}
+      }, timeoutMs);
+    }
+
+    try {
+      const res = await fetchFn(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': key,
+        },
+        body: JSON.stringify(bodyPayload),
+        signal: controller?.signal,
+      });
+
+      if (timer) clearTimeout(timer);
+
+      let data = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+
+      if (res.status === 200 && data?.code) {
+        return {
+          ok: true,
+          code: data.code,
+          mode: data.mode || mode,
+          expiresAt: data.expiresAt,
+          url: data.url || `/c/${data.code}`,
+        };
+      }
+
+      if (res.status === 404) {
+        return { ok: false, error: 'not_found' };
+      }
+
+      if (res.status === 429) {
+        const retryHeader = res.headers?.get ? res.headers.get('retry-after') : null;
+        let retrySec = retryHeader ? parseInt(retryHeader, 10) : 0;
+        if (isNaN(retrySec) || retrySec < 0) retrySec = 0;
+        return { ok: false, error: 'rate_limited', retryAfter: retrySec };
+      }
+
+      if (res.status === 422) {
+        const errStr = String(data?.error || data?.reason || data?.message || '').toLowerCase();
+        if (errStr.includes('short') || errStr.includes('run_too_short')) {
+          return { ok: false, error: 'too_short' };
+        }
+        if (errStr.includes('version') || errStr.includes('replay_version')) {
+          return { ok: false, error: 'version' };
+        }
+        return { ok: false, error: 'rejected' };
+      }
+
+      if (res.status >= 500) {
+        return { ok: false, error: 'server' };
+      }
+
+      return { ok: false, error: 'rejected' };
+    } catch (_err) {
+      if (timer) clearTimeout(timer);
+      if (attempt === 0) {
+        // Automatic retry once on network error
+        continue;
+      }
+      return { ok: false, error: 'network' };
+    }
+  }
+
+  return { ok: false, error: 'network' };
+}
+

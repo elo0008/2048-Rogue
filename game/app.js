@@ -55,6 +55,7 @@ import {
   avatarInitials,
   formatPoints,
   getMondayUtc,
+  createChallenge,
 } from './leaderboard.js';
 
 const DEFAULT_POOL = [
@@ -4813,7 +4814,11 @@ function handleGameOver() {
     if (!dailyRunActive) {
       if (endSeedLabel) endSeedLabel.textContent = 'RUN SEED';
       if (endSeedEl) endSeedEl.textContent = currentRunLog.seed;
-      renderGameOverRankingCard(8, { isForbidden: !canShowDailyButton() });
+      renderGameOverRankingCard(8, {
+        isForbidden: !canShowDailyButton(),
+        moves: currentRunLog?.totalMoves ?? currentRunLog?.moves ?? 0,
+        runLog: currentRunLog,
+      });
       if (endLeaderboardStatus) {
         endLeaderboardStatus.classList.add('hidden');
         endLeaderboardStatus.textContent = '';
@@ -4886,7 +4891,11 @@ function handleGameOver() {
           }
         }
       } else {
-        renderGameOverRankingCard(8, { isForbidden: !canShowDailyButton() });
+        renderGameOverRankingCard(8, {
+        isForbidden: !canShowDailyButton(),
+        moves: currentRunLog?.totalMoves ?? currentRunLog?.moves ?? 0,
+        runLog: currentRunLog,
+      });
       }
     }
   }
@@ -5877,6 +5886,13 @@ if (bestRunsOverlayEl) {
 
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    const sso = document.getElementById('share-sheet');
+    if (sso && !sso.classList.contains('hidden')) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeShareSheet();
+      return;
+    }
     const nso = document.getElementById('name-sheet-overlay');
     if (nso && !nso.classList.contains('hidden')) {
       e.preventDefault();
@@ -5935,41 +5951,6 @@ function getAvatarColors(name) {
   return AVATAR_PALETTES[Math.abs(hash) % AVATAR_PALETTES.length];
 }
 
-function handleShareRanking(data) {
-  const dayStr = data.day || dailyRunStartDay || utcDateString(new Date());
-  const rank = data.rank || '—';
-  const total = data.total ? formatPoints(data.total) : '—';
-  const points = data.points ? formatPoints(data.points) : (currentRunLog ? formatPoints(currentRunLog.points) : '0');
-  const shareText = `Rogue 2048 Daily ${formatDayShort(dayStr)} · #${rank} of ${total} · ${points} pts`;
-  const url = (typeof window !== 'undefined' && window.location.origin && window.location.origin.startsWith('https'))
-    ? window.location.origin
-    : 'https://rogue2048.com';
-
-  if (navigator?.share) {
-    navigator.share({
-      title: 'Rogue 2048 Daily',
-      text: shareText,
-      url,
-    }).catch(() => {
-      fallbackShareCopy(`${shareText} ${url}`);
-    });
-  } else {
-    fallbackShareCopy(`${shareText} ${url}`);
-  }
-}
-
-function fallbackShareCopy(text) {
-  if (navigator?.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(() => {
-      showToast('Copied!');
-    }).catch(() => {
-      showToast('Copied!');
-    });
-  } else {
-    showToast('Copied!');
-  }
-}
-
 function handleReturnToStartWithDaily() {
   if (endOverlay) endOverlay.classList.add('hidden');
   if (startOverlay) {
@@ -5995,7 +5976,11 @@ function renderGameOverRankingCard(outcome, data = {}) {
 
   const dayStr = data.day || dailyRunStartDay || utcDateString(new Date());
   if (headerTitleEl) {
-    headerTitleEl.textContent = `DAILY RANKING · ${formatDayShort(dayStr)}`;
+    if (outcome === 8) {
+      headerTitleEl.textContent = 'FREE RUN';
+    } else {
+      headerTitleEl.textContent = `DAILY RANKING · ${formatDayShort(dayStr)}`;
+    }
   }
 
   if (actionEl) actionEl.replaceChildren();
@@ -6070,7 +6055,7 @@ function renderGameOverRankingCard(outcome, data = {}) {
     shareBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/></svg><span>SHARE</span>';
     shareBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      handleShareRanking(data);
+      openShareSheet('daily', data);
     });
     actionEl.appendChild(shareBtn);
 
@@ -6304,46 +6289,75 @@ function renderGameOverRankingCard(outcome, data = {}) {
 
   // Outcome 8: FREE RUN
   else if (outcome === 8) {
-    const pill = document.createElement('span');
-    pill.className = 'ranking-meta-pill';
-    pill.textContent = 'FREE RUN';
-    actionEl.appendChild(pill);
+    if (headerTitleEl) {
+      headerTitleEl.textContent = 'FREE RUN';
+    }
+
+    const canShare = canShowDailyButton();
+    const moves = typeof data.moves === 'number'
+      ? data.moves
+      : (data.runLog ? (data.runLog.totalMoves ?? data.runLog.moves ?? 0) : (currentRunLog ? (currentRunLog.totalMoves ?? currentRunLog.moves ?? 0) : 0));
 
     const rankLeft = document.createElement('div');
     rankLeft.className = 'rank-left';
-    const rankNum = document.createElement('span');
-    rankNum.className = 'rank-number';
-    rankNum.style.fontSize = '24px';
-    rankNum.style.color = 'var(--muted)';
-    rankNum.textContent = 'NOT RANKED';
-    rankLeft.appendChild(rankNum);
+    rankLeft.style.maxWidth = '220px';
 
-    const rankRight = document.createElement('div');
-    rankRight.className = 'rank-right';
-    const pillBtn = document.createElement('button');
-    pillBtn.className = 'percentile-badge pill-btn';
-    pillBtn.id = 'btn-play-daily-pill';
-    pillBtn.type = 'button';
-    pillBtn.textContent = 'PLAY DAILY';
-    pillBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      handleReturnToStartWithDaily();
-    });
-    rankRight.appendChild(pillBtn);
-
-    const helper = document.createElement('span');
-    helper.className = 'total-players-text';
-    helper.textContent = data.isForbidden ? 'Custom seed or debug mode enabled' : 'Free runs are not ranked. Daily runs are.';
-    rankRight.appendChild(helper);
-
+    const mutedSpan = document.createElement('span');
+    mutedSpan.className = 'free-run-muted-text total-players-text';
+    if (!canShare) {
+      mutedSpan.textContent = data.isForbidden ? 'Custom seed or debug mode enabled' : "Free runs aren't ranked.";
+    } else if (moves < 10) {
+      mutedSpan.textContent = 'Play a few more moves to challenge a friend.';
+    } else {
+      mutedSpan.textContent = "Free runs aren't ranked. Send this one as a challenge.";
+    }
+    rankLeft.appendChild(mutedSpan);
     bodyEl.appendChild(rankLeft);
-    bodyEl.appendChild(rankRight);
+
+    if (canShare) {
+      const rankRight = document.createElement('div');
+      rankRight.className = 'rank-right';
+      const shareBtn = document.createElement('button');
+      shareBtn.className = 'ranking-share-btn-gold';
+      shareBtn.id = 'btn-ranking-share';
+      shareBtn.type = 'button';
+      shareBtn.setAttribute('aria-label', 'Challenge a friend');
+      shareBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/></svg><span>SHARE</span>';
+      if (moves < 10) {
+        shareBtn.disabled = true;
+      } else {
+        shareBtn.disabled = false;
+        shareBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openShareSheet('free', data);
+        });
+      }
+      rankRight.appendChild(shareBtn);
+      bodyEl.appendChild(rankRight);
+    }
 
     footerEl.classList.add('status-unranked');
-    footerEl.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
-    const footerTxt = document.createElement('span');
-    footerTxt.textContent = 'RUN NOT SUBMITTED';
-    footerEl.appendChild(footerTxt);
+    footerEl.style.display = 'flex';
+    footerEl.style.justifyContent = 'space-between';
+    footerEl.style.alignItems = 'center';
+
+    const footerLeft = document.createElement('span');
+    footerLeft.className = 'footer-left-unranked';
+    footerLeft.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" width="11" height="11" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg><span>FREE RUN · NOT RANKED</span>';
+    footerEl.appendChild(footerLeft);
+
+    if (canShare) {
+      const playDailyBtn = document.createElement('button');
+      playDailyBtn.className = 'play-daily-link';
+      playDailyBtn.id = 'btn-play-daily-pill';
+      playDailyBtn.type = 'button';
+      playDailyBtn.textContent = 'PLAY DAILY';
+      playDailyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleReturnToStartWithDaily();
+      });
+      footerEl.appendChild(playDailyBtn);
+    }
 
     if (statusCompatibilityEl) {
       statusCompatibilityEl.textContent = '';
@@ -7081,6 +7095,499 @@ if (nsInput) {
   });
 }
 
+/* -------------------------------------------------------------
+ * B4 Share Sheet (Challenge a Friend) Management
+ * ------------------------------------------------------------- */
+let activeShareSheetRunKey = null;
+let cachedChallengeResult = null;
+let shareExpiryInterval = null;
+let lastShareTriggerBtn = null;
+let isShareChallengeInFlight = false;
+
+function openShareSheet(mode = 'daily', runData = {}) {
+  const backdrop = document.getElementById('share-sheet-backdrop');
+  const sheet = document.getElementById('share-sheet');
+  const chipEl = document.getElementById('share-mode-chip');
+  const closeBtn = document.getElementById('btn-share-sheet-close');
+  const gameoverCard = document.querySelector('.gameover-card');
+
+  if (!sheet) return;
+
+  lastShareTriggerBtn = document.activeElement;
+
+  if (chipEl) {
+    chipEl.textContent = mode === 'daily' ? 'DAILY' : 'FREE RUN';
+  }
+
+  if (gameoverCard) {
+    gameoverCard.setAttribute('inert', '');
+  }
+
+  if (backdrop) backdrop.classList.remove('hidden');
+  sheet.classList.remove('hidden');
+
+  closeBtn?.focus();
+
+  const day = runData.day || dailyRunStartDay || utcDateString(new Date());
+  const points = typeof runData.points === 'number'
+    ? runData.points
+    : (currentRunLog ? (currentRunLog.points ?? 0) : 0);
+  const moves = typeof runData.moves === 'number'
+    ? runData.moves
+    : (currentRunLog ? (currentRunLog.totalMoves ?? currentRunLog.moves ?? 0) : 0);
+
+  const runKey = runData.runKey || (mode === 'daily'
+    ? `daily_${day}_${points}`
+    : (currentRunLog?.runId || `free_${currentRunLog?.seed ?? '0'}_${points}_${moves}`));
+
+  if (activeShareSheetRunKey === runKey && cachedChallengeResult) {
+    renderShareSheetReady(cachedChallengeResult);
+  } else {
+    activeShareSheetRunKey = runKey;
+    cachedChallengeResult = null;
+    renderShareSheetCreating(mode);
+    requestCreateChallenge(mode, { ...runData, day, points, moves, runKey });
+  }
+}
+
+function closeShareSheet() {
+  if (shareExpiryInterval) {
+    clearInterval(shareExpiryInterval);
+    shareExpiryInterval = null;
+  }
+  const backdrop = document.getElementById('share-sheet-backdrop');
+  const sheet = document.getElementById('share-sheet');
+  const gameoverCard = document.querySelector('.gameover-card');
+
+  if (gameoverCard) {
+    gameoverCard.removeAttribute('inert');
+  }
+
+  if (backdrop) backdrop.classList.add('hidden');
+  if (sheet) sheet.classList.add('hidden');
+
+  if (lastShareTriggerBtn && typeof lastShareTriggerBtn.focus === 'function') {
+    try { lastShareTriggerBtn.focus(); } catch {}
+  }
+}
+
+async function requestCreateChallenge(mode, payload = {}) {
+  isShareChallengeInFlight = true;
+  const shareBtn = document.getElementById('btn-ranking-share');
+  if (shareBtn && shareBtn.classList.contains('ranking-share-btn-gold')) {
+    shareBtn.innerHTML = '<span class="spinner-sm" aria-hidden="true"></span><span>SHARE</span>';
+  }
+
+  try {
+    const runLogToUse = mode === 'free'
+      ? (payload.runLog || currentRunLog || {
+          seed: 1,
+          rulesVersion: '1',
+          replayVersion: '3C7C88F57E5B29A1DFA196A55C054F40D748CF948101C50E4E834FBFAD33EE98',
+          events: [],
+          points: payload.points || 0,
+          totalMoves: payload.moves || 0,
+        })
+      : null;
+
+    const res = await createChallenge({
+      mode,
+      runLog: runLogToUse,
+      dayUtc: mode === 'daily' ? payload.day : null,
+      fetchFn: window.fetch.bind(window),
+    });
+
+    if (activeShareSheetRunKey !== payload.runKey) {
+      return;
+    }
+
+    if (res.ok) {
+      cachedChallengeResult = {
+        code: res.code,
+        mode: res.mode || mode,
+        expiresAt: res.expiresAt,
+        url: res.url,
+        points: payload.points,
+        day: payload.day,
+      };
+      renderShareSheetReady(cachedChallengeResult);
+    } else {
+      renderShareSheetError(res.error, res.retryAfter, () => {
+        renderShareSheetCreating(mode);
+        requestCreateChallenge(mode, payload);
+      });
+    }
+  } catch (_e) {
+    if (activeShareSheetRunKey !== payload.runKey) {
+      return;
+    }
+    renderShareSheetError('network', 0, () => {
+      renderShareSheetCreating(mode);
+      requestCreateChallenge(mode, payload);
+    });
+  } finally {
+    isShareChallengeInFlight = false;
+    if (shareBtn && shareBtn.classList.contains('ranking-share-btn-gold')) {
+      shareBtn.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/></svg><span>SHARE</span>';
+    }
+  }
+}
+
+function renderShareSheetCreating(mode) {
+  const bodyEl = document.getElementById('share-sheet-body');
+  if (!bodyEl) return;
+  bodyEl.replaceChildren();
+
+  const statusBox = document.createElement('div');
+  statusBox.className = 'status-box';
+  const spinner = document.createElement('span');
+  spinner.className = 'spinner';
+  spinner.setAttribute('aria-hidden', 'true');
+  const textSpan = document.createElement('span');
+  textSpan.textContent = mode === 'daily'
+    ? 'Creating your link…'
+    : 'Uploading and verifying your run…';
+  statusBox.appendChild(spinner);
+  statusBox.appendChild(textSpan);
+  bodyEl.appendChild(statusBox);
+
+  // Disabled actions placeholder while waiting
+  const actionsCol = document.createElement('div');
+  actionsCol.className = 'actions-col';
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    const sendBtn = document.createElement('button');
+    sendBtn.id = 'btn-sheet-send';
+    sendBtn.type = 'button';
+    sendBtn.className = 'btn-sheet btn-sheet-primary';
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg><span>SEND LINK</span>';
+    actionsCol.appendChild(sendBtn);
+  }
+  const row = document.createElement('div');
+  row.className = 'actions-row';
+  const waBtn = document.createElement('button');
+  waBtn.id = 'btn-sheet-wa';
+  waBtn.type = 'button';
+  waBtn.className = 'btn-sheet btn-sheet-secondary';
+  waBtn.disabled = true;
+  waBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M20.52 3.48A11.93 11.93 0 0 0 12.06 0C5.5 0 .15 5.35.15 11.91c0 2.1.55 4.14 1.59 5.95L0 24l6.32-1.66a11.87 11.87 0 0 0 5.74 1.47h.01c6.56 0 11.91-5.35 11.91-11.91 0-3.18-1.24-6.17-3.46-8.42zM12.07 21.8c-1.78 0-3.53-.48-5.06-1.39l-.36-.21-3.76.99 1-3.66-.23-.38a9.88 9.88 0 0 1-1.52-5.24c0-5.46 4.45-9.91 9.92-9.91 2.65 0 5.14 1.03 7.01 2.9 1.87 1.88 2.9 4.36 2.9 7.01 0 5.46-4.45 9.89-9.9 9.89zm5.43-7.41c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.95 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.7.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg><span>WHATSAPP</span>';
+  const copyBtn = document.createElement('button');
+  copyBtn.id = 'btn-sheet-copy';
+  copyBtn.type = 'button';
+  copyBtn.className = 'btn-sheet btn-sheet-secondary';
+  copyBtn.disabled = true;
+  copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>COPY LINK</span>';
+  row.appendChild(waBtn);
+  row.appendChild(copyBtn);
+  actionsCol.appendChild(row);
+  bodyEl.appendChild(actionsCol);
+}
+
+function renderShareSheetReady(data) {
+  if (shareExpiryInterval) {
+    clearInterval(shareExpiryInterval);
+    shareExpiryInterval = null;
+  }
+  const bodyEl = document.getElementById('share-sheet-body');
+  if (!bodyEl) return;
+  bodyEl.replaceChildren();
+
+  const mode = data.mode || 'daily';
+  const origin = (typeof window !== 'undefined' && window.location.origin) || 'https://rogue2048.com';
+  const fullUrl = `${origin.replace(/\/+$/, '')}/c/${data.code}`;
+  const rawName = (typeof localStorage !== 'undefined' ? localStorage.getItem('rogue2048_display_name') : null)?.trim();
+  const name = rawName || 'I';
+  const points = data.points || 0;
+
+  // 1. Preview Bubble
+  const bubble = document.createElement('div');
+  bubble.className = 'preview-bubble';
+
+  const previewMsg = document.createElement('div');
+  previewMsg.className = 'preview-msg';
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'player-name';
+  nameSpan.textContent = name;
+  const restSpan = document.createElement('span');
+  restSpan.textContent = mode === 'daily'
+    ? ` scored ${formatPoints(points)} in today's Rogue 2048 Daily. Beat it?`
+    : ` scored ${formatPoints(points)} in Rogue 2048. Beat it?`;
+  previewMsg.appendChild(nameSpan);
+  previewMsg.appendChild(restSpan);
+  bubble.appendChild(previewMsg);
+
+  const linkBox = document.createElement('div');
+  linkBox.className = 'preview-link-box';
+  linkBox.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>';
+  const linkText = document.createElement('span');
+  linkText.className = 'preview-link-text';
+  linkText.textContent = fullUrl;
+  linkBox.appendChild(linkText);
+  bubble.appendChild(linkBox);
+  bodyEl.appendChild(bubble);
+
+  // 2. Meta Stack
+  const metaStack = document.createElement('div');
+  metaStack.className = 'meta-stack';
+
+  if (mode === 'daily') {
+    const expiryLine = document.createElement('div');
+    expiryLine.className = 'expiry-line';
+    expiryLine.id = 'share-expiry-line';
+    const clockSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    clockSvg.setAttribute('class', 'clock-icon');
+    clockSvg.setAttribute('viewBox', '0 0 24 24');
+    clockSvg.setAttribute('width', '13');
+    clockSvg.setAttribute('height', '13');
+    clockSvg.setAttribute('fill', 'none');
+    clockSvg.setAttribute('stroke', 'currentColor');
+    clockSvg.setAttribute('stroke-width', '2');
+    clockSvg.setAttribute('aria-hidden', 'true');
+    clockSvg.innerHTML = '<circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>';
+    const expiryText = document.createElement('span');
+    expiryText.id = 'share-expiry-text';
+    expiryLine.appendChild(clockSvg);
+    expiryLine.appendChild(expiryText);
+    metaStack.appendChild(expiryLine);
+
+    function updateDailyExpiry() {
+      const now = new Date();
+      let expiresMs = data.expiresAt ? new Date(data.expiresAt).getTime() : 0;
+      if (!expiresMs || isNaN(expiresMs)) {
+        expiresMs = now.getTime() + msUntilNextUtcMidnight(now);
+      }
+      const msRemaining = Math.max(0, expiresMs - now.getTime());
+      const isSoon = msRemaining > 0 && msRemaining <= 2 * 3600 * 1000;
+      if (isSoon) {
+        expiryLine.classList.add('soon');
+      } else {
+        expiryLine.classList.remove('soon');
+      }
+      const resetTime = formatNextResetLocalTime(now);
+      const countdown = formatCountdown(msRemaining);
+      expiryText.textContent = `Ends ${resetTime} · in ${countdown}`;
+    }
+
+    updateDailyExpiry();
+    shareExpiryInterval = setInterval(updateDailyExpiry, 60000);
+  } else {
+    const expiryLine = document.createElement('div');
+    expiryLine.className = 'expiry-line';
+    expiryLine.innerHTML = '<svg class="clock-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><span>Valid for 32 hours</span>';
+    const freeNote = document.createElement('div');
+    freeNote.className = 'free-note';
+    freeNote.textContent = 'Your run was uploaded and checked.';
+    metaStack.appendChild(expiryLine);
+    metaStack.appendChild(freeNote);
+  }
+  bodyEl.appendChild(metaStack);
+
+  // 3. Actions
+  const shareSentence = mode === 'daily'
+    ? `${name} scored ${formatPoints(points)} in today's Rogue 2048 Daily. Beat it?`
+    : `${name} scored ${formatPoints(points)} in Rogue 2048. Beat it?`;
+
+  const actionsCol = document.createElement('div');
+  actionsCol.className = 'actions-col';
+
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    const sendBtn = document.createElement('button');
+    sendBtn.type = 'button';
+    sendBtn.className = 'btn-sheet btn-sheet-primary';
+    sendBtn.id = 'btn-sheet-send';
+    sendBtn.setAttribute('aria-label', 'Send Link');
+    sendBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg><span>SEND LINK</span>';
+    sendBtn.addEventListener('click', () => {
+      try {
+        navigator.share({
+          title: mode === 'daily' ? 'Rogue 2048 Daily' : 'Rogue 2048',
+          text: shareSentence,
+          url: fullUrl,
+        }).catch(() => { /* user cancel ignored */ });
+      } catch {}
+    });
+    actionsCol.appendChild(sendBtn);
+  }
+
+  const row = document.createElement('div');
+  row.className = 'actions-row';
+
+  const waBtn = document.createElement('button');
+  waBtn.type = 'button';
+  waBtn.className = 'btn-sheet btn-sheet-secondary';
+  waBtn.id = 'btn-sheet-wa';
+  waBtn.setAttribute('aria-label', 'Share on WhatsApp');
+  waBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M20.52 3.48A11.93 11.93 0 0 0 12.06 0C5.5 0 .15 5.35.15 11.91c0 2.1.55 4.14 1.59 5.95L0 24l6.32-1.66a11.87 11.87 0 0 0 5.74 1.47h.01c6.56 0 11.91-5.35 11.91-11.91 0-3.18-1.24-6.17-3.46-8.42zM12.07 21.8c-1.78 0-3.53-.48-5.06-1.39l-.36-.21-3.76.99 1-3.66-.23-.38a9.88 9.88 0 0 1-1.52-5.24c0-5.46 4.45-9.91 9.92-9.91 2.65 0 5.14 1.03 7.01 2.9 1.87 1.88 2.9 4.36 2.9 7.01 0 5.46-4.45 9.89-9.9 9.89zm5.43-7.41c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.95 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.7.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg><span>WHATSAPP</span>';
+  waBtn.addEventListener('click', () => {
+    const waText = `${shareSentence} ${fullUrl}`;
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(waText)}`;
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
+  });
+  row.appendChild(waBtn);
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'btn-sheet btn-sheet-secondary';
+  copyBtn.id = 'btn-sheet-copy';
+  copyBtn.setAttribute('aria-label', 'Copy Link');
+  copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>COPY LINK</span>';
+
+  let copyRevertTimer = null;
+  copyBtn.addEventListener('click', async () => {
+    let ok = false;
+    if (navigator?.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(fullUrl);
+        ok = true;
+      } catch {}
+    }
+    if (!ok) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = fullUrl;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch {}
+    }
+    showToast('Copied!');
+    copyBtn.classList.add('btn-copied');
+    copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg><span>COPIED</span>';
+    if (copyRevertTimer) clearTimeout(copyRevertTimer);
+    copyRevertTimer = setTimeout(() => {
+      copyBtn.classList.remove('btn-copied');
+      copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>COPY LINK</span>';
+    }, 2000);
+  });
+  row.appendChild(copyBtn);
+
+  actionsCol.appendChild(row);
+  bodyEl.appendChild(actionsCol);
+}
+
+function renderShareSheetError(error, retryAfter = 0, retryCb = null) {
+  if (shareExpiryInterval) {
+    clearInterval(shareExpiryInterval);
+    shareExpiryInterval = null;
+  }
+  const bodyEl = document.getElementById('share-sheet-body');
+  if (!bodyEl) return;
+  bodyEl.replaceChildren();
+
+  let msg = "Couldn't create the link. Your run is saved.";
+  let canRetry = false;
+
+  if (error === 'not_found') {
+    msg = 'No run to share yet.';
+  } else if (error === 'too_short') {
+    msg = 'Play a few more moves to challenge a friend.';
+  } else if (error === 'rate_limited') {
+    msg = (retryAfter > 0)
+      ? `Too many challenges. Try again in ${formatCountdown(retryAfter * 1000)}.`
+      : 'Too many challenges today. Try again tomorrow.';
+  } else if (error === 'rejected' || error === 'version') {
+    msg = "This run can't be shared.";
+  } else if (error === 'network' || error === 'server') {
+    msg = "Couldn't create the link. Your run is saved.";
+    canRetry = true;
+  }
+
+  const statusBox = document.createElement('div');
+  statusBox.className = 'status-box error';
+  const textSpan = document.createElement('span');
+  textSpan.textContent = msg;
+  statusBox.appendChild(textSpan);
+
+  if (canRetry && typeof retryCb === 'function') {
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className = 'btn-retry';
+    retryBtn.id = 'btn-sheet-retry';
+    retryBtn.textContent = 'RETRY';
+    retryBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      retryCb();
+    });
+    statusBox.appendChild(retryBtn);
+  }
+
+  bodyEl.appendChild(statusBox);
+
+  // Disabled actions in every error state
+  const actionsCol = document.createElement('div');
+  actionsCol.className = 'actions-col';
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    const sendBtn = document.createElement('button');
+    sendBtn.id = 'btn-sheet-send';
+    sendBtn.type = 'button';
+    sendBtn.className = 'btn-sheet btn-sheet-primary';
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg><span>SEND LINK</span>';
+    actionsCol.appendChild(sendBtn);
+  }
+  const row = document.createElement('div');
+  row.className = 'actions-row';
+  const waBtn = document.createElement('button');
+  waBtn.id = 'btn-sheet-wa';
+  waBtn.type = 'button';
+  waBtn.className = 'btn-sheet btn-sheet-secondary';
+  waBtn.disabled = true;
+  waBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M20.52 3.48A11.93 11.93 0 0 0 12.06 0C5.5 0 .15 5.35.15 11.91c0 2.1.55 4.14 1.59 5.95L0 24l6.32-1.66a11.87 11.87 0 0 0 5.74 1.47h.01c6.56 0 11.91-5.35 11.91-11.91 0-3.18-1.24-6.17-3.46-8.42zM12.07 21.8c-1.78 0-3.53-.48-5.06-1.39l-.36-.21-3.76.99 1-3.66-.23-.38a9.88 9.88 0 0 1-1.52-5.24c0-5.46 4.45-9.91 9.92-9.91 2.65 0 5.14 1.03 7.01 2.9 1.87 1.88 2.9 4.36 2.9 7.01 0 5.46-4.45 9.89-9.9 9.89zm5.43-7.41c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.95 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.7.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35z"/></svg><span>WHATSAPP</span>';
+  const copyBtn = document.createElement('button');
+  copyBtn.id = 'btn-sheet-copy';
+  copyBtn.type = 'button';
+  copyBtn.className = 'btn-sheet btn-sheet-secondary';
+  copyBtn.disabled = true;
+  copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>COPY LINK</span>';
+  row.appendChild(waBtn);
+  row.appendChild(copyBtn);
+  actionsCol.appendChild(row);
+  bodyEl.appendChild(actionsCol);
+}
+
+const shareCloseBtn = document.getElementById('btn-share-sheet-close');
+if (shareCloseBtn) {
+  shareCloseBtn.addEventListener('click', () => {
+    closeShareSheet();
+  });
+}
+
+const shareBackdrop = document.getElementById('share-sheet-backdrop');
+if (shareBackdrop) {
+  shareBackdrop.addEventListener('click', () => {
+    closeShareSheet();
+  });
+}
+
+document.addEventListener('keydown', (e) => {
+  const sheet = document.getElementById('share-sheet');
+  if (!sheet || sheet.classList.contains('hidden')) return;
+
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeShareSheet();
+    return;
+  }
+
+  if (e.key === 'Tab') {
+    const focusable = sheet.querySelectorAll('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+});
+
 // Window test hooks for automated verification
 if (typeof window !== 'undefined') {
   window.__testRenderRankingCard = renderGameOverRankingCard;
@@ -7091,6 +7598,15 @@ if (typeof window !== 'undefined') {
   window.__testOpenNameSheet = openNameSheet;
   window.__testCloseNameSheet = closeNameSheet;
   window.__testHandleNameSubmit = handleNameSubmit;
+  window.__testOpenShareSheet = openShareSheet;
+  window.__testCloseShareSheet = closeShareSheet;
+  window.__testRequestCreateChallenge = requestCreateChallenge;
+  window.__testActiveShareSheetRunKey = () => activeShareSheetRunKey;
+  window.__testCachedChallengeResult = () => cachedChallengeResult;
+  window.__testSetCachedChallengeResult = (v, key = null) => {
+    cachedChallengeResult = v;
+    if (key !== null) activeShareSheetRunKey = key;
+  };
   window.__testTabCache = () => tabCache;
   window.__testSetTabCache = (key, data, time = Date.now()) => {
     tabCache[key] = data;

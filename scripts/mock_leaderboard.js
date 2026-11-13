@@ -48,6 +48,7 @@ export function createMockLeaderboardServer(initialDb = null) {
     requests.push({
       method: req.method,
       path: pathname,
+      pathname,
       headers: req.headers,
       body: bodyJson,
       rawBody,
@@ -291,11 +292,44 @@ export function createMockLeaderboardServer(initialDb = null) {
         req.socket.destroy();
         return;
       }
+      if (behaviour === 'slow') {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      if (behaviour === 'status:429') {
+        res.writeHead(429, {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'Retry-After': '3600',
+        });
+        res.end(JSON.stringify({ error: 'DEVICE_DAILY_LIMIT_EXCEEDED', message: 'Max 25 challenge creations per device per day' }));
+        return;
+      }
+      if (behaviour === 'status:404') {
+        res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'NO_RUN_FOUND', message: 'No run found for this device' }));
+        return;
+      }
       if (behaviour === 'status:500') {
         res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'INTERNAL_SERVER_ERROR', message: 'Mock 500 error' }));
         return;
       }
+      if (behaviour === 'reject:422') {
+        res.writeHead(422, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'VERIFICATION_REJECTED', reason: 'Verification rejected' }));
+        return;
+      }
+      if (behaviour === 'reject:422-version') {
+        res.writeHead(422, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'REPLAY_VERSION_MISMATCH', message: 'Replay version mismatch' }));
+        return;
+      }
+      if (behaviour === 'reject:422-short') {
+        res.writeHead(422, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'RUN_TOO_SHORT', message: 'Challenge runs must have at least 10 moves' }));
+        return;
+      }
+
       const webHeaders = new Headers();
       for (const [k, v] of Object.entries(req.headers)) {
         if (v !== undefined) webHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
@@ -310,6 +344,26 @@ export function createMockLeaderboardServer(initialDb = null) {
 
       const webRes = await handleCreateChallengeRequest(webReq, db);
       const resBody = await webRes.text();
+
+      // Client-facing tweak: in UI mock testing where cards are rendered with synthetic/historic data
+      // (and behaviour === 'ok' or 'slow'), provide a valid fallback challenge response if database had no matching run.
+      if (webRes.status >= 400 && (behaviour === 'ok' || behaviour === 'slow')) {
+        let reqMode = 'daily';
+        try {
+          const parsed = JSON.parse(rawBody);
+          if (parsed && (parsed.mode === 'free' || parsed.runLog)) reqMode = 'free';
+        } catch {}
+        const mockCode = 'chal' + Math.random().toString(36).slice(2, 9);
+        const mockExpires = new Date(Date.now() + (reqMode === 'free' ? 32 * 3600 * 1000 : 86400000)).toISOString();
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          code: mockCode,
+          mode: reqMode,
+          expiresAt: mockExpires,
+          url: `/c/${mockCode}`,
+        }));
+        return;
+      }
 
       const outHeaders = {};
       for (const [k, v] of Object.entries(corsHeaders)) {

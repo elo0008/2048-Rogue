@@ -868,13 +868,12 @@ async function main() {
       {
         outcome: 8,
         name: 'FREE_RUN',
-        data: { isForbidden: false, day: '2026-11-04' },
+        data: { isForbidden: false, day: '2026-11-04', moves: 25 },
         asserts: {
-          badge: 'FREE RUN',
-          rankNum: 'NOT RANKED',
           pillBtn: 'PLAY DAILY',
-          helper: 'Free runs are not ranked. Daily runs are.',
-          footer: 'RUN NOT SUBMITTED',
+          helper: "Free runs aren't ranked. Send this one as a challenge.",
+          footer: 'FREE RUN · NOT RANKED',
+          hasShare: true,
         },
       },
     ];
@@ -904,6 +903,7 @@ async function main() {
           const pillBtnEl = p ? p.querySelector('#btn-play-daily-pill') : null;
           const helperEl = p ? p.querySelector('.total-players-text') : null;
           const footerEl = document.getElementById('ranking-footer-status');
+          const footerLeftEl = footerEl ? footerEl.querySelector('.footer-left-unranked') : null;
           const spinnerEl = footerEl ? footerEl.querySelector('.pending-loader') : null;
           const shareBtn = document.getElementById('btn-ranking-share');
           const isShimmer = p ? p.classList.contains('shimmer-active') : false;
@@ -915,7 +915,7 @@ async function main() {
             pct: pctEl ? pctEl.textContent.trim() : null,
             pillBtn: pillBtnEl ? pillBtnEl.textContent.trim() : null,
             helper: helperEl ? helperEl.textContent.trim() : null,
-            footer: footerEl ? footerEl.textContent.trim() : null,
+            footer: (footerLeftEl || footerEl) ? (footerLeftEl || footerEl).textContent.trim() : null,
             hasSpinner: Boolean(spinnerEl),
             hasShare: Boolean(shareBtn),
             hasShimmer: isShimmer,
@@ -2234,11 +2234,11 @@ async function main() {
     await cdp.eval(`window.__testCloseLeaderboard();`);
 
     // Case A: navigator.share available
-    const shareResult = await cdp.eval(`
+    await cdp.eval(`
       (() => {
-        let sharedData = null;
+        window.__testSharedData = null;
         Object.defineProperty(navigator, 'share', {
-          value: async (data) => { sharedData = data; },
+          value: async (data) => { window.__testSharedData = data; },
           configurable: true,
           writable: true,
         });
@@ -2247,39 +2247,51 @@ async function main() {
         window.__testRenderRankingCard(2, { rank: 3, total: 24, points: 2840, day: '2026-11-04' });
         const btn = document.getElementById('btn-ranking-share');
         if (btn) btn.click();
-        return sharedData;
       })()
     `);
+    await sleep(200);
+    await cdp.eval(`document.getElementById('btn-sheet-send')?.click();`);
+    const shareResult = await cdp.eval(`window.__testSharedData`);
 
     assert.ok(shareResult, 'navigator.share must be called');
     assert.strictEqual(shareResult.title, 'Rogue 2048 Daily');
-    assert.ok(shareResult.text.includes('#3 of 24'));
-    assert.ok(shareResult.text.includes('2,840 pts'));
+    assert.ok(shareResult.text.includes('2,840'));
+    assert.ok(shareResult.url.includes('/c/'));
+
+    await cdp.eval(`window.__testCloseShareSheet();`);
 
     // Case B: clipboard fallback with Copied! toast
-    const clipboardResult = await cdp.eval(`
+    await cdp.eval(`
       (() => {
+        window.__testCopiedText = null;
         Object.defineProperty(navigator, 'share', {
           value: undefined,
           configurable: true,
           writable: true,
         });
-        let copiedText = null;
         Object.defineProperty(navigator, 'clipboard', {
           value: {
-            writeText: async (t) => { copiedText = t; }
+            writeText: async (t) => { window.__testCopiedText = t; }
           },
           configurable: true,
           writable: true,
         });
         const btn = document.getElementById('btn-ranking-share');
         if (btn) btn.click();
+      })()
+    `);
+    await sleep(200);
+    await cdp.eval(`document.getElementById('btn-sheet-copy')?.click();`);
+    const clipboardResult = await cdp.eval(`
+      (() => {
         const toast = document.querySelector('.toast, #toast');
-        return { copiedText, toastText: toast ? toast.textContent.trim() : null };
+        return { copiedText: window.__testCopiedText, toastText: toast ? toast.textContent.trim() : null };
       })()
     `);
 
-    assert.ok(clipboardResult.copiedText.includes('#3 of 24'));
+    assert.ok(clipboardResult.copiedText && clipboardResult.copiedText.includes('/c/'));
+    assert.strictEqual(clipboardResult.toastText, 'Copied!');
+    await cdp.eval(`window.__testCloseShareSheet();`);
     console.log(`✔ T12 PASSED: Share ranking verified via native share stub and clipboard fallback.\n`);
     passedTests++;
 
