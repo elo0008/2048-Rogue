@@ -101,7 +101,7 @@ class CdpConnection {
   }
 
   close() {
-    try { this.ws.close(); } catch {}
+    try { this.ws.close(); } catch { }
   }
 }
 
@@ -129,7 +129,7 @@ async function runSession(port, inputMethod, N = 80) {
             break;
           }
         }
-      } catch {}
+      } catch { }
       await sleep(150);
     }
     if (!wsUrl) throw new Error('Could not connect to Chrome CDP');
@@ -278,18 +278,20 @@ async function runSession(port, inputMethod, N = 80) {
       })()
     `);
 
-    // End run via pause menu
+    // End run via pause menu (open in-card confirm view, then confirm End run)
     await cdp.eval(`
       (async () => {
         const pauseBtn = document.getElementById('btn-pause-menu');
         if (pauseBtn) pauseBtn.click();
         await new Promise(r => setTimeout(r, 60));
-        const endBtn = document.getElementById('btn-pause-end-run');
-        if (endBtn) {
-          endBtn.click();
-          await new Promise(r => setTimeout(r, 60));
-          endBtn.click();
+        document.getElementById('btn-pause-end-run')?.click();
+        const deadline = Date.now() + 2000;
+        while (Date.now() < deadline) {
+          const cv = document.getElementById('pause-confirm-view');
+          if (cv && !cv.classList.contains('hidden') && getComputedStyle(cv).visibility !== 'hidden') break;
+          await new Promise(r => setTimeout(r, 20));
         }
+        document.getElementById('btn-pause-confirm-execute')?.click();
       })()
     `);
     await sleep(200);
@@ -344,7 +346,7 @@ async function runSession(port, inputMethod, N = 80) {
       runLog,
     };
   } finally {
-    try { chromeProcess.kill(); } catch {}
+    try { chromeProcess.kill(); } catch { }
   }
 }
 

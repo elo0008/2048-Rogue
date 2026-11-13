@@ -50,6 +50,26 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+async function endRunViaPause(cdp) {
+  await cdp.eval(`
+    (async () => {
+      document.getElementById('btn-pause-menu')?.click();
+      await new Promise(r => setTimeout(r, 60));
+      const endBtn = document.getElementById('btn-pause-end-run');
+      if (endBtn) {
+        endBtn.click();
+        const deadline = Date.now() + 2000;
+        while (Date.now() < deadline) {
+          const cv = document.getElementById('pause-confirm-view');
+          if (cv && !cv.classList.contains('hidden') && getComputedStyle(cv).visibility !== 'hidden') break;
+          await new Promise(r => setTimeout(r, 20));
+        }
+        document.getElementById('btn-pause-confirm-execute')?.click();
+      }
+    })()
+  `);
+}
+
 function getFreePort() {
   return new Promise((resolve, reject) => {
     const s = http.createServer();
@@ -355,18 +375,7 @@ async function main() {
   }
 
   // End run via pause menu
-  await cdp.eval(`
-    (async () => {
-      document.getElementById('btn-pause-menu')?.click();
-      await new Promise(r => setTimeout(r, 60));
-      const endBtn = document.getElementById('btn-pause-end-run');
-      if (endBtn) {
-        endBtn.click();
-        await new Promise(r => setTimeout(r, 60));
-        endBtn.click();
-      }
-    })()
-  `);
+  await endRunViaPause(cdp);
   await sleep(300);
 
   const t3Moves = await cdp.eval(`window.controller ? window.controller.state.moveCount : 0`);
@@ -424,12 +433,14 @@ async function main() {
         if (!window.controller) return { over: true };
         const c = window.controller;
         const draftOpen = !document.getElementById('draft-overlay')?.classList.contains('hidden');
-        const abilityBtn = document.querySelector('.ability-btn:not(.is-empty)');
+        const abilityBtn = document.querySelector('.ability-btn:not(:disabled):not(.dim)');
+        const hasAnyAbilityBtn = Boolean(document.querySelector('.ability-btn'));
         return {
           over: c.isGameOver(),
           moveCount: c.state.moveCount,
           score: c.state.score,
           draftOpen,
+          hasAbilityBtn: hasAnyAbilityBtn,
           hasAbilityCharge: Boolean(abilityBtn),
           valid: c.getValidMoves(),
         };
@@ -461,11 +472,24 @@ async function main() {
       continue;
     }
 
+    // Handle Mason placement if active
+    const masonActive = await cdp.eval(`Boolean(window.controller && window.controller.hasPendingDecision() && window.controller.getPendingDecision().type === 'mason')`);
+    if (masonActive) {
+      await cdp.eval(`
+        (() => {
+          const cand = document.querySelector('.cell.candidate, .candidate');
+          if (cand) cand.click();
+        })()
+      `);
+      await sleep(100);
+      continue;
+    }
+
     // Use ability if charged and not yet used
     if (!abilityUsed && s.hasAbilityCharge && s.moveCount > 20) {
       await cdp.eval(`
         (() => {
-          const btn = document.querySelector('.ability-btn:not(.is-empty)');
+          const btn = document.querySelector('.ability-btn:not(:disabled):not(.dim)');
           if (btn) btn.click();
         })()
       `);
@@ -476,7 +500,8 @@ async function main() {
       await sleep(50);
     }
 
-    if (s.moveCount >= 72 && draftHandled && abilityUsed) {
+    const abilitySatisfied = !s.hasAbilityBtn || abilityUsed;
+    if (s.moveCount >= 72 && draftHandled && abilitySatisfied) {
       t4Moves = s.moveCount;
       break;
     }
@@ -495,19 +520,12 @@ async function main() {
     await sleep(20);
   }
 
+  if (!t4Moves) {
+    t4Moves = await cdp.eval(`window.controller ? window.controller.state.moveCount : 0`);
+  }
+
   // End run via pause menu
-  await cdp.eval(`
-    (async () => {
-      document.getElementById('btn-pause-menu')?.click();
-      await new Promise(r => setTimeout(r, 60));
-      const endBtn = document.getElementById('btn-pause-end-run');
-      if (endBtn) {
-        endBtn.click();
-        await new Promise(r => setTimeout(r, 60));
-        endBtn.click();
-      }
-    })()
-  `);
+  await endRunViaPause(cdp);
 
   // Wait for submission request and UI update
   await sleep(1000);
@@ -549,14 +567,7 @@ async function main() {
   await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...kDown });
   await sleep(30);
 
-  await cdp.eval(`
-    (async () => {
-      document.getElementById('btn-pause-menu')?.click();
-      await new Promise(r => setTimeout(r, 60));
-      const endBtn = document.getElementById('btn-pause-end-run');
-      if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
-    })()
-  `);
+  await endRunViaPause(cdp);
   await sleep(800);
 
   const status500 = await cdp.eval(`document.getElementById('end-leaderboard-status')?.textContent.trim()`);
@@ -592,14 +603,7 @@ async function main() {
   }
 
   // End run
-  await cdp.eval(`
-    (async () => {
-      document.getElementById('btn-pause-menu')?.click();
-      await new Promise(r => setTimeout(r, 60));
-      const endBtn = document.getElementById('btn-pause-end-run');
-      if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
-    })()
-  `);
+  await endRunViaPause(cdp);
   await sleep(400);
 
   const t5Status = await cdp.eval(`document.getElementById('end-leaderboard-status')?.textContent.trim()`);
@@ -681,14 +685,7 @@ async function main() {
   }
 
   // End run
-  await cdp.eval(`
-    (async () => {
-      document.getElementById('btn-pause-menu')?.click();
-      await new Promise(r => setTimeout(r, 60));
-      const endBtn = document.getElementById('btn-pause-end-run');
-      if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
-    })()
-  `);
+  await endRunViaPause(cdp);
   await sleep(300);
 
   const t7WorseSubmits = mock.getRequests().filter(r => r.path === '/functions/v1/submit-run');
@@ -748,14 +745,7 @@ async function main() {
 
   assert.ok(t7BetterPoints > 2, `T7 must reach points > 2 within 60 moves (got points=${t7BetterPoints} after ${t7MovesPlayed} moves)`);
 
-  await cdp.eval(`
-    (async () => {
-      document.getElementById('btn-pause-menu')?.click();
-      await new Promise(r => setTimeout(r, 60));
-      const endBtn = document.getElementById('btn-pause-end-run');
-      if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
-    })()
-  `);
+  await endRunViaPause(cdp);
   await sleep(400);
 
   const t7BetterSubmits = mock.getRequests().filter(r => r.path === '/functions/v1/submit-run');
@@ -837,14 +827,7 @@ async function main() {
 
     assert.ok(pts > 2, `T7 Date Proof: points on ${dt} must exceed 2 within 60 moves (got ${pts})`);
 
-    await cdp.eval(`
-      (async () => {
-        document.getElementById('btn-pause-menu')?.click();
-        await new Promise(r => setTimeout(r, 60));
-        const endBtn = document.getElementById('btn-pause-end-run');
-        if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
-      })()
-    `);
+    await endRunViaPause(cdp);
     await sleep(350);
 
     const submits = mock.getRequests().filter(r => r.path === '/functions/v1/submit-run');
@@ -1091,14 +1074,7 @@ async function main() {
   }
 
   // End run
-  await cdp.eval(`
-    (async () => {
-      document.getElementById('btn-pause-menu')?.click();
-      await new Promise(r => setTimeout(r, 60));
-      const endBtn = document.getElementById('btn-pause-end-run');
-      if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
-    })()
-  `);
+  await endRunViaPause(cdp);
   await sleep(300);
 
   const t12GameOver = await cdp.eval(`Boolean(window.controller && window.controller.isGameOver())`);
@@ -1231,14 +1207,7 @@ async function main() {
   }
 
   // End run
-  await cdp.eval(`
-    (async () => {
-      document.getElementById('btn-pause-menu')?.click();
-      await new Promise(r => setTimeout(r, 60));
-      const endBtn = document.getElementById('btn-pause-end-run');
-      if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
-    })()
-  `);
+  await endRunViaPause(cdp);
   await sleep(500);
 
   const t14Status = await cdp.eval(`document.getElementById('end-leaderboard-status')?.textContent.trim()`);
@@ -1304,14 +1273,7 @@ async function main() {
   }
 
   // End run
-  await cdp.eval(`
-    (async () => {
-      document.getElementById('btn-pause-menu')?.click();
-      await new Promise(r => setTimeout(r, 60));
-      const endBtn = document.getElementById('btn-pause-end-run');
-      if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
-    })()
-  `);
+  await endRunViaPause(cdp);
   await sleep(800);
 
   // Assert status text shows new run's accepted result and NEVER 'Not accepted'

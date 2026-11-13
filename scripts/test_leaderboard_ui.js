@@ -974,7 +974,7 @@ async function main() {
       await cdp.send('Page.navigate', { url: `${baseUrl}?start=${rt.param}` });
       await sleep(350);
 
-      // End run via pause menu (2 clicks on btn-pause-end-run within 3s)
+      // End run via pause menu (End run -> in-card Confirm End Run)
       await cdp.eval(`
         (async () => {
           document.getElementById('btn-pause-menu')?.click();
@@ -983,7 +983,7 @@ async function main() {
           if (endBtn) {
             endBtn.click();
             await new Promise(r => setTimeout(r, 60));
-            endBtn.click();
+            document.getElementById('btn-pause-confirm-execute')?.click();
           }
         })()
       `);
@@ -2316,13 +2316,14 @@ async function main() {
     const tutorialKeyframes = addedKeyframes.filter(k => k.startsWith('tut-'));
     const nonTutorialAdded = addedKeyframes.filter(k => !k.startsWith('tut-'));
     assert.strictEqual(nonTutorialAdded.length, 6, `Expected exactly 6 non-tutorial added keyframes, found ${nonTutorialAdded.length}`);
-    assert.strictEqual(tutorialKeyframes.length, 5, `Expected exactly 5 tut- prefixed keyframes, found ${tutorialKeyframes.length}`);
+    assert.strictEqual(tutorialKeyframes.length, 6, `Expected exactly 6 tut- prefixed keyframes, found ${tutorialKeyframes.length}`);
     const expectedTutKeyframes = [
       'tut-stepFadeIn',
       'tut-layerFadeIn',
       'tut-mergeScalePop',
       'tut-stoneRingGrow',
-      'tut-glassShine'
+      'tut-glassShine',
+      'tut-glassShinePeriodic'
     ];
     for (const kf of expectedTutKeyframes) {
       assert.ok(liveSet.has(kf), `Tutorial keyframe "${kf}" must exist`);

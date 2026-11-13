@@ -109,38 +109,27 @@
   }
 
   function getCellMetric(gridId, row, col) {
+    let colGap = 6;
+    let rowGap = 6;
     const grid = document.getElementById(gridId);
-    if (grid) {
-      const cells = grid.querySelectorAll('.mini-cell');
-      const cellIdx = row * 4 + col;
-      const cell = cells[cellIdx];
-      const layer = grid.querySelector('.tiles-overlay-layer');
-      if (cell && layer) {
-        const cr = cell.getBoundingClientRect();
-        const lr = layer.getBoundingClientRect();
-        if (cr.width > 0 && lr.width > 0) {
-          const left = Math.round((cr.left - lr.left) * 10) / 10;
-          const top = Math.round((cr.top - lr.top) * 10) / 10;
-          const width = Math.round(cr.width * 10) / 10;
-          const height = Math.round(cr.height * 10) / 10;
-          return {
-            left,
-            top,
-            width,
-            height,
-            css: `left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px;`
-          };
-        }
-      }
+    if (grid && typeof window.getComputedStyle === 'function') {
+      const cs = window.getComputedStyle(grid);
+      const cg = parseFloat(cs.columnGap || cs.gap);
+      const rg = parseFloat(cs.rowGap || cs.gap);
+      if (Number.isFinite(cg)) colGap = cg;
+      if (Number.isFinite(rg)) rowGap = rg;
     }
-    const leftPct = col * 25;
-    const topPct = row * 25;
+    // Transform-independent layout percentages inside .tiles-overlay-layer
+    const left = `calc(${col * 25}% + ${col * (colGap / 4)}px)`;
+    const top = `calc(${row * 25}% + ${row * (rowGap / 4)}px)`;
+    const width = `calc((100% - ${3 * colGap}px) / 4)`;
+    const height = `calc((100% - ${3 * rowGap}px) / 4)`;
     return {
-      left: `calc(${leftPct}% + ${col * 1.5}px)`,
-      top: `calc(${topPct}% + ${row * 1.5}px)`,
-      width: 'calc((100% - 18px)/4)',
-      height: 'calc((100% - 18px)/4)',
-      css: `left: calc(${leftPct}% + ${col * 1.5}px); top: calc(${topPct}% + ${row * 1.5}px); width: calc((100% - 18px)/4); height: calc((100% - 18px)/4);`
+      left,
+      top,
+      width,
+      height,
+      css: `left: ${left}; top: ${top}; width: ${width}; height: ${height};`
     };
   }
 
@@ -152,17 +141,10 @@
     if (immediate) {
       el.style.transition = 'none';
     }
-    if (typeof m.left === 'number') {
-      el.style.left = `${m.left}px`;
-      el.style.top = `${m.top}px`;
-      el.style.width = `${m.width}px`;
-      el.style.height = `${m.height}px`;
-    } else {
-      el.style.left = m.left;
-      el.style.top = m.top;
-      el.style.width = m.width;
-      el.style.height = m.height;
-    }
+    el.style.left = m.left;
+    el.style.top = m.top;
+    el.style.width = m.width;
+    el.style.height = m.height;
     if (immediate) {
       void el.offsetWidth;
       el.style.transition = '';
@@ -752,12 +734,6 @@
       if (v) v.classList.toggle('active', idx === currentStep);
     });
 
-    const dots = document.querySelectorAll('.progress-dot');
-    dots.forEach((dot, idx) => {
-      dot.classList.toggle('active', idx === currentStep);
-      dot.setAttribute('aria-selected', idx === currentStep ? 'true' : 'false');
-    });
-
     const stepData = TUTORIAL_STEPS[currentStep];
     const titleEl = document.getElementById('step-title-text');
     const captionEl = document.getElementById('step-caption-text');
@@ -929,14 +905,6 @@
     if (skipBtn) {
       skipBtn.addEventListener('click', finishTutorial);
     }
-
-    const dots = document.querySelectorAll('.progress-dot');
-    dots.forEach(dot => {
-      dot.addEventListener('click', () => {
-        const stepIdx = parseInt(dot.getAttribute('data-step') || '0', 10);
-        goToStep(stepIdx);
-      });
-    });
 
     const step2Wrap = document.getElementById('step2-boardwrap');
     if (step2Wrap) {

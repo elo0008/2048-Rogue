@@ -3,6 +3,7 @@
  * Zero npm dependencies. Uses Chrome via Chrome DevTools Protocol (CDP).
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -1007,10 +1008,10 @@ async function main() {
     // -------------------------------------------------------------------------
     // TEST 5: STEP 3 DRAFT CARDS, TEXT, ICONS, SELECTION & SHINE
     // -------------------------------------------------------------------------
-    console.log('[Test 5] Testing Step 3 Draft Cards, Text, Icons, Selection & Shine...');
+    console.log('[Test 5] Testing Step 3 Draft Cards, Text, Icons, Selection & Periodic Shine...');
 
     await cdp.eval(`document.getElementById('btn-tutorial-next')?.click()`); // Go to step 3
-    await sleep(1500);
+    await sleep(2400);
 
     const step3Data = await cdp.eval(`(() => {
       const l1 = document.getElementById('step3-label-1')?.textContent.trim();
@@ -1035,9 +1036,10 @@ async function main() {
         complete: img.complete
       }));
 
-      // Check shine animation iteration count
+      // Check periodic shine animation on highlighted relic card and Diagonal ability card
+      const ab1 = document.getElementById('demo-ability-1');
       const c1After = window.getComputedStyle(c1, '::after');
-      const animIteration = c1After ? c1After.animationIterationCount : '';
+      const ab1After = window.getComputedStyle(ab1, '::after');
 
       return {
         l1, l2,
@@ -1045,7 +1047,18 @@ async function main() {
         n2, d2, t2,
         n3, d3, t3,
         imgs,
-        animIteration
+        c1Shine: c1After ? {
+          name: c1After.animationName,
+          duration: c1After.animationDuration,
+          timing: c1After.animationTimingFunction,
+          iteration: c1After.animationIterationCount
+        } : null,
+        ab1Shine: ab1After ? {
+          name: ab1After.animationName,
+          duration: ab1After.animationDuration,
+          timing: ab1After.animationTimingFunction,
+          iteration: ab1After.animationIterationCount
+        } : null
       };
     })()`);
 
@@ -1075,8 +1088,33 @@ async function main() {
       assert.strictEqual(img.complete, true, `Icon ${img.src} must be complete`);
     }
 
-    // Glass shine plays ONCE
-    assert.strictEqual(step3Data.animIteration, '1', 'Glass shine animation-iteration-count must be 1');
+    // R17.2 Periodic glass shine matches game's periodic card shimmer timing/easing
+    assert.strictEqual(step3Data.c1Shine?.name, 'tut-glassShinePeriodic', 'Relic glass shine must use tut-glassShinePeriodic');
+    assert.strictEqual(step3Data.c1Shine?.iteration, 'infinite', 'Relic glass shine animation-iteration-count must be infinite');
+    assert.strictEqual(step3Data.c1Shine?.duration, '5s', 'Relic glass shine duration must be 5s');
+    assert.strictEqual(step3Data.ab1Shine?.name, 'tut-glassShinePeriodic', 'Ability glass shine must use tut-glassShinePeriodic');
+    assert.strictEqual(step3Data.ab1Shine?.iteration, 'infinite', 'Ability glass shine animation-iteration-count must be infinite');
+    assert.strictEqual(step3Data.ab1Shine?.duration, '5s', 'Ability glass shine duration must be 5s');
+
+    // Reduced motion disables periodic glass shine
+    await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    await sleep(60);
+    const reducedShine = await cdp.eval(`(() => {
+      const c1 = document.getElementById('draft-card-1');
+      const ab1 = document.getElementById('demo-ability-1');
+      const cs1 = window.getComputedStyle(c1, '::after');
+      const cs2 = window.getComputedStyle(ab1, '::after');
+      return {
+        c1Name: cs1.animationName,
+        c1Display: cs1.display,
+        ab1Name: cs2.animationName,
+        ab1Display: cs2.display
+      };
+    })()`);
+    await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+    await sleep(60);
+    assert.ok(reducedShine.c1Name === 'none' || reducedShine.c1Display === 'none', 'Relic glass shine must be disabled under prefers-reduced-motion');
+    assert.ok(reducedShine.ab1Name === 'none' || reducedShine.ab1Display === 'none', 'Ability glass shine must be disabled under prefers-reduced-motion');
 
     // R16.7: Ability refill labels must be consistent with game intervals (Diagonal=10, Eraser=20, Rewind=10) and MAX when 3/3 pips
     const refillAudit = await cdp.eval(`(() => {
@@ -1777,11 +1815,6 @@ async function main() {
       ];
 
       const dotEls = Array.from(document.querySelectorAll('.progress-dot'));
-      const dots = dotEls.map((d, i) => ({
-        el: d,
-        name: 'Progress Dot ' + (i + 1)
-      }));
-
       const results = [];
       for (const it of items) {
         const el = document.getElementById(it.id);
@@ -1790,23 +1823,21 @@ async function main() {
           results.push({ name: it.name, w: Math.round(r.width), h: Math.round(r.height), pass: r.width >= 36 && r.height >= 36 });
         }
       }
-      for (const d of dots) {
-        const r = d.el.getBoundingClientRect();
-        results.push({ name: d.name, w: Math.round(r.width), h: Math.round(r.height), pass: r.width >= 36 && r.height >= 36 });
-      }
 
-      if (dotEls[1]) {
-        dotEls[1].click();
+      const nextBtn = document.getElementById('btn-tutorial-next');
+      if (nextBtn) {
+        nextBtn.click();
         const b2 = document.getElementById('step2-boardwrap');
         if (b2) {
           const r = b2.getBoundingClientRect();
           results.push({ name: 'Step 2 Boardwrap', w: Math.round(r.width), h: Math.round(r.height), pass: r.width >= 36 && r.height >= 36 });
         }
       }
-      return results;
+      return { results, dotCount: dotEls.length };
     })()`);
 
-    for (const ha of hitAreas) {
+    assert.strictEqual(hitAreas.dotCount, 0, 'Top progress dots must be removed');
+    for (const ha of hitAreas.results) {
       assert.strictEqual(ha.pass, true, `Hit area for ${ha.name} (${ha.w}x${ha.h}) must be at least 36x36px`);
     }
 
@@ -1816,7 +1847,7 @@ async function main() {
       '================================================================================',
       'Element Name             | Bounding Box (w x h) | Target >= 36px | Status',
       '--------------------------------------------------------------------------------',
-      ...hitAreas.map(ha =>
+      ...hitAreas.results.map(ha =>
         `${ha.name.padEnd(24)} | ${String(ha.w).padEnd(4)} x ${String(ha.h).padEnd(4)} px   | >= 36px        | ${ha.pass ? 'PASS' : 'FAIL'}`
       ),
       '================================================================================'
@@ -1974,6 +2005,552 @@ async function main() {
     console.log('✔ All R16 review screenshots captured successfully.\n');
 
     // -------------------------------------------------------------------------
+    // 11. R17 POLISH TESTS & REAL-PAGE SCREENSHOTS
+    // -------------------------------------------------------------------------
+    console.log('[Test 11] R17.1-11.5: Tile alignment during open/fade, Step 3 equal cards, Header insets, and Pause Menu...');
+
+    const measureTileDeltasExpr = (gridId, layerId) => `(() => {
+      const grid = document.getElementById('${gridId}');
+      const cells = grid ? grid.querySelectorAll('.mini-cell') : [];
+      const layer = document.getElementById('${layerId}');
+      const tiles = layer ? Array.from(layer.querySelectorAll('.tut-demo-tile')) : [];
+      let maxDelta = 0;
+      const rows = tiles.map(t => {
+        const r = parseInt(t.dataset.row, 10);
+        const c = parseInt(t.dataset.col, 10);
+        const cr = cells[r * 4 + c].getBoundingClientRect();
+        const tr = t.getBoundingClientRect();
+        const dx = Math.abs(tr.left - cr.left);
+        const dy = Math.abs(tr.top - cr.top);
+        const dw = Math.abs(tr.width - cr.width);
+        const dh = Math.abs(tr.height - cr.height);
+        maxDelta = Math.max(maxDelta, dx, dy, dw, dh);
+        return { rc: r + ',' + c, dx: +dx.toFixed(2), dy: +dy.toFixed(2), dw: +dw.toFixed(2), dh: +dh.toFixed(2) };
+      });
+      return { count: tiles.length, maxDelta: +maxDelta.toFixed(3), rows };
+    })()`;
+
+    // R17.1: Sample at 0, 50, 100, 200, 400 ms after opening at 390x742 and 1535x740 + capture screenshots
+    for (const vp of [{ w: 390, h: 742, tag: '390' }, { w: 1535, h: 740, tag: '1535' }]) {
+      await cdp.setViewport(vp.w, vp.h);
+      await cdp.eval(`localStorage.setItem('2048_rogue_tutorial_seen', 'true')`);
+      await cdp.send('Page.navigate', { url: configUrl });
+      await sleep(300);
+
+      await cdp.eval(`window.TutorialController.open('start')`);
+      const tOpen1 = Date.now();
+      for (const targetMs of [0, 50, 100, 200, 400]) {
+        const wait = targetMs - (Date.now() - tOpen1);
+        if (wait > 0) await sleep(wait);
+        const d1 = await cdp.eval(measureTileDeltasExpr('grid-step-1', 'step1-tiles-layer'));
+        assert.ok(d1.count >= 1, `Step 1 (${vp.tag} @${targetMs}ms) must have >= 1 tile`);
+        assert.ok(d1.maxDelta <= 1.0, `R17.1 Step 1 (${vp.tag} @${targetMs}ms) tile delta must be <= 1px (got ${d1.maxDelta}px)`);
+        if (targetMs === 50) await cdp.screenshot(path.join(outDir, `tut_r17_s1_${vp.tag}_50ms.png`));
+        if (targetMs === 100) await cdp.screenshot(path.join(outDir, `tut_r17_s1_${vp.tag}_100ms.png`));
+        if (targetMs === 400) await cdp.screenshot(path.join(outDir, `tut_r17_s1_${vp.tag}_settled.png`));
+      }
+
+      // Switch to Step 2 and sample at 0, 50, 100, 200, 400 ms
+      await cdp.eval(`document.getElementById('btn-tutorial-next')?.click()`);
+      const tOpen2 = Date.now();
+      for (const targetMs of [0, 50, 100, 200, 400]) {
+        const wait = targetMs - (Date.now() - tOpen2);
+        if (wait > 0) await sleep(wait);
+        const d2 = await cdp.eval(measureTileDeltasExpr('grid-step-2', 'step2-tiles-layer'));
+        assert.ok(d2.count >= 8, `Step 2 (${vp.tag} @${targetMs}ms) must have >= 8 tiles`);
+        assert.ok(d2.maxDelta <= 1.0, `R17.1 Step 2 (${vp.tag} @${targetMs}ms) tile delta must be <= 1px (got ${d2.maxDelta}px)`);
+        if (targetMs === 50) await cdp.screenshot(path.join(outDir, `tut_r17_s2_${vp.tag}_50ms.png`));
+        if (targetMs === 100) await cdp.screenshot(path.join(outDir, `tut_r17_s2_${vp.tag}_100ms.png`));
+        if (targetMs === 400) await cdp.screenshot(path.join(outDir, `tut_r17_s2_${vp.tag}_settled.png`));
+      }
+    }
+
+    // R17.1: Trigger Step 2 fade-in reset + resize mid-animation (must stay <= 1px & preserve state)
+    await cdp.setViewport(390, 742);
+    await cdp.eval(`localStorage.setItem('2048_rogue_tutorial_seen', 'true')`);
+    await cdp.send('Page.navigate', { url: configUrl });
+    await sleep(300);
+    await cdp.eval(`window.TutorialController.open('start'); document.getElementById('btn-tutorial-next')?.click();`);
+    await sleep(120);
+    for (let i = 0; i < 3; i++) {
+      await cdp.eval(`document.getElementById('step2-boardwrap')?.click()`);
+      await sleep(320);
+    }
+    await cdp.eval(`document.getElementById('step2-boardwrap')?.click()`);
+    await sleep(270); // inside 220..460ms tut-layerFadeIn scale(0.97 -> 1)
+    const duringFadeFixed = await cdp.eval(`document.getElementById('step2-tiles-layer')?.classList.contains('tut-layer-fading-in')`);
+    assert.strictEqual(duringFadeFixed, true, 'Step 2 layer must be in tut-layer-fading-in during self-test window');
+    await cdp.setViewport(390, 738);
+    await sleep(300);
+    const fixedFadeResize = await cdp.eval(measureTileDeltasExpr('grid-step-2', 'step2-tiles-layer'));
+    assert.ok(fixedFadeResize.maxDelta <= 1.0, `R17.1 Step 2 post-fade-resize delta must be <= 1px (got ${fixedFadeResize.maxDelta}px)`);
+
+    // R17.1 Self-Check: temp copy outside workspace with old getBoundingClientRect() MUST fail > 1px
+    const selfCheckDistDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rogue2048-tut-gcr-'));
+    try {
+      await build({ distDir: selfCheckDistDir, target: 'prod', leaderboardUrl: 'http://localhost:54321', leaderboardAnonKey: 'sb_publishable_r14_test_key_12345678' });
+      const origTutJs = fs.readFileSync(path.join(selfCheckDistDir, 'tutorial.js'), 'utf8');
+      const buggyGetCellMetric = `  function getCellMetric(gridId, row, col) {
+    const grid = document.getElementById(gridId);
+    if (grid) {
+      const cells = grid.querySelectorAll('.mini-cell');
+      const cell = cells[row * 4 + col];
+      const layer = grid.querySelector('.tiles-overlay-layer');
+      if (cell && layer) {
+        const cr = cell.getBoundingClientRect();
+        const lr = layer.getBoundingClientRect();
+        if (cr.width > 0 && lr.width > 0) {
+          const left = Math.round((cr.left - lr.left) * 10) / 10;
+          const top = Math.round((cr.top - lr.top) * 10) / 10;
+          const width = Math.round(cr.width * 10) / 10;
+          const height = Math.round(cr.height * 10) / 10;
+          return { left: left + 'px', top: top + 'px', width: width + 'px', height: height + 'px', css: \`left: \${left}px; top: \${top}px; width: \${width}px; height: \${height}px;\` };
+        }
+      }
+    }
+    return { left: '0px', top: '0px', width: '60px', height: '60px', css: '' };
+  }`;
+      const patchedTutJs = origTutJs.replace(/function getCellMetric\(gridId, row, col\)[\s\S]*?return \{\s*left,[\s\S]*?\};\s*\}/, buggyGetCellMetric);
+      assert.ok(patchedTutJs !== origTutJs, 'Self-check patch must match getCellMetric in tutorial.js');
+      fs.writeFileSync(path.join(selfCheckDistDir, 'tutorial.js'), patchedTutJs, 'utf8');
+
+      const scServer = await startStaticServer(selfCheckDistDir);
+      try {
+        await cdp.setViewport(390, 742);
+        await cdp.send('Page.navigate', { url: `http://127.0.0.1:${scServer.port}/` });
+        await sleep(300);
+        await cdp.eval(`localStorage.setItem('2048_rogue_tutorial_seen', 'true'); window.TutorialController.open('start'); document.getElementById('btn-tutorial-next')?.click();`);
+        await sleep(120);
+        for (let i = 0; i < 3; i++) {
+          await cdp.eval(`document.getElementById('step2-boardwrap')?.click()`);
+          await sleep(320);
+        }
+        await cdp.eval(`document.getElementById('step2-boardwrap')?.click()`);
+        await sleep(270);
+        const duringFadeBuggy = await cdp.eval(`document.getElementById('step2-tiles-layer')?.classList.contains('tut-layer-fading-in')`);
+        assert.strictEqual(duringFadeBuggy, true, 'Self-check Step 2 layer must be in tut-layer-fading-in');
+        await cdp.setViewport(390, 738);
+        await sleep(300);
+        const scRes = await cdp.eval(measureTileDeltasExpr('grid-step-2', 'step2-tiles-layer'));
+        assert.ok(scRes.maxDelta > 1.0, `R17.1 Self-Check FAILED: reintroducing getBoundingClientRect() must fail > 1px (got ${scRes.maxDelta}px)`);
+        console.log(`  ✔ R17.1 Self-Check verified: reintroduced getBoundingClientRect() produced ${scRes.maxDelta}px offset (> 1px).`);
+      } finally {
+        await new Promise(r => scServer.server.close(r));
+      }
+    } finally {
+      try { fs.rmSync(selfCheckDistDir, { recursive: true, force: true }); } catch {}
+    }
+
+    // R17.3 + R17.4: Ability cards equal top/height/row-y (390x742, 320x568) & Header glyph/SKIP inset (390x742, 320x568, 1535x740)
+    await cdp.setViewport(390, 742);
+    await cdp.eval(`localStorage.setItem('2048_rogue_tutorial_seen', 'true')`);
+    await cdp.send('Page.navigate', { url: configUrl });
+    await sleep(300);
+    await cdp.eval(`window.TutorialController.open('start'); document.getElementById('btn-tutorial-next')?.click(); document.getElementById('btn-tutorial-next')?.click();`);
+    await sleep(2400);
+
+    for (const vp of [{ w: 390, h: 742, name: '390x742' }, { w: 320, h: 568, name: '320x568' }, { w: 1535, h: 740, name: '1535x740' }]) {
+      await cdp.setViewport(vp.w, vp.h);
+      await sleep(150);
+      if (vp.name === '390x742') await cdp.screenshot(path.join(outDir, 'tut_r17_step3_390.png'));
+      if (vp.name === '320x568') await cdp.screenshot(path.join(outDir, 'tut_r17_step3_320.png'));
+
+      const hdr = await cdp.eval(`(() => {
+        const ov = document.getElementById('tutorial-overlay');
+        const ovR = ov.getBoundingClientRect();
+        const tag = document.querySelector('.tutorial-tag');
+        const range = document.createRange();
+        range.selectNodeContents(tag.firstChild);
+        const gr = range.getBoundingClientRect();
+        const skip = document.getElementById('btn-skip-tutorial');
+        const sr = skip.getBoundingClientRect();
+        const skipRange = document.createRange();
+        skipRange.selectNodeContents(skip.firstChild);
+        const sg = skipRange.getBoundingClientRect();
+        const dotCount = document.querySelectorAll('.progress-dot').length;
+        const abCards = ['demo-ability-1', 'demo-ability-2', 'demo-ability-3'].map(id => {
+          const c = document.getElementById(id);
+          const r = c.getBoundingClientRect();
+          const icon = c.querySelector('.demo-ability-icon').getBoundingClientRect();
+          const name = c.querySelector('.demo-ability-name').getBoundingClientRect();
+          const pips = c.querySelector('.demo-ability-pips').getBoundingClientRect();
+          const label = c.querySelector('.demo-ability-refill').getBoundingClientRect();
+          return {
+            id,
+            top: r.top,
+            height: r.height,
+            highlighted: c.classList.contains('highlight'),
+            iconTop: icon.top,
+            nameTop: name.top,
+            pipsTop: pips.top,
+            labelTop: label.top
+          };
+        });
+        return {
+          leftInset: gr.left - ovR.left,
+          topInset: gr.top - ovR.top,
+          skipTextTopInset: sg.top - ovR.top,
+          skipTextRightInset: ovR.right - sg.right,
+          skipTopInset: sr.top - ovR.top,
+          skipRightInset: ovR.right - sr.right,
+          skipW: sr.width,
+          skipH: sr.height,
+          dotCount,
+          abCards
+        };
+      })()`);
+
+      assert.strictEqual(hdr.dotCount, 0, `Header must have 0 progress dots at ${vp.name}`);
+      assert.ok(
+        Math.abs(hdr.leftInset - hdr.topInset) <= 1.0,
+        `R17.4 (${vp.name}) TUTORIAL leftInset (${hdr.leftInset.toFixed(2)}) must match topInset (${hdr.topInset.toFixed(2)}) within 1px`
+      );
+      assert.ok(
+        Math.abs(hdr.skipTopInset - hdr.skipRightInset) <= 1.0,
+        `SKIP button topInset (${hdr.skipTopInset.toFixed(2)}) must match rightInset (${hdr.skipRightInset.toFixed(2)}) within 1px at ${vp.name}`
+      );
+      assert.ok(
+        Math.abs(hdr.skipTextTopInset - hdr.skipTextRightInset) <= 1.0,
+        `SKIP text topInset (${hdr.skipTextTopInset.toFixed(2)}) must match rightInset (${hdr.skipTextRightInset.toFixed(2)}) within 1px at ${vp.name}`
+      );
+      assert.ok(
+        Math.abs(hdr.leftInset - hdr.skipTextRightInset) <= 1.0 && Math.abs(hdr.topInset - hdr.skipTextTopInset) <= 1.0,
+        `TUTORIAL text inset (${hdr.leftInset.toFixed(2)},${hdr.topInset.toFixed(2)}) must match SKIP text inset (${hdr.skipTextRightInset.toFixed(2)},${hdr.skipTextTopInset.toFixed(2)}) within 1px at ${vp.name}`
+      );
+      assert.ok(hdr.skipW >= 36 && hdr.skipH >= 36, `R17.4 (${vp.name}) SKIP hit area must be >= 36px`);
+
+      if (vp.name === '390x742' || vp.name === '320x568') {
+        assert.strictEqual(hdr.abCards[0].highlighted, true, `R17.3 (${vp.name}) Diagonal ability card must be highlighted`);
+        const base = hdr.abCards[0];
+        for (const c of hdr.abCards.slice(1)) {
+          assert.ok(Math.abs(c.top - base.top) <= 0.5, `R17.3 (${vp.name}) ${c.id} top=${c.top} must match ${base.id} top=${base.top}`);
+          assert.ok(Math.abs(c.height - base.height) <= 0.5, `R17.3 (${vp.name}) ${c.id} height=${c.height} must match ${base.id} height=${base.height}`);
+          assert.ok(Math.abs(c.iconTop - base.iconTop) <= 0.5, `R17.3 (${vp.name}) ${c.id} iconTop=${c.iconTop} must match ${base.id} iconTop=${base.iconTop}`);
+          assert.ok(Math.abs(c.nameTop - base.nameTop) <= 0.5, `R17.3 (${vp.name}) ${c.id} nameTop=${c.nameTop} must match ${base.id} nameTop=${base.nameTop}`);
+          assert.ok(Math.abs(c.pipsTop - base.pipsTop) <= 0.5, `R17.3 (${vp.name}) ${c.id} pipsTop=${c.pipsTop} must match ${base.id} pipsTop=${base.pipsTop}`);
+          assert.ok(Math.abs(c.labelTop - base.labelTop) <= 0.5, `R17.3 (${vp.name}) ${c.id} labelTop=${c.labelTop} must match ${base.id} labelTop=${base.labelTop}`);
+        }
+      }
+    }
+    console.log('  ✔ R17.3 & R17.4 verified across 390x742, 320x568, and 1535x740.');
+
+    // R17.5: PAUSE MENU (confirm views, cancel/Esc, Daily/Free restart & end-run semantics, kept controls, fit matrix, hit areas, min font, focus trap, reduced motion)
+    await cdp.setViewport(390, 742);
+    await cdp.eval(`localStorage.setItem('2048_rogue_tutorial_seen', 'true')`);
+    await cdp.send('Page.navigate', { url: configUrl });
+    await sleep(300);
+
+    // Start Free run & make 1 move
+    await cdp.eval(`document.getElementById('btn-play-start')?.click()`);
+    await sleep(120);
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', keyCode: 40 });
+    await sleep(80);
+    await cdp.eval(`document.getElementById('btn-pause-menu')?.click()`);
+    await sleep(250);
+    await cdp.screenshot(path.join(outDir, 'pause_card.png'));
+
+    // Test Sound toggle, trophy button, How to play, and time played
+    const timeValPresent = await cdp.eval(`/^\\d+:\\d{2}$/.test(document.getElementById('pause-time-val')?.textContent.trim() || '')`);
+    assert.strictEqual(timeValPresent, true, 'R17.5 Pause card must show elapsed time played');
+    const soundBefore = await cdp.eval(`document.getElementById('sound-label')?.textContent.trim()`);
+    await cdp.eval(`document.getElementById('btn-pause-sound')?.click()`);
+    await sleep(50);
+    const soundAfter = await cdp.eval(`document.getElementById('sound-label')?.textContent.trim()`);
+    assert.notStrictEqual(soundBefore, soundAfter, 'R17.5 Sound button must toggle state label');
+    await cdp.eval(`document.getElementById('btn-pause-sound')?.click()`);
+    await sleep(50);
+
+    await cdp.eval(`document.getElementById('btn-pause-trophy')?.click()`);
+    await sleep(100);
+    const bestOpen = await cdp.eval(`!document.getElementById('best-runs-overlay')?.classList.contains('hidden')`);
+    assert.strictEqual(bestOpen, true, 'R17.5 Trophy button must open Best runs overlay');
+    await cdp.eval(`document.getElementById('btn-best-runs-close')?.click()`);
+    await sleep(100);
+
+    await cdp.eval(`document.getElementById('btn-pause-how')?.click()`);
+    await sleep(100);
+    const tutFromPauseOpen = await cdp.eval(`!document.getElementById('tutorial-overlay')?.classList.contains('hidden')`);
+    assert.strictEqual(tutFromPauseOpen, true, 'R17.5 How to play must open tutorial overlay');
+    await cdp.eval(`document.getElementById('btn-skip-tutorial')?.click()`);
+    await sleep(100);
+    const backToPauseFromHow = await cdp.eval(`!document.getElementById('pause-overlay')?.classList.contains('hidden')`);
+    assert.strictEqual(backToPauseFromHow, true, 'R17.5 Closing tutorial from pause must return to pause card');
+
+    // Test End-Run Protection (1 click opens confirm inside card, does NOT end run) + Free copy
+    const preSnapFree = await cdp.eval(`(() => ({
+      board: [...window.controller.getBoard()],
+      moves: window.controller.state.moveCount,
+      score: window.controller.state.score
+    }))()`);
+    await cdp.eval(`document.getElementById('btn-pause-end-run')?.click()`);
+    await sleep(250);
+    await cdp.screenshot(path.join(outDir, 'pause_confirm_end_free.png'));
+    const freeEndConfirm = await cdp.eval(`(() => {
+      const ov = document.getElementById('pause-overlay');
+      const card = ov.querySelector('.pause-card');
+      const cv = document.getElementById('pause-confirm-view');
+      const cardR = card.getBoundingClientRect();
+      const cvR = cv.getBoundingClientRect();
+      return {
+        pauseOpen: !ov.classList.contains('hidden'),
+        confirmVisible: !cv.classList.contains('hidden') && getComputedStyle(cv).visibility !== 'hidden',
+        insideCard: cv.parentElement === card && Math.abs(cvR.left - cardR.left) <= 1 && Math.abs(cvR.top - cardR.top) <= 1,
+        eyebrow: document.getElementById('pause-confirm-eyebrow')?.textContent.trim(),
+        title: document.getElementById('pause-confirm-title')?.textContent.trim(),
+        desc: document.getElementById('pause-confirm-desc')?.textContent.trim(),
+        execLabel: document.getElementById('btn-pause-confirm-execute')?.textContent.trim(),
+        cancelLabel: document.getElementById('btn-pause-confirm-cancel')?.textContent.trim(),
+        gameOver: window.controller.isGameOver(),
+        activeId: document.activeElement?.id
+      };
+    })()`);
+    assert.strictEqual(freeEndConfirm.pauseOpen, true);
+    assert.strictEqual(freeEndConfirm.confirmVisible, true);
+    assert.strictEqual(freeEndConfirm.insideCard, true, 'Confirm view must be in-card covering pause card');
+    assert.strictEqual(freeEndConfirm.title, 'END RUN?');
+    assert.strictEqual(freeEndConfirm.cancelLabel, 'CANCEL');
+    assert.ok(freeEndConfirm.desc.includes('Best Runs') && /not ranked/i.test(freeEndConfirm.desc), `Free end-run copy must mention Best Runs and not ranked (got: ${freeEndConfirm.desc})`);
+    assert.strictEqual(freeEndConfirm.gameOver, false, 'Two-step End-run protection: first click must NOT end run');
+    assert.strictEqual(freeEndConfirm.activeId, 'btn-pause-confirm-cancel', 'Opening confirm view must focus Cancel');
+
+    // Focus trap inside confirm view (Tab cycles execute <-> cancel)
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', keyCode: 9 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', keyCode: 9 });
+    await sleep(30);
+    const tabInConfirm1 = await cdp.eval(`document.activeElement?.id`);
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', keyCode: 9 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', keyCode: 9 });
+    await sleep(30);
+    const tabInConfirm2 = await cdp.eval(`document.activeElement?.id`);
+    assert.strictEqual(tabInConfirm1, 'btn-pause-confirm-execute', 'Tab from Cancel wraps to Confirm execute button');
+    assert.strictEqual(tabInConfirm2, 'btn-pause-confirm-cancel', 'Tab from Confirm execute wraps back to Cancel');
+
+    // Esc from confirm returns to pause actions without resuming & restores focus to btn-pause-end-run
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', keyCode: 27 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', keyCode: 27 });
+    await sleep(240);
+    const afterConfirmEsc = await cdp.eval(`(() => ({
+      pauseOpen: !document.getElementById('pause-overlay').classList.contains('hidden'),
+      confirmHidden: document.getElementById('pause-confirm-view').classList.contains('hidden'),
+      activeId: document.activeElement?.id,
+      board: [...window.controller.getBoard()],
+      moves: window.controller.state.moveCount,
+      score: window.controller.state.score
+    }))()`);
+    assert.strictEqual(afterConfirmEsc.pauseOpen, true, 'Esc in confirm view must NOT resume the run');
+    assert.strictEqual(afterConfirmEsc.confirmHidden, true, 'Esc in confirm view must close confirm view');
+    assert.strictEqual(afterConfirmEsc.activeId, 'btn-pause-end-run', 'Esc in confirm view must return focus to trigger button');
+    assert.deepStrictEqual(afterConfirmEsc.board, preSnapFree.board, 'Cancel/Esc must leave board unchanged');
+    assert.strictEqual(afterConfirmEsc.moves, preSnapFree.moves, 'Cancel/Esc must leave moves unchanged');
+
+    // Restart confirm + Cancel returns cleanly
+    await cdp.eval(`document.getElementById('btn-pause-restart')?.click()`);
+    await sleep(250);
+    await cdp.screenshot(path.join(outDir, 'pause_confirm_restart.png'));
+    const restartConfirmTitle = await cdp.eval(`document.getElementById('pause-confirm-title')?.textContent.trim()`);
+    assert.strictEqual(restartConfirmTitle, 'RESTART RUN?');
+    await cdp.eval(`document.getElementById('btn-pause-confirm-cancel')?.click()`);
+    await sleep(240);
+    const afterRestartCancel = await cdp.eval(`({ pauseOpen: !document.getElementById('pause-overlay').classList.contains('hidden'), confirmHidden: document.getElementById('pause-confirm-view').classList.contains('hidden'), activeId: document.activeElement?.id })`);
+    assert.strictEqual(afterRestartCancel.pauseOpen, true);
+    assert.strictEqual(afterRestartCancel.confirmHidden, true);
+    assert.strictEqual(afterRestartCancel.activeId, 'btn-pause-restart');
+
+    // Focus trap across all pause card buttons + Viewport Fit Matrix (320, 360, 390, 430)
+    const pauseFocusSeen = new Set();
+    for (let i = 0; i < 8; i++) {
+      pauseFocusSeen.add(await cdp.eval(`document.activeElement?.id`));
+      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', keyCode: 9 });
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', keyCode: 9 });
+      await sleep(20);
+    }
+    for (const id of ['btn-pause-trophy', 'btn-pause-resume', 'btn-pause-restart', 'btn-pause-end-run', 'btn-pause-sound', 'btn-pause-how']) {
+      assert.ok(pauseFocusSeen.has(id), `Pause Tab trap must reach ${id}`);
+    }
+
+    for (const vp of [{ w: 320, h: 568 }, { w: 360, h: 640 }, { w: 390, h: 742 }, { w: 430, h: 932 }]) {
+      await cdp.setViewport(vp.w, vp.h);
+      await sleep(80);
+      const fitPause = await cdp.eval(`(() => {
+        const card = document.querySelector('#pause-overlay .pause-card');
+        const cr = card.getBoundingClientRect();
+        const btns = Array.from(card.querySelectorAll('#pause-actions-view button, #btn-pause-trophy')).map(b => {
+          const r = b.getBoundingClientRect();
+          return { id: b.id, l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height };
+        });
+        const minFont = Array.from(card.querySelectorAll('*'))
+          .filter(el => !el.closest('#pause-confirm-view') && Array.from(el.childNodes).some(n => n.nodeType === 3 && n.textContent.trim()))
+          .reduce((m, el) => Math.min(m, parseFloat(getComputedStyle(el).fontSize)), 999);
+        return { cr: { l: cr.left, t: cr.top, r: cr.right, b: cr.bottom }, overflow: card.scrollHeight > card.clientHeight + 1, btns, minFont };
+      })()`);
+      assert.ok(fitPause.cr.l >= 0 && fitPause.cr.t >= 0 && fitPause.cr.r <= vp.w && fitPause.cr.b <= vp.h, `Pause card must fit inside ${vp.w}x${vp.h}`);
+      assert.strictEqual(fitPause.overflow, false, `Pause card must not scroll-overflow at ${vp.w}x${vp.h}`);
+      assert.ok(fitPause.minFont >= 10, `Pause card min font must be >= 10px at ${vp.w}x${vp.h} (got ${fitPause.minFont})`);
+      for (const b of fitPause.btns) {
+        assert.ok(b.w >= 36 && b.h >= 36, `Button ${b.id} hit area must be >= 36px at ${vp.w}x${vp.h} (got ${b.w}x${b.h})`);
+        assert.ok(b.l >= 0 && b.t >= 0 && b.r <= vp.w && b.b <= vp.h, `Button ${b.id} must fit inside ${vp.w}x${vp.h}`);
+      }
+      for (let i = 0; i < fitPause.btns.length; i++) {
+        for (let j = i + 1; j < fitPause.btns.length; j++) {
+          const a = fitPause.btns[i], b = fitPause.btns[j];
+          const overlap = !(a.r <= b.l + 0.5 || b.r <= a.l + 0.5 || a.b <= b.t + 0.5 || b.b <= a.t + 0.5);
+          assert.strictEqual(overlap, false, `Pause buttons ${a.id} and ${b.id} must not overlap at ${vp.w}x${vp.h}`);
+        }
+      }
+
+      // Pause trophy rect >= 36x36 at the four viewports and non-overlap with PAUSED title or time-played row
+      if (vp.w === 390 && vp.h === 742) {
+        await cdp.screenshot(path.join(outDir, 'pause_card_390x742.png'));
+      }
+      if (vp.w === 320 && vp.h === 568) {
+        await cdp.screenshot(path.join(outDir, 'pause_card_320x568.png'));
+      }
+
+      const trophyGeom = await cdp.eval(`(() => {
+        const trophy = document.getElementById('btn-pause-trophy');
+        const title = document.getElementById('pause-title');
+        const timeRow = document.getElementById('pause-time-wrap');
+        if (!trophy || !title || !timeRow) return null;
+        const tr = trophy.getBoundingClientRect();
+        const titr = title.getBoundingClientRect();
+        const tmr = timeRow.getBoundingClientRect();
+        const overlapTitle = !(tr.right <= titr.left + 0.5 || titr.right <= tr.left + 0.5 || tr.bottom <= titr.top + 0.5 || titr.bottom <= tr.top + 0.5);
+        const overlapTime = !(tr.right <= tmr.left + 0.5 || tmr.right <= tr.left + 0.5 || tr.bottom <= tmr.top + 0.5 || tmr.bottom <= tr.top + 0.5);
+        return {
+          w: tr.width,
+          h: tr.height,
+          overlapTitle,
+          overlapTime,
+          tr: { l: tr.left, t: tr.top, r: tr.right, b: tr.bottom },
+          titr: { l: titr.left, t: titr.top, r: titr.right, b: titr.bottom },
+          tmr: { l: tmr.left, t: tmr.top, r: tmr.right, b: tmr.bottom }
+        };
+      })()`);
+      assert.ok(trophyGeom, `Pause trophy, title, and time-played elements must exist at ${vp.w}x${vp.h}`);
+      assert.ok(trophyGeom.w >= 36 && trophyGeom.h >= 36, `Pause trophy rect must be >= 36x36 at ${vp.w}x${vp.h} (got ${trophyGeom.w}x${trophyGeom.h})`);
+      assert.strictEqual(trophyGeom.overlapTitle, false, `Pause trophy must not overlap PAUSED title at ${vp.w}x${vp.h}`);
+      assert.strictEqual(trophyGeom.overlapTime, false, `Pause trophy must not overlap time-played row at ${vp.w}x${vp.h}`);
+
+      // Check confirm view fit at this viewport too
+      await cdp.eval(`document.getElementById('btn-pause-end-run')?.click()`);
+      await sleep(230);
+      const fitConfirm = await cdp.eval(`(() => {
+        const cv = document.getElementById('pause-confirm-view');
+        const btns = Array.from(cv.querySelectorAll('button')).map(b => {
+          const r = b.getBoundingClientRect();
+          return { id: b.id, l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height };
+        });
+        const minFont = Array.from(cv.querySelectorAll('*'))
+          .filter(el => Array.from(el.childNodes).some(n => n.nodeType === 3 && n.textContent.trim()))
+          .reduce((m, el) => Math.min(m, parseFloat(getComputedStyle(el).fontSize)), 999);
+        return { overflow: cv.scrollHeight > cv.clientHeight + 1, btns, minFont };
+      })()`);
+      assert.strictEqual(fitConfirm.overflow, false, `Confirm view must not overflow at ${vp.w}x${vp.h}`);
+      assert.ok(fitConfirm.minFont >= 10, `Confirm view min font must be >= 10px at ${vp.w}x${vp.h}`);
+      for (const b of fitConfirm.btns) {
+        assert.ok(b.w >= 36 && b.h >= 36, `Confirm button ${b.id} hit area >= 36px at ${vp.w}x${vp.h}`);
+        assert.ok(b.l >= 0 && b.t >= 0 && b.r <= vp.w && b.b <= vp.h, `Confirm button ${b.id} inside ${vp.w}x${vp.h}`);
+      }
+      await cdp.eval(`document.getElementById('btn-pause-confirm-cancel')?.click()`);
+      await sleep(230);
+    }
+
+    // Reduced motion disables pause pulse & confirm transitions
+    await cdp.setViewport(390, 742);
+    await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    await sleep(60);
+    const pauseReduced = await cdp.eval(`(() => ({
+      pulseAnim: getComputedStyle(document.querySelector('.pause-badge-pulse')).animationName,
+      confirmTrans: getComputedStyle(document.getElementById('pause-confirm-view')).transitionDuration
+    }))()`);
+    assert.strictEqual(pauseReduced.pulseAnim, 'none', 'Pause badge pulse must disable under prefers-reduced-motion');
+    assert.strictEqual(pauseReduced.confirmTrans, '0s', 'Confirm view transition must disable under prefers-reduced-motion');
+    await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+    await sleep(60);
+
+    // Esc on main pause menu resumes run and returns focus to btn-pause-menu
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', keyCode: 27 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', keyCode: 27 });
+    await sleep(100);
+    const resumedByEsc = await cdp.eval(`({ pauseHidden: document.getElementById('pause-overlay').classList.contains('hidden'), activeId: document.activeElement?.id })`);
+    assert.strictEqual(resumedByEsc.pauseHidden, true, 'Esc on main pause actions must resume run');
+    assert.strictEqual(resumedByEsc.activeId, 'btn-pause-menu', 'Closing pause menu must return focus to btn-pause-menu');
+
+    // Test Daily mode: End-run confirm copy, Daily restart across UTC midnight discards old run & recomputes seed
+    const day1Ms = Date.UTC(2026, 4, 10, 23, 59, 50);
+    const day2Ms = Date.UTC(2026, 4, 11, 0, 0, 10);
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `
+        window.__fakeNow = ${day1Ms};
+        const _RealDate = Date;
+        class FakeDate extends _RealDate {
+          constructor(...args) {
+            if (args.length === 0) super(window.__fakeNow);
+            else super(...args);
+          }
+          static now() { return window.__fakeNow; }
+        }
+        window.Date = FakeDate;
+      `
+    });
+    await cdp.eval(`localStorage.clear(); localStorage.setItem('2048_rogue_tutorial_seen', 'true');`);
+    await cdp.send('Page.navigate', { url: configUrl });
+    await sleep(350);
+
+    await cdp.eval(`document.getElementById('btn-play-daily')?.click()`);
+    await sleep(150);
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', keyCode: 40 });
+    await sleep(80);
+    const seedDay1 = await cdp.eval(`window.controller.seed`);
+
+    await cdp.eval(`document.getElementById('btn-pause-menu')?.click()`);
+    await sleep(220);
+    await cdp.eval(`document.getElementById('btn-pause-end-run')?.click()`);
+    await sleep(250);
+    await cdp.screenshot(path.join(outDir, 'pause_confirm_end_daily.png'));
+    const dailyEndDesc = await cdp.eval(`document.getElementById('pause-confirm-desc')?.textContent.trim()`);
+    assert.ok(
+      dailyEndDesc.includes('Daily ranking') && dailyEndDesc.includes('beats your best'),
+      `Daily end-run copy must describe Daily ranking if it beats your best (got: ${dailyEndDesc})`
+    );
+    await cdp.eval(`document.getElementById('btn-pause-confirm-cancel')?.click()`);
+    await sleep(230);
+
+    // Advance UTC clock across midnight and confirm Daily Restart
+    const beforeDailyRestartStore = await cdp.eval(`(() => ({
+      history: localStorage.getItem('2048_rogue_history') || '[]',
+      queue: localStorage.getItem('2048_rogue_daily_queue_v1') || '[]'
+    }))()`);
+    await cdp.eval(`window.__fakeNow = ${day2Ms};`);
+    await cdp.eval(`document.getElementById('btn-pause-restart')?.click()`);
+    await sleep(240);
+    await cdp.eval(`document.getElementById('btn-pause-confirm-execute')?.click()`);
+    await sleep(200);
+    const afterDailyRestart = await cdp.eval(`(() => ({
+      seed: window.controller.seed,
+      moves: window.controller.state.moveCount,
+      history: localStorage.getItem('2048_rogue_history') || '[]',
+      queue: localStorage.getItem('2048_rogue_daily_queue_v1') || '[]'
+    }))()`);
+    assert.notStrictEqual(afterDailyRestart.seed, seedDay1, 'Daily restart after UTC midnight must recompute seed for the new UTC date');
+    assert.strictEqual(afterDailyRestart.moves, 0, 'Daily restart must start a fresh run at 0 moves');
+    assert.strictEqual(afterDailyRestart.history, beforeDailyRestartStore.history, 'Daily restart must NOT add a history entry for discarded run');
+    assert.strictEqual(afterDailyRestart.queue, beforeDailyRestartStore.queue, 'Daily restart must NOT enqueue abandoned run');
+    // Confirm mode stayed Daily: ending this restarted run must show Play Daily Again button
+    await cdp.eval(`document.getElementById('btn-pause-menu')?.click()`);
+    await sleep(100);
+    await cdp.eval(`document.getElementById('btn-pause-end-run')?.click()`);
+    await sleep(100);
+    await cdp.eval(`document.getElementById('btn-pause-confirm-execute')?.click()`);
+    await sleep(200);
+    const dailyBtnShown = await cdp.eval(`!document.getElementById('btn-play-daily-again')?.classList.contains('hidden')`);
+    assert.strictEqual(dailyBtnShown, true, 'Daily restart must preserve Daily mode');
+
+    console.log('✔ Test 11 (R17.1-17.5) PASSED cleanly.\n');
+
+    // -------------------------------------------------------------------------
     // 11. SUMMARY REPORT
     // -------------------------------------------------------------------------
     const summary = [
@@ -1987,11 +2564,12 @@ async function main() {
       `Test 2 (Visibility):     PASSED (R16.6 tile look parity 72/72, R16.2 stone texture parity, R16.5 stone ring centered <=1px)`,
       `Test 3 (Step 1 Timing):  PASSED (2+2 -> slide -> 4+2, gold pointer visibility, zero spawn pop)`,
       `Test 4 (Step 2 States):  PASSED (states 0..3, R16.3 height-resize state/tile/rect preservation, 20x rapid taps)`,
-      `Test 5 (Step 3 Draft):   PASSED (order Diagonal/Shatter/Last Stand, R16.7 ability refill intervals, icons, single shine)`,
+      `Test 5 (Step 3 Draft):   PASSED (order Diagonal/Shatter/Last Stand, R16.7 ability refill intervals, icons, R17.2 periodic shine)`,
       `Test 6 (Fit Matrix):     PASSED (12/12 combinations, child bounding boxes inside viewport, 400px tamper proof)`,
       `Test 7 (Zero-Flash):     PASSED (>=8 rAF frames, scrim parity, header lum delta <= 3%, tamper proof)`,
       `Test 8 (Fallback):       PASSED (blocked script fallback reveals start card by 1700ms, no dead screen)`,
       `Test 9 (Retention/A11y): PASSED (R16.4 zero arrow/Esc key leaks, 100% run log isolation, hit areas, no ring in reduced motion)`,
+      `Test 11 (R17 Polish):    PASSED (R17.1 open/fade alignment + GCR self-check, R17.3 equal cards, R17.4 header insets, R17.5 pause confirm & fit)`,
       '--------------------------------------------------------------------------------',
       'Screenshots Captured:',
       '  - scripts/out/tutorial_step1_mid_390.png',
@@ -2008,8 +2586,14 @@ async function main() {
       '  - scripts/out/tutorial_pause_after.png',
       '  - scripts/out/tutorial_start_card.png',
       '  - scripts/out/tutorial_reduced_motion_step2.png',
+      '  - scripts/out/tut_r17_s1_390_50ms.png / 100ms / settled',
+      '  - scripts/out/tut_r17_s2_390_50ms.png / 100ms / settled',
+      '  - scripts/out/tut_r17_s1_1535_50ms.png / 100ms / settled',
+      '  - scripts/out/tut_r17_s2_1535_50ms.png / 100ms / settled',
+      '  - scripts/out/tut_r17_step3_390.png / 320',
+      '  - scripts/out/pause_card.png / pause_card_390x742.png / pause_card_320x568.png / pause_confirm_restart.png / pause_confirm_end_daily.png / pause_confirm_end_free.png',
       '================================================================================',
-      'ALL 9/9 INTERACTIVE TUTORIAL TEST GROUPS PASSED CLEANLY.',
+      'ALL 10/10 INTERACTIVE TUTORIAL & R17 TEST GROUPS PASSED CLEANLY.',
       '================================================================================'
     ].join('\n');
     fs.writeFileSync(path.join(outDir, 'tutorial_summary.txt'), summary, 'utf8');

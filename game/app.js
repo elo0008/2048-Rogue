@@ -140,7 +140,7 @@ function getTopRuns() {
     const top10 = seeded.slice(0, 10);
     try {
       if (persistenceEnabled) localStorage.setItem(STORAGE_KEY_TOP_RUNS, JSON.stringify(top10));
-    } catch {}
+    } catch { }
     sessionTopRuns = top10;
     return top10;
   } catch {
@@ -166,7 +166,7 @@ function saveTopRun(entry) {
     const top10 = list.slice(0, 10);
     try {
       if (persistenceEnabled) localStorage.setItem(STORAGE_KEY_TOP_RUNS, JSON.stringify(top10));
-    } catch {}
+    } catch { }
     sessionTopRuns = top10;
   } catch {
     if (!sessionTopRuns) sessionTopRuns = [];
@@ -262,12 +262,12 @@ function getDiagnosticMetadata() {
     if (document.referrer) {
       referrerOrigin = new URL(document.referrer).origin;
     }
-  } catch {}
+  } catch { }
 
   let audioState = 'none';
   try {
     audioState = getAudioState();
-  } catch {}
+  } catch { }
 
   return {
     viewport: {
@@ -698,6 +698,13 @@ const draftOwnedChips = document.getElementById('draft-owned-chips');
 const draftOwnedCount = document.getElementById('draft-owned-count');
 
 const pauseOverlay = document.getElementById('pause-overlay');
+const pauseActionsView = document.getElementById('pause-actions-view');
+const pauseConfirmView = document.getElementById('pause-confirm-view');
+const pauseConfirmEyebrow = document.getElementById('pause-confirm-eyebrow');
+const pauseConfirmTitle = document.getElementById('pause-confirm-title');
+const pauseConfirmDesc = document.getElementById('pause-confirm-desc');
+const btnPauseConfirmExecute = document.getElementById('btn-pause-confirm-execute');
+const btnPauseConfirmCancel = document.getElementById('btn-pause-confirm-cancel');
 const btnPauseResume = document.getElementById('btn-pause-resume');
 const btnPauseRestart = document.getElementById('btn-pause-restart');
 const btnPauseEndRun = document.getElementById('btn-pause-end-run');
@@ -818,7 +825,7 @@ function flushLeaderboardQueue(targetStatusEl = null, force = false, targetRunId
 
       if (status === 'ACCEPTED') {
         try {
-          try { localStorage.setItem('rogue2048_has_accepted_run', '1'); } catch {}
+          try { localStorage.setItem('rogue2048_has_accepted_run', '1'); } catch { }
           const rankInfo = await getMyDailyRank({
             url,
             anonKey,
@@ -854,7 +861,7 @@ function flushLeaderboardQueue(targetStatusEl = null, force = false, targetRunId
         renderGameOverRankingCard(7, { day: item.day });
       }
     },
-  }).catch(() => {});
+  }).catch(() => { });
 }
 
 /* -------------------------------------------------------------
@@ -987,7 +994,7 @@ function getSeenHints() {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return new Set(parsed);
     }
-  } catch {}
+  } catch { }
   return sessionHintsSeen;
 }
 
@@ -997,7 +1004,7 @@ function markHintSeen(hintId) {
     const seen = getSeenHints();
     seen.add(hintId);
     if (persistenceEnabled) localStorage.setItem(HINTS_STORAGE_KEY, JSON.stringify(Array.from(seen)));
-  } catch {}
+  } catch { }
 }
 
 function showFirstTimeHint(hintId, text) {
@@ -1227,7 +1234,7 @@ function finishCleanSlateImmediately() {
   }
   if (state.anims) {
     for (const a of state.anims) {
-      try { a.cancel(); } catch {}
+      try { a.cancel(); } catch { }
     }
   }
   if (state.ringEl && state.ringEl.parentNode) {
@@ -1464,7 +1471,7 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
       wrapper.style.width = `${bRect.width}px`;
       wrapper.style.height = `${bRect.height}px`;
     }
-/*DEV_LAB_BEGIN*/
+    /*DEV_LAB_BEGIN*/
     if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
       const bTitle = document.getElementById('clean-slate-title');
       if (bTitle) {
@@ -1473,7 +1480,7 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
       }
       window.__ROGUE_LAB_API__.onPhase('banner', { state, triggerValue });
     }
-/*DEV_LAB_END*/
+    /*DEV_LAB_END*/
 
     // Impact hits at ~150 ms (same as Last Stand stamp)
     timers.push(setTimeout(() => {
@@ -1504,7 +1511,7 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
       const el = tilesLayer ? tilesLayer.querySelector(`.tile[data-index="${sIdx}"]`) : null;
       if (el) el.classList.add('tile-clean-slate-charge');
     }
-/*DEV_LAB_BEGIN*/
+    /*DEV_LAB_BEGIN*/
     if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
       for (const sIdx of survivorIndices) {
         const el = tilesLayer ? tilesLayer.querySelector(`.tile[data-index="${sIdx}"]`) : null;
@@ -1515,7 +1522,7 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
       }
       window.__ROGUE_LAB_API__.onPhase('charge', { state });
     }
-/*DEV_LAB_END*/
+    /*DEV_LAB_END*/
     playCleanSlateShimmer();
   }, 2000));
 
@@ -1558,11 +1565,11 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
         fill: 'forwards',
       });
       anims.push(ringAnim);
-/*DEV_LAB_BEGIN*/
+      /*DEV_LAB_BEGIN*/
       if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
         window.__ROGUE_LAB_API__.onPhase('ring', { state, ringAnim });
       }
-/*DEV_LAB_END*/
+      /*DEV_LAB_END*/
 
       timers.push(setTimeout(() => {
         if (ring.parentNode) ring.remove();
@@ -1586,11 +1593,11 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
 
     timers.push(setTimeout(() => {
       state.phase = 'E';
-/*DEV_LAB_BEGIN*/
+      /*DEV_LAB_BEGIN*/
       if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
         window.__ROGUE_LAB_API__.onPhase('breaks', { state, item });
       }
-/*DEV_LAB_END*/
+      /*DEV_LAB_END*/
       playThrottledBreakSound(item.isStone);
 
       if (item.isStone) {
@@ -1618,11 +1625,11 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
   const payoutTime = Math.max(2450, lastBreakStartTime + 10);
   timers.push(setTimeout(() => {
     state.phase = 'F';
-/*DEV_LAB_BEGIN*/
+    /*DEV_LAB_BEGIN*/
     if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
       window.__ROGUE_LAB_API__.onPhase('payout', { state, payout });
     }
-/*DEV_LAB_END*/
+    /*DEV_LAB_END*/
     state.prePayoutScore = null;
     updateHeader();
 
@@ -1658,11 +1665,11 @@ function triggerCleanSlateSequence({ survivorIndices = [], triggerValue = 2048, 
     cleanSlateSequenceState = null;
     currentAnimationState = null;
     isAnimating = false;
-/*DEV_LAB_BEGIN*/
+    /*DEV_LAB_BEGIN*/
     if (typeof window !== 'undefined' && window.__ROGUE_LAB_API__) {
       window.__ROGUE_LAB_API__.onPhase('end', { state });
     }
-/*DEV_LAB_END*/
+    /*DEV_LAB_END*/
 
     if (cleanSlateBanner) cleanSlateBanner.classList.add('hidden');
     if (tilesLayer) {
@@ -1998,7 +2005,7 @@ function alignDomToBoard(board, metrics = getGridMetrics()) {
         stone.style.transform = expectedTrans.transform;
         stone.style.opacity = '1';
         if (typeof stone.getAnimations === 'function') {
-          for (const a of stone.getAnimations()) try { a.cancel(); } catch {}
+          for (const a of stone.getAnimations()) try { a.cancel(); } catch { }
         }
       }
     } else if (typeof expectedVal === 'number' && expectedVal > 0) {
@@ -2025,10 +2032,10 @@ function alignDomToBoard(board, metrics = getGridMetrics()) {
         tile.style.transform = expectedTrans.transform;
         tile.style.opacity = '1';
         if (typeof tile.getAnimations === 'function') {
-          for (const a of tile.getAnimations()) try { a.cancel(); } catch {}
+          for (const a of tile.getAnimations()) try { a.cancel(); } catch { }
         }
         if (typeof face.getAnimations === 'function') {
-          for (const a of face.getAnimations()) try { a.cancel(); } catch {}
+          for (const a of face.getAnimations()) try { a.cancel(); } catch { }
         }
       }
     }
@@ -2674,7 +2681,7 @@ function cleanupAbilityFocus(isKeyboard = false) {
   if (window.getSelection) {
     try {
       window.getSelection().removeAllRanges();
-    } catch {}
+    } catch { }
   }
 }
 
@@ -2802,7 +2809,7 @@ if (typeof window !== 'undefined') {
 
 function createRewindRng(seed) {
   let s = (seed >>> 0) || 1;
-  return function() {
+  return function () {
     s = (s + 0x6D2B79F5) >>> 0;
     let t = Math.imul(s ^ (s >>> 15), 1 | s);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
@@ -2970,7 +2977,7 @@ class RewindDirector {
       this.currentRate = k;
 
       for (const a of this.currentGroup) {
-        try { a.updatePlaybackRate(k); } catch {}
+        try { a.updatePlaybackRate(k); } catch { }
       }
 
       this.rateHistory.push({ time: now, rate: k });
@@ -3191,7 +3198,7 @@ class RewindDirector {
 
         this.currentGroup.push(tAnim, oAnim);
 
-        Promise.all([tAnim.finished.catch(() => {}), oAnim.finished.catch(() => {})]).then(() => {
+        Promise.all([tAnim.finished.catch(() => { }), oAnim.finished.catch(() => { })]).then(() => {
           if (this.epoch !== epoch || this.state !== 'WAVE') return;
           this.executeCellSwap(i, m, oldEl, [tAnim, oAnim], epoch);
         });
@@ -3210,7 +3217,7 @@ class RewindDirector {
           });
           this.currentGroup.push(ripAnim);
           this.activeWaveAnimations.push(ripAnim);
-          this.activeWavePromises.push(ripAnim.finished.catch(() => {}));
+          this.activeWavePromises.push(ripAnim.finished.catch(() => { }));
         }
 
         const sentinel = document.createElement('div');
@@ -3229,7 +3236,7 @@ class RewindDirector {
         });
         this.currentGroup.push(barrierAnim);
 
-        barrierAnim.finished.catch(() => {}).then(() => {
+        barrierAnim.finished.catch(() => { }).then(() => {
           if (sentinel.parentNode) sentinel.parentNode.removeChild(sentinel);
           if (this.epoch !== epoch || this.state !== 'WAVE') return;
           this.executeCellSwap(i, m, null, [barrierAnim], epoch);
@@ -3250,7 +3257,7 @@ class RewindDirector {
         if (a.playState === 'finished' || (a.currentTime >= (a.effect?.getComputedTiming()?.endTime ?? 0))) {
           a.cancel();
         }
-      } catch {}
+      } catch { }
     }
     this.currentGroup = this.currentGroup.filter(a => !finishedAnims.includes(a));
 
@@ -3308,16 +3315,16 @@ class RewindDirector {
         try {
           tRiseAnim.updatePlaybackRate(this.currentRate);
           oRiseAnim.updatePlaybackRate(this.currentRate);
-        } catch {}
+        } catch { }
       }
       if (this.isPaused) {
         try {
           tRiseAnim.pause();
           oRiseAnim.pause();
-        } catch {}
+        } catch { }
       }
 
-      Promise.all([tRiseAnim.finished.catch(() => {}), oRiseAnim.finished.catch(() => {})]).then(() => {
+      Promise.all([tRiseAnim.finished.catch(() => { }), oRiseAnim.finished.catch(() => { })]).then(() => {
         if (REWIND_FX.stage === 'tile') {
           animTarget.style.transform = '';
           animTarget.style.opacity = '';
@@ -3330,7 +3337,7 @@ class RewindDirector {
       this.currentGroup.push(tRiseAnim, oRiseAnim);
       this.riseAnimations.push(tRiseAnim, oRiseAnim);
       this.activeWaveAnimations.push(tRiseAnim, oRiseAnim);
-      this.activeWavePromises.push(tRiseAnim.finished.catch(() => {}), oRiseAnim.finished.catch(() => {}));
+      this.activeWavePromises.push(tRiseAnim.finished.catch(() => { }), oRiseAnim.finished.catch(() => { }));
     }
 
     this.displayed[cellIdx] = targetVal;
@@ -3351,7 +3358,7 @@ class RewindDirector {
     if (this.completedSwapCount === this.pendingSwapCount) {
       const waitGroup = this.activeWavePromises && this.activeWavePromises.length > 0
         ? this.activeWavePromises
-        : this.riseAnimations.map(a => a.finished.catch(() => {}));
+        : this.riseAnimations.map(a => a.finished.catch(() => { }));
       if (waitGroup.length > 0) {
         Promise.all(waitGroup).then(() => {
           if (this.epoch !== epoch || this.state !== 'WAVE') return;
@@ -3441,7 +3448,7 @@ class RewindDirector {
       this.triggerCatchUp();
     }
 
-    Promise.all(sinkAnims.map(a => a.finished.catch(() => {}))).then(() => {
+    Promise.all(sinkAnims.map(a => a.finished.catch(() => { }))).then(() => {
       if (this.epoch !== epoch || this.state !== 'SINK') return;
       this.sinkEndTime = performance.now();
       this.executeSwap();
@@ -3468,7 +3475,7 @@ class RewindDirector {
       this.currentRate = k;
 
       for (const a of this.currentGroup) {
-        try { a.updatePlaybackRate(k); } catch {}
+        try { a.updatePlaybackRate(k); } catch { }
       }
 
       let allAtNadir = true;
@@ -3501,7 +3508,7 @@ class RewindDirector {
     if (this.epoch !== epoch) return;
 
     for (const a of this.currentGroup) {
-      try { a.cancel(); } catch {}
+      try { a.cancel(); } catch { }
     }
     this.currentGroup = [];
 
@@ -3563,7 +3570,7 @@ class RewindDirector {
       this.triggerCatchUp();
     }
 
-    Promise.all(riseAnims.map(a => a.finished.catch(() => {}))).then(() => {
+    Promise.all(riseAnims.map(a => a.finished.catch(() => { }))).then(() => {
       if (this.epoch !== epoch || this.state !== 'RISE') return;
       this.riseEndTime = performance.now();
       this.executeCleanup();
@@ -3585,7 +3592,7 @@ class RewindDirector {
         if (a.playState === 'finished' || (a.currentTime >= (a.effect?.getComputedTiming()?.endTime ?? 0))) {
           a.cancel();
         }
-      } catch {}
+      } catch { }
     }
     this.currentGroup = [];
     this.riseAnimations = [];
@@ -3697,7 +3704,7 @@ class RewindDirector {
     this.currentGroup = fadeOutAnims;
     if (this.queue.length > 0) this.triggerCatchUp();
 
-    Promise.all(fadeOutAnims.map(a => a.finished.catch(() => {}))).then(() => {
+    Promise.all(fadeOutAnims.map(a => a.finished.catch(() => { }))).then(() => {
       if (this.epoch !== epoch || this.state !== 'SINK') return;
       this.sinkEndTime = performance.now();
       this.executeReducedMotionSwap();
@@ -3714,7 +3721,7 @@ class RewindDirector {
     if (this.epoch !== epoch) return;
 
     for (const a of this.currentGroup) {
-      try { a.cancel(); } catch {}
+      try { a.cancel(); } catch { }
     }
     this.currentGroup = [];
 
@@ -3751,7 +3758,7 @@ class RewindDirector {
     this.setState('RISE');
     if (this.queue.length > 0) this.triggerCatchUp();
 
-    Promise.all(fadeInAnims.map(a => a.finished.catch(() => {}))).then(() => {
+    Promise.all(fadeInAnims.map(a => a.finished.catch(() => { }))).then(() => {
       if (this.epoch !== epoch || this.state !== 'RISE') return;
       this.riseEndTime = performance.now();
       this.executeCleanup();
@@ -3761,14 +3768,14 @@ class RewindDirector {
   pause() {
     this.isPaused = true;
     for (const a of this.currentGroup) {
-      try { a.pause(); } catch {}
+      try { a.pause(); } catch { }
     }
   }
 
   resume() {
     this.isPaused = false;
     for (const a of this.currentGroup) {
-      try { a.play(); } catch {}
+      try { a.play(); } catch { }
     }
   }
 
@@ -3780,7 +3787,7 @@ class RewindDirector {
     }
     if (this.rateRaf) cancelAnimationFrame(this.rateRaf);
     for (const a of this.currentGroup) {
-      try { a.cancel(); } catch {}
+      try { a.cancel(); } catch { }
     }
     this.currentGroup = [];
     this.riseAnimations = [];
@@ -3792,7 +3799,7 @@ class RewindDirector {
     this.targetRate = 1.0;
     this.isPaused = false;
     if (currentAnimationState && typeof currentAnimationState.cancelAnimation === 'function') {
-      try { currentAnimationState.cancelAnimation(); } catch {}
+      try { currentAnimationState.cancelAnimation(); } catch { }
     }
     isAnimating = false;
     currentAnimationState = null;
@@ -4057,7 +4064,7 @@ function cancelCleanSlateSequence() {
   }
   if (state.anims) {
     for (const a of state.anims) {
-      try { a.cancel(); } catch {}
+      try { a.cancel(); } catch { }
     }
   }
   if (state.ringEl && state.ringEl.parentNode) {
@@ -4099,7 +4106,7 @@ function cancelOngoingAnimation() {
       slideAnimTimer = null;
     }
     for (const a of activeAnimations) {
-      try { a.cancel(); } catch {}
+      try { a.cancel(); } catch { }
     }
     activeAnimations = [];
     isAnimating = false;
@@ -4491,7 +4498,7 @@ function handleMove(direction, inputType = 'key') {
       clearTimeout(t);
     }
     for (const a of activeAnimations) {
-      try { a.cancel(); } catch {}
+      try { a.cancel(); } catch { }
     }
     activeAnimations = [];
     isAnimating = false;
@@ -4509,7 +4516,7 @@ function handleMove(direction, inputType = 'key') {
     }
 
     for (const a of activeAnimations) {
-      try { a.cancel(); } catch {}
+      try { a.cancel(); } catch { }
     }
     activeAnimations = [];
 
@@ -4658,7 +4665,7 @@ function handleMove(direction, inputType = 'key') {
   } else {
     Promise.all(activeAnimations.map(anim => {
       if (typeof anim.finished?.then === 'function') {
-        return anim.finished.catch(() => {});
+        return anim.finished.catch(() => { });
       }
       return Promise.resolve();
     })).then(() => {
@@ -4874,7 +4881,7 @@ function handleGameOver() {
                 if (rankRes.ok && rankRes.row) {
                   renderGameOverRankingCard(4, { bestPoints, bestRank: rankRes.row.rank, day });
                 }
-              }).catch(() => {});
+              }).catch(() => { });
             }
           }
         }
@@ -4917,8 +4924,8 @@ function startNewGame(seed = null, isDaily = false) {
   const chosenSeed = seed !== null
     ? seed
     : (isDaily
-        ? dailySeed(dailyRunStartDay)
-        : (initialSeed !== null ? initialSeed : Math.floor(Math.random() * 2147483647) + 1));
+      ? dailySeed(dailyRunStartDay)
+      : (initialSeed !== null ? initialSeed : Math.floor(Math.random() * 2147483647) + 1));
   const bestScore = getStoredBestScore();
   controller = new GameController(chosenSeed, configToUse, playerId);
   controller.bestScoreAtRunStart = bestScore;
@@ -5028,10 +5035,26 @@ window.addEventListener('keydown', (e) => {
       return;
     }
     if (pauseOverlay && !pauseOverlay.classList.contains('hidden')) {
+      const bro = document.getElementById('best-runs-overlay');
+      if (bro && !bro.classList.contains('hidden')) return;
       e.preventDefault();
-      pauseOverlay.classList.add('hidden');
+      if (pendingPauseAction !== null) {
+        closePauseConfirm(true);
+      } else {
+        closePauseOverlay();
+      }
       return;
     }
+  }
+
+  if (
+    e.key === 'Tab' &&
+    pauseOverlay &&
+    !pauseOverlay.classList.contains('hidden') &&
+    !(bestRunsOverlay && !bestRunsOverlay.classList.contains('hidden'))
+  ) {
+    trapPauseFocus(e);
+    return;
   }
 
   if (
@@ -5276,15 +5299,127 @@ if (btnCancelTargeting) {
 }
 
 // Pause Menu controls
-let endRunConfirmTimer = null;
-function resetEndRunButton() {
-  if (endRunConfirmTimer !== null) {
-    clearTimeout(endRunConfirmTimer);
-    endRunConfirmTimer = null;
+let pendingPauseAction = null; // 'restart' | 'end' | null
+let lastFocusBeforeConfirm = null;
+let lastFocusBeforePause = null;
+
+function setPauseBackgroundInert(isInert) {
+  const card = pauseOverlay ? pauseOverlay.querySelector('.pause-card') : null;
+  if (!card) return;
+  Array.from(card.children).forEach((child) => {
+    if (child !== pauseConfirmView) {
+      child.inert = Boolean(isInert);
+      if (isInert) child.setAttribute('aria-hidden', 'true');
+      else child.removeAttribute('aria-hidden');
+    }
+  });
+}
+
+function getPauseConfirmCopy(action, isDaily) {
+  if (action === 'restart') {
+    return {
+      eyebrow: 'CONFIRM RESTART',
+      title: 'RESTART RUN?',
+      desc: isDaily
+        ? 'Discards this Daily run with no submission or record, and starts a fresh Daily run for the current UTC date.'
+        : 'Discards this run with no record saved and starts a fresh Free run.',
+      confirmLabel: 'RESTART RUN',
+    };
   }
-  if (btnPauseEndRun) {
-    btnPauseEndRun.textContent = 'End run';
+  return {
+    eyebrow: 'CONFIRM END RUN',
+    title: 'END RUN?',
+    desc: isDaily
+      ? 'Ends this Daily run now, saves it to Best Runs, and counts toward today\'s Daily ranking if it beats your best.'
+      : 'Ends this Free run now and saves it to Best Runs. Free runs are not ranked.',
+    confirmLabel: 'END RUN',
+  };
+}
+
+function openPauseConfirm(action, triggerBtn = null) {
+  pendingPauseAction = action;
+  lastFocusBeforeConfirm = triggerBtn || document.activeElement;
+  const copy = getPauseConfirmCopy(action, dailyRunActive);
+  if (pauseConfirmEyebrow) pauseConfirmEyebrow.textContent = copy.eyebrow;
+  if (pauseConfirmTitle) pauseConfirmTitle.textContent = copy.title;
+  if (pauseConfirmDesc) pauseConfirmDesc.textContent = copy.desc;
+  if (btnPauseConfirmExecute) btnPauseConfirmExecute.textContent = copy.confirmLabel;
+
+  setPauseBackgroundInert(true);
+  if (pauseConfirmView) {
+    pauseConfirmView.classList.remove('hidden');
+    pauseConfirmView.setAttribute('aria-hidden', 'false');
+    void pauseConfirmView.offsetWidth;
   }
+  if (btnPauseConfirmCancel) {
+    btnPauseConfirmCancel.focus();
+  }
+}
+
+function closePauseConfirm(restoreFocus = true) {
+  pendingPauseAction = null;
+  if (pauseConfirmView) {
+    pauseConfirmView.classList.add('hidden');
+    pauseConfirmView.setAttribute('aria-hidden', 'true');
+  }
+  setPauseBackgroundInert(false);
+  if (restoreFocus && lastFocusBeforeConfirm && typeof lastFocusBeforeConfirm.focus === 'function') {
+    void pauseOverlay?.offsetWidth;
+    lastFocusBeforeConfirm.focus();
+  }
+  lastFocusBeforeConfirm = null;
+}
+
+function getPauseFocusables() {
+  if (!pauseOverlay || pauseOverlay.classList.contains('hidden')) return [];
+  const scope = (pendingPauseAction !== null && pauseConfirmView) ? pauseConfirmView : pauseOverlay;
+  return Array.from(scope.querySelectorAll('button:not([disabled]):not([aria-disabled="true"])')).filter((el) => {
+    if (pendingPauseAction === null && pauseConfirmView && pauseConfirmView.contains(el)) return false;
+    const cs = window.getComputedStyle(el);
+    return cs.display !== 'none' && cs.visibility !== 'hidden';
+  });
+}
+
+function trapPauseFocus(e) {
+  const focusables = getPauseFocusables();
+  if (focusables.length === 0) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement;
+  if (!focusables.includes(active)) {
+    e.preventDefault();
+    first.focus();
+    return;
+  }
+  if (e.shiftKey) {
+    if (active === first) {
+      e.preventDefault();
+      last.focus();
+    }
+  } else if (active === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+function closePauseOverlay(restoreFocus = true) {
+  closePauseConfirm(false);
+  if (pauseOverlay) pauseOverlay.classList.add('hidden');
+  lastPerfTime = performance.now();
+  if (typeof rewindDirector !== 'undefined' && rewindDirector.isActive()) {
+    rewindDirector.resume();
+  } else {
+    if (isAnimating || cleanSlateSequenceState) {
+      finishCurrentAnimationImmediately();
+    }
+    if (controller) {
+      syncBoard(controller.getBoard(), 'pauseResume');
+    }
+  }
+  if (restoreFocus && lastFocusBeforePause && typeof lastFocusBeforePause.focus === 'function') {
+    lastFocusBeforePause.focus();
+  }
+  lastFocusBeforePause = null;
 }
 
 if (btnPauseMenu && pauseOverlay) {
@@ -5296,27 +5431,18 @@ if (btnPauseMenu && pauseOverlay) {
       finishCurrentAnimationImmediately();
     }
     tickPlayTimer();
-    resetEndRunButton();
+    lastFocusBeforePause = btnPauseMenu;
+    closePauseConfirm(false);
     if (pauseTimeVal) pauseTimeVal.textContent = formatPlayTime(activePlayMs);
     pauseOverlay.classList.remove('hidden');
+    void pauseOverlay.offsetWidth;
+    if (btnPauseResume) btnPauseResume.focus();
   });
 }
 
 if (btnPauseResume && pauseOverlay) {
   btnPauseResume.addEventListener('click', () => {
-    resetEndRunButton();
-    pauseOverlay.classList.add('hidden');
-    lastPerfTime = performance.now();
-    if (typeof rewindDirector !== 'undefined' && rewindDirector.isActive()) {
-      rewindDirector.resume();
-    } else {
-      if (isAnimating || cleanSlateSequenceState) {
-        finishCurrentAnimationImmediately();
-      }
-      if (controller) {
-        syncBoard(controller.getBoard(), 'pauseResume');
-      }
-    }
+    closePauseOverlay(true);
   });
 }
 
@@ -5340,34 +5466,43 @@ document.addEventListener('visibilitychange', () => {
 
 if (btnPauseRestart && pauseOverlay) {
   btnPauseRestart.addEventListener('click', () => {
-    resetEndRunButton();
-    pauseOverlay.classList.add('hidden');
-    if (dailyRunActive) {
-      startNewGame(null, true);
-    } else {
-      startNewGame();
-    }
-    showToast('New run started');
+    controller.recordInput('tap');
+    openPauseConfirm('restart', btnPauseRestart);
   });
 }
 
 if (btnPauseEndRun && pauseOverlay) {
   btnPauseEndRun.addEventListener('click', () => {
     controller.recordInput('tap');
-    if (endRunConfirmTimer !== null) {
-      // Second tap within 3 seconds
-      resetEndRunButton();
-      pauseOverlay.classList.add('hidden');
+    openPauseConfirm('end', btnPauseEndRun);
+  });
+}
+
+if (btnPauseConfirmCancel) {
+  btnPauseConfirmCancel.addEventListener('click', () => {
+    closePauseConfirm(true);
+  });
+}
+
+if (btnPauseConfirmExecute) {
+  btnPauseConfirmExecute.addEventListener('click', () => {
+    const action = pendingPauseAction;
+    if (!action) return;
+    closePauseConfirm(false);
+    lastFocusBeforePause = null;
+    if (pauseOverlay) pauseOverlay.classList.add('hidden');
+    if (action === 'restart') {
+      if (dailyRunActive) {
+        startNewGame(null, true);
+      } else {
+        startNewGame();
+      }
+      showToast('New run started');
+    } else if (action === 'end') {
       if (controller && !controller.isGameOver()) {
         controller.endRun();
         handleGameOver();
       }
-    } else {
-      // First tap
-      btnPauseEndRun.textContent = 'Tap again to end';
-      endRunConfirmTimer = setTimeout(() => {
-        resetEndRunButton();
-      }, 3000);
     }
   });
 }
@@ -5425,7 +5560,15 @@ function updateSoundButtons(enabled = isSoundEnabled()) {
     btnSoundStart.setAttribute('aria-label', enabled ? 'Sound enabled' : 'Sound muted');
   }
   if (btnPauseSound) {
-    btnPauseSound.innerHTML = `Sound: ${enabled ? 'On' : 'Off'} <span style="float:right">${enabled ? speakerOnSvg : speakerMutedSvg}</span>`;
+    const soundIconEl = document.getElementById('sound-icon');
+    const soundLabelEl = document.getElementById('sound-label');
+    if (soundIconEl && soundLabelEl) {
+      soundIconEl.innerHTML = enabled ? speakerOnSvg : speakerMutedSvg;
+      soundLabelEl.textContent = `Sound: ${enabled ? 'On' : 'Off'}`;
+    } else {
+      btnPauseSound.innerHTML = `Sound: ${enabled ? 'On' : 'Off'} <span style="float:right">${enabled ? speakerOnSvg : speakerMutedSvg}</span>`;
+    }
+    btnPauseSound.classList.toggle('active-toggle', enabled);
     btnPauseSound.setAttribute('aria-label', enabled ? 'Sound enabled' : 'Sound muted');
   }
 }
@@ -5493,14 +5636,14 @@ if (canShowDailyButton()) {
 try {
   flushLeaderboardQueue();
   window.addEventListener('online', () => {
-    try { flushLeaderboardQueue(null, true); } catch {}
+    try { flushLeaderboardQueue(null, true); } catch { }
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      try { flushLeaderboardQueue(); } catch {}
+      try { flushLeaderboardQueue(); } catch { }
     }
   });
-} catch {}
+} catch { }
 
 // Copy run log button (copies { currentRun: <record>, history: [<last 20 records>] }, fallback download)
 if (btnCopyLog) {
@@ -5630,7 +5773,7 @@ function renderBestRunsList() {
         if (!isNaN(d.getTime())) {
           dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         }
-      } catch {}
+      } catch { }
     }
     dateEl.textContent = dateStr;
     right.appendChild(dateEl);
@@ -6704,7 +6847,7 @@ function renderTabContent(tabKey, { rows, myRank }) {
       try {
         hasAcceptedRun = localStorage.getItem('rogue2048_has_accepted_run') === '1' ||
           Boolean(getStoredDailyBest(utcDateString(new Date()), localStorage));
-      } catch {}
+      } catch { }
 
       if (!hasAcceptedRun) {
         pencil.disabled = true;
@@ -6867,7 +7010,7 @@ async function handleNameSubmit(customName) {
         if (res.displayName) {
           localStorage.setItem('rogue2048_display_name', res.displayName);
         }
-      } catch {}
+      } catch { }
 
       tabCache = { today: null, week: null, alltime: null };
       closeNameSheet();
@@ -7194,12 +7337,12 @@ document.documentElement.classList.add('app-ready');
   let isLabStored = false;
   try {
     isLabStored = window.sessionStorage?.getItem('2048_rogue_lab') === '1';
-  } catch {}
+  } catch { }
 
   if (hasLabParam || isLabStored) {
     try {
       window.sessionStorage.setItem('2048_rogue_lab', '1');
-    } catch {}
+    } catch { }
     labApi.setPersistence(false);
     import('./dev/lab.js').then(mod => {
       if (mod && mod.initLab) {

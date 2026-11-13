@@ -212,6 +212,7 @@ async function main() {
     // Fake clock script installed before any page scripts evaluate
     const clockScript = `
       (() => {
+        try { window.localStorage.setItem('2048_rogue_tutorial_seen', 'true'); } catch {}
         let fakeNow = ${preMidnightMs};
         try {
           const s = window.sessionStorage.getItem('__fakeTime');
@@ -266,13 +267,19 @@ async function main() {
       await sleep(30);
     }
 
-    // End run via pause menu
+    // End run via pause menu (open in-card confirm view, then confirm End run)
     await cdp.eval(`
       (async () => {
         document.getElementById('btn-pause-menu')?.click();
         await new Promise(r => setTimeout(r, 60));
-        const endBtn = document.getElementById('btn-pause-end-run');
-        if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
+        document.getElementById('btn-pause-end-run')?.click();
+        const deadline = Date.now() + 2000;
+        while (Date.now() < deadline) {
+          const cv = document.getElementById('pause-confirm-view');
+          if (cv && !cv.classList.contains('hidden') && getComputedStyle(cv).visibility !== 'hidden') break;
+          await new Promise(r => setTimeout(r, 20));
+        }
+        document.getElementById('btn-pause-confirm-execute')?.click();
       })()
     `);
     await sleep(800);
@@ -331,13 +338,19 @@ async function main() {
     // Advance clock to today
     await cdp.eval(`window.__setFakeTime(${serverNow.getTime()})`);
 
-    // End run
+    // End run via pause menu (open in-card confirm view, then confirm End run)
     await cdp.eval(`
       (async () => {
         document.getElementById('btn-pause-menu')?.click();
         await new Promise(r => setTimeout(r, 60));
-        const endBtn = document.getElementById('btn-pause-end-run');
-        if (endBtn) { endBtn.click(); await new Promise(r => setTimeout(r, 60)); endBtn.click(); }
+        document.getElementById('btn-pause-end-run')?.click();
+        const deadline = Date.now() + 2000;
+        while (Date.now() < deadline) {
+          const cv = document.getElementById('pause-confirm-view');
+          if (cv && !cv.classList.contains('hidden') && getComputedStyle(cv).visibility !== 'hidden') break;
+          await new Promise(r => setTimeout(r, 20));
+        }
+        document.getElementById('btn-pause-confirm-execute')?.click();
       })()
     `);
     await sleep(500);

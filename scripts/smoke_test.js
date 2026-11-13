@@ -1480,7 +1480,7 @@ async function runSmokeTest() {
     assert.strictEqual(v5Res.errorsCaptured, 0, 'V5: 0 controller errors during Shatter stone break');
     console.log('[Smoke Test] ✔ V5 verified: Shatter stone-break animated and fallback paths completed with 0 errors.');
 
-    // C2: End run smoke assertion (button exists, two-step works, run log has endedByPlayer true and events end with x:end, Best Runs entry saved once)
+    // C2: End run smoke assertion (in-card two-step confirm: button exists, first click opens confirm view without ending run, cancel restores run, confirmed execute ends run)
     console.log('[Smoke Test] Testing C2: Pause overlay "End run" button two-step confirm...');
     const c2Res = await cdp.eval(`
       (async () => {
@@ -1493,23 +1493,45 @@ async function runSmokeTest() {
         const pauseMenuBtn = document.getElementById('btn-pause-menu');
         const pauseEl = document.getElementById('pause-overlay');
         const endEl = document.getElementById('end-overlay');
+        const confirmView = document.getElementById('pause-confirm-view');
+        const cancelBtn = document.getElementById('btn-pause-confirm-cancel');
+        const executeBtn = document.getElementById('btn-pause-confirm-execute');
+        const confirmTitle = document.getElementById('pause-confirm-title');
+        const confirmDesc = document.getElementById('pause-confirm-desc');
 
         if (!endBtn) return { error: 'End run button not found' };
 
         // Open pause menu
         pauseMenuBtn.click();
+        await new Promise(r => setTimeout(r, 60));
         const initialLabel = endBtn.textContent.trim();
+        const initialMoves = controller.state.moveCount;
 
-        // First tap
+        // Step 1: Click End Run -> opens confirm view, run NOT ended
         endBtn.click();
-        const firstTapLabel = endBtn.textContent.trim();
+        await new Promise(r => setTimeout(r, 100));
+        const confirmVisibleFirstClick = confirmView && !confirmView.classList.contains('hidden') && getComputedStyle(confirmView).visibility !== 'hidden';
+        const hasTitle = Boolean(confirmTitle && confirmTitle.textContent.trim().length > 0);
+        const hasDesc = Boolean(confirmDesc && confirmDesc.textContent.trim().length > 0);
+        const hasConfirmBtn = Boolean(executeBtn && !executeBtn.classList.contains('hidden'));
+        const hasCancelBtn = Boolean(cancelBtn && !cancelBtn.classList.contains('hidden'));
+        const notEndedAfterFirstClick = !controller.isGameOver() && controller.state.moveCount === initialMoves && !pauseEl.classList.contains('hidden') && endEl.classList.contains('hidden');
 
-        // Second tap
+        // Step 2: Cancel returns to pause actions with run intact
+        if (cancelBtn) cancelBtn.click();
+        await new Promise(r => setTimeout(r, 100));
+        const confirmHiddenAfterCancel = confirmView && confirmView.classList.contains('hidden');
+        const pauseStillOpenAfterCancel = !pauseEl.classList.contains('hidden');
+        const notEndedAfterCancel = !controller.isGameOver() && controller.state.moveCount === initialMoves;
+
+        // Step 3: Click End Run again, then execute confirm
         endBtn.click();
-        await new Promise(r => setTimeout(r, 150));
+        await new Promise(r => setTimeout(r, 100));
+        if (executeBtn) executeBtn.click();
+        await new Promise(r => setTimeout(r, 200));
 
-        const pauseHidden = pauseEl.classList.contains('hidden');
-        const endVisible = !endEl.classList.contains('hidden');
+        const pauseHiddenAfterConfirm = pauseEl.classList.contains('hidden');
+        const endVisibleAfterConfirm = !endEl.classList.contains('hidden');
         const gameOver = controller.isGameOver();
         const runLog = controller.getRunLog();
         const lastEvent = runLog.events && runLog.events.length > 0 ? runLog.events[runLog.events.length - 1] : null;
@@ -1520,9 +1542,17 @@ async function runSmokeTest() {
         return {
           buttonExists: Boolean(endBtn),
           initialLabel,
-          firstTapLabel,
-          pauseHidden,
-          endVisible,
+          confirmVisibleFirstClick,
+          hasTitle,
+          hasDesc,
+          hasConfirmBtn,
+          hasCancelBtn,
+          notEndedAfterFirstClick,
+          confirmHiddenAfterCancel,
+          pauseStillOpenAfterCancel,
+          notEndedAfterCancel,
+          pauseHiddenAfterConfirm,
+          endVisibleAfterConfirm,
           gameOver,
           endedByPlayer: Boolean(runLog.endedByPlayer),
           lastEvent,
@@ -1531,10 +1561,18 @@ async function runSmokeTest() {
       })()
     `);
     assert.strictEqual(c2Res.buttonExists, true, 'C2: End run button exists');
-    assert.strictEqual(c2Res.initialLabel, 'End run', 'C2: Initial label is "End run"');
-    assert.strictEqual(c2Res.firstTapLabel, 'Tap again to end', 'C2: First tap changes label to "Tap again to end"');
-    assert.strictEqual(c2Res.pauseHidden, true, 'C2: Pause overlay hidden after end run');
-    assert.strictEqual(c2Res.endVisible, true, 'C2: Game over screen visible after end run');
+    assert.ok(/end run/i.test(c2Res.initialLabel), `C2: Initial label matches /end run/i (got "${c2Res.initialLabel}")`);
+    assert.strictEqual(c2Res.confirmVisibleFirstClick, true, 'C2: First click opens #pause-confirm-view');
+    assert.strictEqual(c2Res.hasTitle, true, 'C2: Confirm view has title');
+    assert.strictEqual(c2Res.hasDesc, true, 'C2: Confirm view has description');
+    assert.strictEqual(c2Res.hasConfirmBtn, true, 'C2: Confirm view has confirm button');
+    assert.strictEqual(c2Res.hasCancelBtn, true, 'C2: Confirm view has cancel button');
+    assert.strictEqual(c2Res.notEndedAfterFirstClick, true, 'C2: Run is NOT ended on first click (moveCount unchanged, not game over)');
+    assert.strictEqual(c2Res.confirmHiddenAfterCancel, true, 'C2: Cancel button hides confirm view');
+    assert.strictEqual(c2Res.pauseStillOpenAfterCancel, true, 'C2: Pause overlay remains open after cancel');
+    assert.strictEqual(c2Res.notEndedAfterCancel, true, 'C2: Run remains intact after cancel');
+    assert.strictEqual(c2Res.pauseHiddenAfterConfirm, true, 'C2: Pause overlay hidden after confirmed end run');
+    assert.strictEqual(c2Res.endVisibleAfterConfirm, true, 'C2: Game over screen visible after confirmed end run');
     assert.strictEqual(c2Res.gameOver, true, 'C2: Controller game over is true');
     assert.strictEqual(c2Res.endedByPlayer, true, 'C2: Run log endedByPlayer is true');
     assert.strictEqual(c2Res.lastEvent, 'x:end', 'C2: Events end with x:end');
@@ -2445,8 +2483,13 @@ async function runSmokeTest() {
         const endBtn = document.getElementById('btn-pause-end-run');
         if (endBtn) {
           endBtn.click();
-          await new Promise(r => setTimeout(r, 60));
-          endBtn.click();
+          const deadline = Date.now() + 2000;
+          while (Date.now() < deadline) {
+            const cv = document.getElementById('pause-confirm-view');
+            if (cv && !cv.classList.contains('hidden') && getComputedStyle(cv).visibility !== 'hidden') break;
+            await new Promise(r => setTimeout(r, 20));
+          }
+          document.getElementById('btn-pause-confirm-execute')?.click();
         }
       })()
     `);
