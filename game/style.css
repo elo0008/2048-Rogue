@@ -6199,6 +6199,31 @@ html.app-ready #start-overlay .start-card {
 /* ==========================================================================
    Challenge Preview Card & In-Run Elements
    ========================================================================== */
+#challenge-overlay.modal-overlay {
+  position: fixed;
+  inset: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 0 12px;
+  padding-top: max(0px, env(safe-area-inset-top));
+  padding-bottom: max(0px, env(safe-area-inset-bottom));
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow-y: auto;
+  scrollbar-width: none;
+  z-index: 15;
+}
+
+#challenge-overlay.modal-overlay::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
 .challenge-overlay {
   z-index: 15;
 }
@@ -6438,8 +6463,26 @@ html.app-ready #start-overlay .start-card {
 
 .challenge-mode-badge.completed {
   background: rgba(6, 78, 59, 0.35);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #6ee7b7;
+}
+
+.challenge-mode-badge.completed.won {
+  background: rgba(6, 78, 59, 0.35);
   border-color: rgba(16, 185, 129, 0.4);
   color: #6ee7b7;
+}
+
+.challenge-mode-badge.completed.lost {
+  background: rgba(242, 125, 112, 0.15);
+  border: 1px solid var(--warn);
+  color: var(--warn);
+}
+
+.challenge-mode-badge.completed.tied {
+  background: #26201b;
+  border: 1px solid #3d332d;
+  color: var(--soft);
 }
 
 .challenge-expiry-tag {
@@ -6697,14 +6740,22 @@ html.app-ready #start-overlay .start-card {
   border: 1px solid rgba(225, 29, 72, 0.35);
 }
 
-.challenge-banner.dark {
+.challenge-banner.dark,
+.challenge-banner.tied {
   background: #171311;
   border: 1px solid #2f2722;
 }
 
-.challenge-banner.emerald {
+.challenge-banner.emerald,
+.challenge-banner.won {
   background: rgba(6, 78, 59, 0.25);
   border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.challenge-banner.warn,
+.challenge-banner.lost {
+  background: rgba(242, 125, 112, 0.15);
+  border: 1px solid var(--warn);
 }
 
 .challenge-banner-title {
@@ -6717,7 +6768,11 @@ html.app-ready #start-overlay .start-card {
 .challenge-banner.gold .challenge-banner-title { color: var(--accent); }
 .challenge-banner.rose .challenge-banner-title { color: #fda4af; }
 .challenge-banner.dark .challenge-banner-title { color: #f59e0b; }
-.challenge-banner.emerald .challenge-banner-title { color: #6ee7b7; }
+.challenge-banner.tied .challenge-banner-title { color: var(--soft); }
+.challenge-banner.emerald .challenge-banner-title,
+.challenge-banner.won .challenge-banner-title { color: #6ee7b7; }
+.challenge-banner.warn .challenge-banner-title,
+.challenge-banner.lost .challenge-banner-title { color: var(--warn); }
 
 .challenge-banner-text {
   font-size: 10px;
@@ -6763,8 +6818,8 @@ html.app-ready #start-overlay .start-card {
 }
 
 .challenge-comparison-score.won { color: #4ade80; }
-.challenge-comparison-score.lost { color: #f87171; }
-.challenge-comparison-score.tied { color: var(--accent); }
+.challenge-comparison-score.lost { color: var(--warn); }
+.challenge-comparison-score.tied { color: var(--soft); }
 
 .challenge-comparison-sub {
   font-size: 10px;
@@ -6773,7 +6828,8 @@ html.app-ready #start-overlay .start-card {
 }
 
 .challenge-comparison-sub.won { color: #4ade80; }
-.challenge-comparison-sub.lost { color: #f87171; }
+.challenge-comparison-sub.lost { color: var(--warn); }
+.challenge-comparison-sub.tied { color: var(--soft); }
 
 /* Actions */
 .challenge-actions {
@@ -6950,6 +7006,14 @@ html.app-ready #start-overlay .start-card {
     animation: none !important;
   }
 }
+
+@media (max-height: 650px) {
+  .challenge-comparison-card ~ div .challenge-mini-board {
+    width: 24px;
+    height: 24px;
+  }
+}
+
 
 /* ==========================================================================
    Challenge Result Card (Post-Run Outcome & Comparison)

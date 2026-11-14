@@ -248,6 +248,46 @@ async function main() {
     `window.__LB = { url: "http://127.0.0.1:${mockPort}", anonKey: "test-anon-key" };`
   );
 
+  // Verify icon assets and manifest in dist
+  const distIndexHtml = fs.readFileSync(path.join(tempDistDir, 'index.html'), 'utf8');
+  const expectedDistAssets = [
+    'favicon.svg',
+    'apple-touch-icon.png',
+    'icon-192.png',
+    'icon-512.png',
+    'manifest.webmanifest',
+  ];
+  for (const asset of expectedDistAssets) {
+    const assetPath = path.join(tempDistDir, asset);
+    assert.ok(fs.existsSync(assetPath), `Built dist must contain ${asset}`);
+    const stat = fs.statSync(assetPath);
+    assert.ok(stat.size > 0, `${asset} must be non-empty (got ${stat.size} bytes)`);
+    assert.ok(distIndexHtml.includes(asset), `Built index.html must reference ${asset}`);
+  }
+
+  // Verify PNG dimensions
+  const appleIconBuf = fs.readFileSync(path.join(tempDistDir, 'apple-touch-icon.png'));
+  assert.strictEqual(appleIconBuf.readUInt32BE(16), 180, 'apple-touch-icon width must be 180');
+  assert.strictEqual(appleIconBuf.readUInt32BE(20), 180, 'apple-touch-icon height must be 180');
+
+  const icon192Buf = fs.readFileSync(path.join(tempDistDir, 'icon-192.png'));
+  assert.strictEqual(icon192Buf.readUInt32BE(16), 192, 'icon-192 width must be 192');
+  assert.strictEqual(icon192Buf.readUInt32BE(20), 192, 'icon-192 height must be 192');
+
+  const icon512Buf = fs.readFileSync(path.join(tempDistDir, 'icon-512.png'));
+  assert.strictEqual(icon512Buf.readUInt32BE(16), 512, 'icon-512 width must be 512');
+  assert.strictEqual(icon512Buf.readUInt32BE(20), 512, 'icon-512 height must be 512');
+
+  // Verify manifest JSON parses and has required fields
+  const manifestJson = JSON.parse(fs.readFileSync(path.join(tempDistDir, 'manifest.webmanifest'), 'utf8'));
+  assert.strictEqual(manifestJson.name, 'Rogue 2048');
+  assert.strictEqual(manifestJson.short_name, 'Rogue 2048');
+  assert.strictEqual(manifestJson.background_color, '#100f11');
+  assert.strictEqual(manifestJson.theme_color, '#100f11');
+  assert.strictEqual(manifestJson.display, 'standalone');
+  assert.ok(Array.isArray(manifestJson.icons) && manifestJson.icons.length >= 3);
+  console.log('✔ Built icon assets, PNG dimensions (180, 192, 512), and web manifest verified\n');
+
   const staticServer = await startStaticServer(tempDistDir);
   console.log(`✔ Static Game Server running on port ${staticServer.port}`);
 
@@ -635,6 +675,31 @@ async function main() {
       { code: 'homecode', mode: 'daily', points: 500, moves: 20, senderName: 'Alice', finalBoard: fullBoard },
       { points: 600, moves: 25, maxTile: 128, ranked: true, finalBoard: fullBoard }
     );
+
+    // Verify HOME button icon parity with game-over HOME button
+    const homeIconParity = await cdp.eval(`(() => {
+      const endHomeSvg = document.querySelector('#btn-end-home svg');
+      const resHomeSvg = document.querySelector('#btn-challenge-result-home svg');
+      const endPath = endHomeSvg?.querySelector('path')?.getAttribute('d') || '';
+      const resPath = resHomeSvg?.querySelector('path')?.getAttribute('d') || '';
+      return {
+        endPath,
+        resPath,
+        endWidth: endHomeSvg?.getAttribute('width') || '',
+        resWidth: resHomeSvg?.getAttribute('width') || '',
+        endHeight: endHomeSvg?.getAttribute('height') || '',
+        resHeight: resHomeSvg?.getAttribute('height') || '',
+        endViewBox: endHomeSvg?.getAttribute('viewBox') || '',
+        resViewBox: resHomeSvg?.getAttribute('viewBox') || '',
+      };
+    })()`);
+    assert.ok(homeIconParity.endPath.length > 0, 'Game-over HOME icon must have path data');
+    assert.strictEqual(homeIconParity.resPath, homeIconParity.endPath, 'Challenge result HOME icon path must be identical to game-over HOME icon path');
+    assert.strictEqual(homeIconParity.resViewBox, homeIconParity.endViewBox, 'Challenge result HOME icon viewBox must match game-over HOME icon');
+    assert.strictEqual(homeIconParity.resWidth, homeIconParity.endWidth, 'Challenge result HOME icon width must match game-over HOME icon');
+    assert.strictEqual(homeIconParity.resHeight, homeIconParity.endHeight, 'Challenge result HOME icon height must match game-over HOME icon');
+    console.log('✔ Challenge result HOME button icon matches game-over HOME button (identical SVG path & markup)');
+
     await cdp.eval(`document.getElementById('btn-challenge-result-home')?.click()`);
     await sleep(200);
     let homeState = await cdp.eval(`({

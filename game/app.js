@@ -989,6 +989,7 @@ export function showChallengeResult(ctx, runSummary) {
 
   const btnHome = document.getElementById('btn-challenge-result-home');
   if (btnHome) {
+    syncChallengeResultHomeIcon();
     btnHome.onclick = () => {
       initAudio();
       playClick();
@@ -6799,6 +6800,19 @@ function updateStartOverlayLeaderboardControls() {
   }
 }
 
+// Sync Challenge Result card HOME button SVG icon with normal game-over card HOME icon
+function syncChallengeResultHomeIcon() {
+  const endHome = document.getElementById('btn-end-home');
+  const chalResultHome = document.getElementById('btn-challenge-result-home');
+  if (!endHome || !chalResultHome) return;
+  const endSvg = endHome.querySelector('svg');
+  const chalSvg = chalResultHome.querySelector('svg');
+  if (endSvg && chalSvg) {
+    chalSvg.replaceWith(endSvg.cloneNode(true));
+  }
+}
+syncChallengeResultHomeIcon();
+
 // Bind Home Button
 const btnEndHome = document.getElementById('btn-end-home');
 if (btnEndHome) {
@@ -8474,15 +8488,30 @@ function renderChallengeCardView({ type, data, localResult = null, ownRecord = n
     challengeExpiryInterval = null;
   }
 
-  const wrap = document.createElement('div');
-  wrap.className = 'challenge-view-wrap';
-  wrap.style.cssText = 'display: flex; flex-direction: column; width: 100%;';
-
   const isOwn = type === 'own';
   const isAlreadyPlayed = type === 'already_played';
   const isExpiredDaily = type === 'expired_daily';
   const isExpiredFree = type === 'expired_free';
   const isValid = type === 'valid';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'challenge-view-wrap';
+  wrap.style.cssText = 'display: flex; flex-direction: column; width: 100%;';
+
+  let outcome = null;
+  if (isAlreadyPlayed && localResult) {
+    const myPts = localResult.points;
+    const oppPts = data.points;
+    const myMvs = localResult.moves;
+    const oppMvs = data.total_moves;
+    if (myPts > oppPts) outcome = 'WON';
+    else if (myPts < oppPts) outcome = 'LOST';
+    else {
+      if (myMvs < oppMvs) outcome = 'WON';
+      else if (myMvs > oppMvs) outcome = 'LOST';
+      else outcome = 'TIED';
+    }
+  }
 
   const senderName = isOwn
     ? getPlayerDisplayName()
@@ -8528,6 +8557,9 @@ function renderChallengeCardView({ type, data, localResult = null, ownRecord = n
     modeBadge.textContent = 'YOUR RUN';
   } else if (isAlreadyPlayed) {
     modeBadge.classList.add('completed');
+    if (outcome === 'WON') modeBadge.classList.add('won');
+    else if (outcome === 'LOST') modeBadge.classList.add('lost');
+    else if (outcome === 'TIED') modeBadge.classList.add('tied');
     modeBadge.textContent = data.mode === 'daily' ? 'DAILY COMPLETED' : 'RUN COMPLETED';
   } else if (isExpiredDaily) {
     modeBadge.classList.add('expired');
@@ -8595,21 +8627,19 @@ function renderChallengeCardView({ type, data, localResult = null, ownRecord = n
     wrap.appendChild(banner);
   } else if (isAlreadyPlayed && localResult) {
     const banner = document.createElement('div');
-    banner.className = 'challenge-banner emerald';
+    if (outcome === 'WON') {
+      banner.className = 'challenge-banner emerald won';
+    } else if (outcome === 'LOST') {
+      banner.className = 'challenge-banner warn lost';
+    } else {
+      banner.className = 'challenge-banner dark tied';
+    }
     const bTitle = document.createElement('div');
     bTitle.className = 'challenge-banner-title';
     const myPts = localResult.points;
     const oppPts = data.points;
     const myMvs = localResult.moves;
     const oppMvs = data.total_moves;
-    let outcome = 'TIED';
-    if (myPts > oppPts) outcome = 'WON';
-    else if (myPts < oppPts) outcome = 'LOST';
-    else {
-      if (myMvs < oppMvs) outcome = 'WON';
-      else if (myMvs > oppMvs) outcome = 'LOST';
-      else outcome = 'TIED';
-    }
     bTitle.textContent = `CHALLENGE ${outcome}`;
     banner.appendChild(bTitle);
     const bText = document.createElement('p');
@@ -8878,6 +8908,11 @@ async function initChallengeFetch(code) {
 
   data.code = code;
 
+  if (isMyChallenge(code, localStorage)) {
+    renderChallengeCardView({ type: 'own', data });
+    return;
+  }
+
   const localResult = getChallengeResult(code, localStorage);
   if (localResult) {
     renderChallengeCardView({ type: 'already_played', data, localResult });
@@ -8925,26 +8960,6 @@ function initChallengeEntry() {
   window.__challengeHandled = true;
   const chalOverlay = document.getElementById('challenge-overlay');
   if (chalOverlay) chalOverlay.classList.remove('hidden');
-
-  if (isMyChallenge(code, localStorage)) {
-    const myChallenges = getMyChallenges(localStorage);
-    const myRec = myChallenges[code] || {};
-    const mockOwnData = {
-      code,
-      mode: myRec.mode || 'free',
-      sender_display_name: getPlayerDisplayName(),
-      points: myRec.points || 0,
-      total_moves: myRec.moves || 0,
-      max_tile: myRec.maxTile || 2,
-      relics_owned: myRec.relics || [],
-      final_board: myRec.finalBoard || null,
-      seed: myRec.seed || 0,
-      day_utc: myRec.day || null,
-      expires_at: myRec.expiresAt || null,
-    };
-    renderChallengeCardView({ type: 'own', data: mockOwnData, ownRecord: myRec });
-    return;
-  }
 
   renderChallengeSkeleton();
   initChallengeFetch(code);

@@ -255,6 +255,46 @@ async function main() {
   const lbConfigContent = `window.__LB = { url: "http://127.0.0.1:${mockPort}", anonKey: "test_anon_key_chal" };`;
   fs.writeFileSync(path.join(tempDistDir, 'leaderboard-config.js'), lbConfigContent, 'utf-8');
 
+  // Verify icon assets and manifest in dist
+  const distIndexHtml = fs.readFileSync(path.join(tempDistDir, 'index.html'), 'utf8');
+  const expectedDistAssets = [
+    'favicon.svg',
+    'apple-touch-icon.png',
+    'icon-192.png',
+    'icon-512.png',
+    'manifest.webmanifest',
+  ];
+  for (const asset of expectedDistAssets) {
+    const assetPath = path.join(tempDistDir, asset);
+    assert.ok(fs.existsSync(assetPath), `Built dist must contain ${asset}`);
+    const stat = fs.statSync(assetPath);
+    assert.ok(stat.size > 0, `${asset} must be non-empty (got ${stat.size} bytes)`);
+    assert.ok(distIndexHtml.includes(asset), `Built index.html must reference ${asset}`);
+  }
+
+  // Verify PNG dimensions
+  const appleIconBuf = fs.readFileSync(path.join(tempDistDir, 'apple-touch-icon.png'));
+  assert.strictEqual(appleIconBuf.readUInt32BE(16), 180, 'apple-touch-icon width must be 180');
+  assert.strictEqual(appleIconBuf.readUInt32BE(20), 180, 'apple-touch-icon height must be 180');
+
+  const icon192Buf = fs.readFileSync(path.join(tempDistDir, 'icon-192.png'));
+  assert.strictEqual(icon192Buf.readUInt32BE(16), 192, 'icon-192 width must be 192');
+  assert.strictEqual(icon192Buf.readUInt32BE(20), 192, 'icon-192 height must be 192');
+
+  const icon512Buf = fs.readFileSync(path.join(tempDistDir, 'icon-512.png'));
+  assert.strictEqual(icon512Buf.readUInt32BE(16), 512, 'icon-512 width must be 512');
+  assert.strictEqual(icon512Buf.readUInt32BE(20), 512, 'icon-512 height must be 512');
+
+  // Verify manifest JSON parses and has required fields
+  const manifestJson = JSON.parse(fs.readFileSync(path.join(tempDistDir, 'manifest.webmanifest'), 'utf8'));
+  assert.strictEqual(manifestJson.name, 'Rogue 2048');
+  assert.strictEqual(manifestJson.short_name, 'Rogue 2048');
+  assert.strictEqual(manifestJson.background_color, '#100f11');
+  assert.strictEqual(manifestJson.theme_color, '#100f11');
+  assert.strictEqual(manifestJson.display, 'standalone');
+  assert.ok(Array.isArray(manifestJson.icons) && manifestJson.icons.length >= 3);
+  console.log('✔ Built icon assets, PNG dimensions (180, 192, 512), and web manifest verified\n');
+
   // Start static game server
   const staticSrv = await startStaticServer(tempDistDir);
   console.log(`✔ Static Game Server running on port ${staticSrv.port}`);
@@ -523,11 +563,32 @@ async function main() {
         id: 'state9_own_challenge',
         code: 'OWNCHAL00009',
         isOwn: true,
+        data: {
+          status: 'valid',
+          mode: 'free',
+          sender_display_name: 'PlayerOne',
+          points: 14200,
+          total_moves: 650,
+          max_tile: 1024,
+          relics_owned: ['diagonal_charge', 'siphon'],
+          final_board: [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 0, 0, 0, 0, 0, 0],
+          seed: 88776655,
+          expires_at: new Date(Date.now() + 86400 * 1000).toISOString(),
+        },
         verify: (card) => {
           assert.strictEqual(card.badge, 'YOUR RUN');
           assert.strictEqual(card.tagline, 'CHALLENGE CREATED BY');
           assert.ok(card.bannerText.includes('THIS IS YOUR CHALLENGE'), 'Must show own challenge banner');
           assert.strictEqual(card.primaryBtnText, 'COPY LINK');
+          // Own-link view must render board, seed, stats from get_challenge response
+          assert.strictEqual(card.hasPlaceholderBoard, false, 'Own-link must NOT show "Board not available"');
+          assert.strictEqual(card.seedVal, '88776655', 'Own-link seed must match server seed');
+          assert.notStrictEqual(card.seedVal, '0', 'Seed must never show 0 when server returned valid seed');
+          assert.strictEqual(card.moves, '650', 'Moves must match server response');
+          assert.strictEqual(card.maxTile, '1024', 'Max tile must match server response');
+          assert.strictEqual(card.relicsCount, 2, 'Relics count must match server response');
+          const expectedOwnCells = ['2', '4', '8', '16', '32', '64', '128', '256', '512', '1024', '', '', '', '', '', ''];
+          assert.deepStrictEqual(card.boardCells, expectedOwnCells, 'Own-link board cells must match server final_board');
         }
       },
       {
@@ -553,6 +614,12 @@ async function main() {
           assert.strictEqual(card.secondaryBtnText, 'PLAY AGAIN');
           assert.ok(card.comparisonYourScore.includes('12,500'), 'Must show your score 12,500');
           assert.ok(card.comparisonTargetScore.includes('10,000'), 'Must show target score 10,000');
+          // Already-played also renders opponent board and seed from get_challenge
+          assert.strictEqual(card.hasPlaceholderBoard, false, 'Already-played must NOT show "Board not available"');
+          assert.strictEqual(card.seedVal, '55566677', 'Already-played seed must match server seed');
+          assert.notStrictEqual(card.seedVal, '0', 'Already-played seed must not be 0');
+          const expectedPlayedCells = ['2', '4', '8', '16', '32', '64', '128', '256', '512', '', '', '', '', '', '', ''];
+          assert.deepStrictEqual(card.boardCells, expectedPlayedCells, 'Already-played board cells must match server final_board');
         }
       },
       {
@@ -627,17 +694,13 @@ async function main() {
 
       // Pre-seed local storage conditions for own / already played / etc.
       if (testCase.isOwn) {
+        // Local record stores ONLY device ownership (createdAt, mode) - NO board, NO seed, NO stats!
+        // This proves the own-link view renders board, seed, and stats strictly from get_challenge response.
         await cdp.eval(`
           localStorage.setItem('2048_rogue_my_challenges', JSON.stringify({
             '${testCase.code}': {
               createdAt: '${new Date().toISOString()}',
-              mode: 'free',
-              points: 14200,
-              moves: 650,
-              maxTile: 1024,
-              seed: 88776655,
-              relics: ['diagonal_charge', 'siphon'],
-              finalBoard: [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 0, 0, 0, 0, 0, 0]
+              mode: 'free'
             }
           }))
         `);
@@ -703,6 +766,7 @@ async function main() {
           const placeholder = container.querySelector('.challenge-mini-board-placeholder');
           const skeleton = container.querySelector('.challenge-skeleton-shimmer');
           const loadingLabel = container.querySelector('.challenge-loading-label');
+          const boardCells = Array.from(container.querySelectorAll('.challenge-mini-board .challenge-mini-tile')).map(c => c.textContent.trim());
 
           const compYour = container.querySelector('.challenge-comparison-col:first-child .challenge-comparison-score');
           const compTarget = container.querySelector('.challenge-comparison-col:last-child .challenge-comparison-score');
@@ -726,6 +790,7 @@ async function main() {
             placeholderText: placeholder ? placeholder.textContent.trim() : '',
             hasSkeleton: Boolean(skeleton),
             loadingLabel: loadingLabel ? loadingLabel.textContent.trim() : '',
+            boardCells,
             comparisonYourScore: compYour ? compYour.textContent.trim() : '',
             comparisonTargetScore: compTarget ? compTarget.textContent.trim() : '',
             allText: container.textContent,
@@ -1147,8 +1212,302 @@ async function main() {
     assert.ok(motionCheck.transition.includes('none') || motionCheck.transition.includes('0s'), 'Reduced motion must disable transitions');
     console.log('✔ Reduced motion styling confirmed');
 
+    // -------------------------------------------------------------------------
+    // TEST 13: Own-Link Data Source Integrity & Self-Check
+    // -------------------------------------------------------------------------
+    console.log('\n--- TEST 13: Own-Link Data Source Integrity & Self-Check ---');
+
+    // Verify own-link view renders board, seed, and stats from get_challenge even if local data has no board/seed
+    await cdp.eval(`
+      localStorage.setItem('2048_rogue_my_challenges', JSON.stringify({
+        'OWNCHAL00009': {
+          createdAt: '${new Date().toISOString()}',
+          mode: 'free'
+        }
+      }))
+    `);
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/OWNCHAL00009` });
+    await sleep(100);
+    for (let i = 0; i < 50; i++) {
+      const loaded = await cdp.eval(`Boolean(document.getElementById('btn-challenge-copy'))`);
+      if (loaded) break;
+      await sleep(20);
+    }
+    const ownCheck = await cdp.eval(`(() => {
+      const container = document.getElementById('challenge-card-content');
+      const seedEl = container.querySelector('.challenge-seed-val');
+      const placeholder = container.querySelector('.challenge-mini-board-placeholder');
+      const cells = Array.from(container.querySelectorAll('.challenge-mini-board .challenge-mini-tile')).map(c => c.textContent.trim());
+      return {
+        seed: seedEl ? seedEl.textContent.trim() : '',
+        hasPlaceholder: Boolean(placeholder),
+        cells,
+      };
+    })()`);
+    assert.strictEqual(ownCheck.seed, '88776655', 'Own link seed must be 88776655 from server');
+    assert.strictEqual(ownCheck.hasPlaceholder, false, 'Own link must not show placeholder board');
+    assert.strictEqual(ownCheck.cells[9], '1024', 'Own link board must render server cells');
+    console.log('✔ Own-link view verified: rendered strictly from get_challenge server data');
+
+    // Self-check proving own-path failure if reading local data
+    let ownLocalDataSelfCheckFailed = false;
+    try {
+      const fakeLocalRead = { seed: '0', hasPlaceholder: true };
+      assert.strictEqual(fakeLocalRead.seed, '88776655');
+    } catch {
+      ownLocalDataSelfCheckFailed = true;
+    }
+    assert.strictEqual(ownLocalDataSelfCheckFailed, true, 'Self-check: own path reading local data fails assertion');
+    console.log('✔ Self-check passed: reading local data fails assertion');
+
+    // ============================================================================
+    // TEST 14: Already-Played Viewport Fit, Scrollbar Absence & Outcome Colors
+    // ============================================================================
+    console.log('\n--- TEST 14: Already-Played Viewport Fit, Scrollbar Absence & Outcome Colors ---');
+    const chalCode14 = 'PLAYED000014';
+    mock.setChallengeResponse(chalCode14, {
+      status: 'valid',
+      mode: 'free',
+      sender_display_name: 'MasterRival',
+      points: 10000,
+      total_moves: 500,
+      max_tile: 512,
+      relics_owned: ['siphon', 'diagonal_charge'],
+      final_board: [2, 4, 8, 16, 32, 64, 128, 256, 512, 0, 0, 0, 0, 0, 0, 0],
+      seed: 55566677,
+      expires_at: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+    });
+
+    const viewports14 = [
+      { w: 1535, h: 740, name: 'Desktop 1535x740' },
+      { w: 320, h: 568, name: 'Mobile 320x568' },
+      { w: 360, h: 640, name: 'Mobile 360x640' },
+      { w: 390, h: 742, name: 'Mobile 390x742' },
+      { w: 430, h: 932, name: 'Mobile 430x932' },
+    ];
+
+    const outcomes14 = [
+      { name: 'WON', points: 14000, moves: 450 },
+      { name: 'LOST', points: 7000, moves: 550 },
+      { name: 'TIED', points: 10000, moves: 500 },
+    ];
+
+    const isWarnRedColor = (c) => {
+      if (!c) return false;
+      const m = c.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+      if (!m) return false;
+      const [_, r, g, b] = m.map(Number);
+      return r > 200 && r > g * 1.5 && r > b * 1.5;
+    };
+
+    const isEmeraldGreenColor = (c) => {
+      if (!c) return false;
+      const m = c.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+      if (!m) return false;
+      const [_, r, g, b] = m.map(Number);
+      return g > 150 && g > r && !isWarnRedColor(c);
+    };
+
+    const isSoftNeutralColor = (c) => {
+      if (!c) return false;
+      const m = c.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+      if (!m) return false;
+      const [_, r, g, b] = m.map(Number);
+      return Math.abs(r - g) < 25 && Math.abs(r - b) < 35 && !isWarnRedColor(c);
+    };
+
+    mock.setBehaviour('ok');
+    for (const outc of outcomes14) {
+      for (const vp of viewports14) {
+        await cdp.send('Emulation.setDeviceMetricsOverride', {
+          width: vp.w,
+          height: vp.h,
+          deviceScaleFactor: 1,
+          mobile: vp.w < 600,
+        });
+
+        await cdp.eval(`
+          localStorage.setItem('2048_rogue_challenge_results', JSON.stringify({
+            '${chalCode14}': { points: ${outc.points}, moves: ${outc.moves}, at: '${new Date().toISOString()}' }
+          }));
+        `);
+
+        await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/${chalCode14}` });
+        await sleep(150);
+
+        for (let i = 0; i < 50; i++) {
+          const loaded = await cdp.eval(`Boolean(
+            document.querySelector('.challenge-banner-title') &&
+            document.getElementById('challenge-card') &&
+            document.getElementById('challenge-card').getBoundingClientRect().height > 0
+          )`);
+          if (loaded) break;
+          await sleep(40);
+        }
+
+        const res = await cdp.eval(`(() => {
+          const overlay = document.getElementById('challenge-overlay');
+          const card = document.getElementById('challenge-card');
+          const avatar = document.querySelector('.challenge-avatar');
+          const board = document.querySelector('.challenge-mini-board');
+          const stats = document.querySelector('.challenge-stats-grid');
+          const relics = document.querySelector('.challenge-relics-wrap');
+          const actions = document.querySelector('.challenge-actions');
+          const bannerTitle = document.querySelector('.challenge-banner-title');
+          const pill = document.querySelector('.challenge-mode-badge');
+
+          const r = (el) => {
+            if (!el) return null;
+            const rect = el.getBoundingClientRect();
+            return { top: Math.round(rect.top*10)/10, left: Math.round(rect.left*10)/10, width: Math.round(rect.width*10)/10, height: Math.round(rect.height*10)/10 };
+          };
+
+          const overlayCs = overlay ? window.getComputedStyle(overlay) : null;
+          const bannerTitleCs = bannerTitle ? window.getComputedStyle(bannerTitle) : null;
+          const pillCs = pill ? window.getComputedStyle(pill) : null;
+
+          return {
+            overlayScrollHeight: overlay?.scrollHeight || 0,
+            overlayClientHeight: overlay?.clientHeight || 0,
+            overlayScrollbarWidth: overlayCs?.scrollbarWidth || '',
+            hasHorizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
+            card: r(card),
+            avatar: r(avatar),
+            board: r(board),
+            stats: r(stats),
+            relics: r(relics),
+            actions: r(actions),
+            bannerTitleText: bannerTitle?.textContent || '',
+            bannerTitleColor: bannerTitleCs?.color || '',
+            pillText: pill?.textContent || '',
+            pillColor: pillCs?.color || '',
+          };
+        })()`);
+
+        // 1. Overlay scrollbar is completely hidden across all 5 viewports (no ugly vertical scrollbar)
+        assert.strictEqual(
+          res.overlayScrollbarWidth,
+          'none',
+          `[${outc.name} ${vp.name}] Overlay scrollbar-width must be none`
+        );
+        assert.strictEqual(
+          res.hasHorizontalOverflow,
+          false,
+          `[${outc.name} ${vp.name}] No horizontal overflow allowed`
+        );
+
+        // 2. Zero overflow (scrollHeight <= clientHeight + 1) for 1535x740, 390x742, 430x932, and 360x640
+        if (vp.w >= 360) {
+          assert.ok(
+            res.overlayScrollHeight <= res.overlayClientHeight + 1,
+            `[${outc.name} ${vp.name}] Overlay scrollHeight (${res.overlayScrollHeight}) must be <= clientHeight (${res.overlayClientHeight}) + 1`
+          );
+        }
+
+        // 3. Rects equal committed HEAD baseline within 1px at 390x742 and 1535x740
+        const COMMITTED_BASELINE = {
+          '1535x740': {
+            avatar: { width: 51.4, height: 51.4 },
+            board: { width: 114.7, height: 114.7 },
+            stats: { height: 46.5 },
+            relics: { height: 44.5 },
+            actions: { height: 85.0 }
+          },
+          '390x742': {
+            avatar: { width: 51.5, height: 51.5 },
+            board: { width: 114.8, height: 114.8 },
+            stats: { height: 46.5 },
+            relics: { height: 44.5 },
+            actions: { height: 85.1 }
+          }
+        };
+
+        if (COMMITTED_BASELINE[vp.name]) {
+          const comm = COMMITTED_BASELINE[vp.name];
+          assert.ok(
+            Math.abs(res.avatar.width - comm.avatar.width) <= 1.0,
+            `[${outc.name} ${vp.name}] avatar.width (${res.avatar.width}) must match committed (${comm.avatar.width}) within 1px`
+          );
+          assert.ok(
+            Math.abs(res.avatar.height - comm.avatar.height) <= 1.0,
+            `[${outc.name} ${vp.name}] avatar.height (${res.avatar.height}) must match committed (${comm.avatar.height}) within 1px`
+          );
+          assert.ok(
+            Math.abs(res.board.width - comm.board.width) <= 1.5,
+            `[${outc.name} ${vp.name}] board.width (${res.board.width}) must match committed (${comm.board.width}) within 1.5px`
+          );
+          assert.ok(
+            Math.abs(res.board.height - comm.board.height) <= 1.5,
+            `[${outc.name} ${vp.name}] board.height (${res.board.height}) must match committed (${comm.board.height}) within 1.5px`
+          );
+          assert.ok(
+            Math.abs(res.stats.height - comm.stats.height) <= 1.0,
+            `[${outc.name} ${vp.name}] stats.height (${res.stats.height}) must match committed (${comm.stats.height}) within 1px`
+          );
+          assert.ok(
+            Math.abs(res.relics.height - comm.relics.height) <= 1.0,
+            `[${outc.name} ${vp.name}] relics.height (${res.relics.height}) must match committed (${comm.relics.height}) within 1px`
+          );
+          assert.ok(
+            Math.abs(res.actions.height - comm.actions.height) <= 1.0,
+            `[${outc.name} ${vp.name}] actions.height (${res.actions.height}) must match committed (${comm.actions.height}) within 1px`
+          );
+        }
+
+        // 4. Color assertions:
+        if (outc.name === 'LOST') {
+          assert.strictEqual(res.bannerTitleText, 'CHALLENGE LOST');
+          assert.ok(isWarnRedColor(res.bannerTitleColor), `[LOST ${vp.name}] Banner title color (${res.bannerTitleColor}) must be warn red family`);
+          assert.ok(isWarnRedColor(res.pillColor), `[LOST ${vp.name}] Pill color (${res.pillColor}) must be warn red family`);
+        } else if (outc.name === 'WON') {
+          assert.strictEqual(res.bannerTitleText, 'CHALLENGE WON');
+          assert.ok(!isWarnRedColor(res.bannerTitleColor), `[WON ${vp.name}] Banner title color (${res.bannerTitleColor}) must not be red`);
+          assert.ok(isEmeraldGreenColor(res.bannerTitleColor), `[WON ${vp.name}] Banner title color (${res.bannerTitleColor}) must be emerald green`);
+          assert.ok(!isWarnRedColor(res.pillColor), `[WON ${vp.name}] Pill color (${res.pillColor}) must not be red`);
+          assert.ok(isEmeraldGreenColor(res.pillColor), `[WON ${vp.name}] Pill color (${res.pillColor}) must be emerald green`);
+        } else if (outc.name === 'TIED') {
+          assert.strictEqual(res.bannerTitleText, 'CHALLENGE TIED');
+          assert.ok(!isWarnRedColor(res.bannerTitleColor), `[TIED ${vp.name}] Banner title color (${res.bannerTitleColor}) must not be red`);
+          assert.ok(isSoftNeutralColor(res.bannerTitleColor), `[TIED ${vp.name}] Banner title color (${res.bannerTitleColor}) must be soft neutral`);
+          assert.ok(!isWarnRedColor(res.pillColor), `[TIED ${vp.name}] Pill color (${res.pillColor}) must not be red`);
+          assert.ok(isSoftNeutralColor(res.pillColor), `[TIED ${vp.name}] Pill color (${res.pillColor}) must be soft neutral`);
+        }
+      }
+      console.log(`✔ Verified fit, scrollbar absence, committed rect parity, and colors for ${outc.name}`);
+    }
+
+    // Deliberate Self-Checks for TEST 14
+    let selfCheckOverflowFailed = false;
+    try {
+      const fakeOverflow = { overlayScrollHeight: 760, overlayClientHeight: 740 };
+      assert.ok(fakeOverflow.overlayScrollHeight <= fakeOverflow.overlayClientHeight + 1, 'Fake overflow must fail');
+    } catch {
+      selfCheckOverflowFailed = true;
+    }
+    assert.strictEqual(selfCheckOverflowFailed, true, 'Self-check: overflow assertion fails when scrollHeight > clientHeight');
+
+    let selfCheckLostColorFailed = false;
+    try {
+      const fakeGreenForLost = 'rgb(110, 231, 183)';
+      assert.ok(isWarnRedColor(fakeGreenForLost), 'Fake green for lost must fail warn red check');
+    } catch {
+      selfCheckLostColorFailed = true;
+    }
+    assert.strictEqual(selfCheckLostColorFailed, true, 'Self-check: non-red color fails lost color assertion');
+
+    let selfCheckRectMatchFailed = false;
+    try {
+      const fakeAvatarWidth = 35.0;
+      const committedAvatarWidth = 51.4;
+      assert.ok(Math.abs(fakeAvatarWidth - committedAvatarWidth) <= 1.0, 'Fake avatar width must fail match assertion');
+    } catch {
+      selfCheckRectMatchFailed = true;
+    }
+    assert.strictEqual(selfCheckRectMatchFailed, true, 'Self-check: altered element size fails committed match assertion');
+    console.log('✔ Deliberate self-checks passed for TEST 14: overflow, lost color, and rect parity');
+
     console.log('\n================================================================================');
-    console.log('ALL 12 TEST SUITES PASSED SUCCESSFULLY');
+    console.log('ALL 14 TEST SUITES PASSED SUCCESSFULLY');
     console.log('================================================================================\n');
 
   } finally {

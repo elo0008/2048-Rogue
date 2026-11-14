@@ -275,10 +275,19 @@ export async function build(options = {}) {
     }
   }
 
-  // Copy favicon.svg
-  const faviconSrc = path.join(targetRootDir, 'game', 'favicon.svg');
-  if (fs.existsSync(faviconSrc)) {
-    fs.copyFileSync(faviconSrc, path.join(targetDistDir, 'favicon.svg'));
+  // Copy favicon, app icons, and web manifest
+  const staticFilesToCopy = [
+    'favicon.svg',
+    'apple-touch-icon.png',
+    'icon-192.png',
+    'icon-512.png',
+    'manifest.webmanifest',
+  ];
+  for (const file of staticFilesToCopy) {
+    const src = path.join(targetRootDir, 'game', file);
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, path.join(targetDistDir, file));
+    }
   }
 
   // Copy fonts directory to dist/fonts
