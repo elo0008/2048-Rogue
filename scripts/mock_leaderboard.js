@@ -13,6 +13,7 @@ export function createMockLeaderboardServer(initialDb = null) {
   let db = initialDb || new SecurityDatabaseEngine();
   let behaviour = 'ok'; // ok | offline | slow | status:429 | status:500 | reject:422 | reject:422-version
   const requests = [];
+  const customChallengeResponses = new Map();
 
   const server = http.createServer(async (req, res) => {
     const origin = req.headers.origin || '*';
@@ -73,10 +74,22 @@ export function createMockLeaderboardServer(initialDb = null) {
       return;
     }
 
+    if (pathname === '/__control/mock_challenge' && req.method === 'POST') {
+      const code = bodyJson?.code;
+      const data = bodyJson?.data;
+      if (code) {
+        customChallengeResponses.set(code, data);
+      }
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
     if (pathname === '/__control/reset' && req.method === 'POST') {
       db = new SecurityDatabaseEngine();
       behaviour = 'ok';
       requests.length = 0;
+      customChallengeResponses.clear();
       res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
       return;
@@ -141,10 +154,14 @@ export function createMockLeaderboardServer(initialDb = null) {
 
     // 5. REST RPC Endpoints
     if (pathname.startsWith('/rest/v1/rpc/') && req.method === 'POST') {
+      if (behaviour === 'offline') {
+        req.socket.destroy();
+        return;
+      }
       if (behaviour === 'rpc:slow') {
         await new Promise(r => setTimeout(r, 2000));
       }
-      if (behaviour === 'rpc:500') {
+      if (behaviour === 'rpc:500' || behaviour === 'status:500') {
         res.writeHead(500, { ...corsHeaders, 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'INTERNAL_SERVER_ERROR', message: 'Mock RPC 500 error' }));
         return;
@@ -209,6 +226,12 @@ export function createMockLeaderboardServer(initialDb = null) {
 
       if (pathname === '/rest/v1/rpc/get_challenge') {
         const code = bodyJson?.code || bodyJson?.p_code;
+        if (customChallengeResponses.has(code)) {
+          const result = customChallengeResponses.get(code);
+          res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+          return;
+        }
         const result = db.rpcGetChallenge(code);
         res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
@@ -428,7 +451,9 @@ export function createMockLeaderboardServer(initialDb = null) {
       db = new SecurityDatabaseEngine();
       behaviour = 'ok';
       requests.length = 0;
+      customChallengeResponses.clear();
     },
+    setChallengeResponse: (code, data) => { customChallengeResponses.set(code, data); },
     getDb: () => db,
     setDb: newDb => { db = newDb; },
     getBehaviour: () => behaviour,

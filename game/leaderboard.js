@@ -993,3 +993,231 @@ export async function createChallenge({
   return { ok: false, error: 'network' };
 }
 
+export const STORAGE_KEY_MY_CHALLENGES = '2048_rogue_my_challenges';
+export const STORAGE_KEY_CHALLENGE_RESULTS = '2048_rogue_challenge_results';
+export const MAX_CHALLENGE_LOCAL_ENTRIES = 50;
+
+/**
+ * Records a challenge code created by this device in localStorage.
+ * Keeps at most 50 entries, evicting the oldest created.
+ */
+export function recordMyChallenge(code, createdAt = new Date().toISOString(), extra = {}, storage = globalThis.localStorage) {
+  if (!code || typeof code !== 'string') return;
+  try {
+    let map = {};
+    const raw = storage.getItem(STORAGE_KEY_MY_CHALLENGES);
+    if (raw) map = JSON.parse(raw) || {};
+    map[code] = { createdAt, ...extra };
+    const keys = Object.keys(map);
+    if (keys.length > MAX_CHALLENGE_LOCAL_ENTRIES) {
+      keys.sort((a, b) => {
+        const tA = typeof map[a] === 'string' ? new Date(map[a]).getTime() : new Date(map[a]?.createdAt || 0).getTime();
+        const tB = typeof map[b] === 'string' ? new Date(map[b]).getTime() : new Date(map[b]?.createdAt || 0).getTime();
+        return tA - tB;
+      });
+      while (keys.length > MAX_CHALLENGE_LOCAL_ENTRIES) {
+        const oldest = keys.shift();
+        delete map[oldest];
+      }
+    }
+    storage.setItem(STORAGE_KEY_MY_CHALLENGES, JSON.stringify(map));
+  } catch {}
+}
+
+/**
+ * Checks whether a challenge code was created on this device.
+ */
+export function isMyChallenge(code, storage = globalThis.localStorage) {
+  if (!code || typeof code !== 'string') return false;
+  try {
+    const raw = storage.getItem(STORAGE_KEY_MY_CHALLENGES);
+    if (!raw) return false;
+    const map = JSON.parse(raw);
+    return Boolean(map && map[code]);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Retrieves all challenges created by this device.
+ */
+export function getMyChallenges(storage = globalThis.localStorage) {
+  try {
+    const raw = storage.getItem(STORAGE_KEY_MY_CHALLENGES);
+    return raw ? JSON.parse(raw) || {} : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Records the outcome of a challenge attempt for a code.
+ * Keeps at most 50 entries, evicting the oldest.
+ */
+export function recordChallengeResult(code, { points, moves, at = new Date().toISOString() }, storage = globalThis.localStorage) {
+  if (!code || typeof code !== 'string') return;
+  try {
+    let map = {};
+    const raw = storage.getItem(STORAGE_KEY_CHALLENGE_RESULTS);
+    if (raw) map = JSON.parse(raw) || {};
+    map[code] = { points, moves, at };
+    const keys = Object.keys(map);
+    if (keys.length > MAX_CHALLENGE_LOCAL_ENTRIES) {
+      keys.sort((a, b) => new Date(map[a]?.at || 0).getTime() - new Date(map[b]?.at || 0).getTime());
+      while (keys.length > MAX_CHALLENGE_LOCAL_ENTRIES) {
+        const oldest = keys.shift();
+        delete map[oldest];
+      }
+    }
+    storage.setItem(STORAGE_KEY_CHALLENGE_RESULTS, JSON.stringify(map));
+  } catch {}
+}
+
+/**
+ * Retrieves the local result recorded for a challenge code, if any.
+ */
+export function getChallengeResult(code, storage = globalThis.localStorage) {
+  if (!code || typeof code !== 'string') return null;
+  try {
+    const raw = storage.getItem(STORAGE_KEY_CHALLENGE_RESULTS);
+    if (!raw) return null;
+    const map = JSON.parse(raw);
+    return map && map[code] ? map[code] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetches a challenge record by its 12-character alphanumeric code.
+ *
+ * @param {object} params
+ * @param {string} [params.url]
+ * @param {string} [params.anonKey]
+ * @param {string} params.code
+ * @param {typeof fetch} [params.fetchFn=globalThis.fetch]
+ * @param {number} [params.timeoutMs=10000]
+ * @returns {Promise<{ ok: true, data: object } | { ok: false, error: 'invalid_code'|'not_configured'|'network' }>}
+ */
+export async function getChallenge({
+  url,
+  anonKey,
+  code,
+  fetchFn = globalThis.fetch,
+  timeoutMs = 10000,
+} = {}) {
+  const CODE_REGEX = /^[A-Za-z0-9]{12}$/;
+  if (!code || typeof code !== 'string' || !CODE_REGEX.test(code)) {
+    return { ok: false, error: 'invalid_code' };
+  }
+
+  const baseUrl = url || (typeof window !== 'undefined' && window.__LB?.url) || '';
+  const key = anonKey || (typeof window !== 'undefined' && window.__LB?.anonKey) || '';
+
+  if (!baseUrl || !key) {
+    return { ok: false, error: 'not_configured' };
+  }
+
+  const cleanBase = baseUrl.replace(/\/+$/, '');
+  const endpoint = `${cleanBase}/rest/v1/rpc/get_challenge`;
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer = null;
+  if (controller && timeoutMs > 0) {
+    timer = setTimeout(() => {
+      try { controller.abort(); } catch {}
+    }, timeoutMs);
+  }
+
+  try {
+    const res = await fetchFn(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': key,
+      },
+      body: JSON.stringify({ code }),
+      signal: controller?.signal,
+    });
+
+    if (timer) clearTimeout(timer);
+
+    if (res.status === 200) {
+      const json = await res.json().catch(() => null);
+      const data = Array.isArray(json) ? json[0] : json;
+      if (!data) {
+        return { ok: true, data: { status: 'not_found' } };
+      }
+      return { ok: true, data };
+    }
+
+    if (res.status === 404) {
+      return { ok: true, data: { status: 'not_found' } };
+    }
+
+    return { ok: false, error: 'network' };
+  } catch (_e) {
+    if (timer) clearTimeout(timer);
+    return { ok: false, error: 'network' };
+  }
+}
+
+/**
+ * Sends a challenge telemetry event ('open' or 'accept') fire-and-forget.
+ * Never throws, errors ignored.
+ *
+ * @param {object} params
+ * @param {string} [params.url]
+ * @param {string} [params.anonKey]
+ * @param {string} params.code
+ * @param {'open'|'accept'} params.kind
+ * @param {typeof fetch} [params.fetchFn=globalThis.fetch]
+ * @param {number} [params.timeoutMs=5000]
+ * @returns {Promise<boolean>}
+ */
+export async function sendChallengeEvent({
+  url,
+  anonKey,
+  code,
+  kind,
+  fetchFn = globalThis.fetch,
+  timeoutMs = 5000,
+} = {}) {
+  const CODE_REGEX = /^[A-Za-z0-9]{12}$/;
+  if (!code || typeof code !== 'string' || !CODE_REGEX.test(code)) return false;
+  if (kind !== 'open' && kind !== 'accept') return false;
+
+  const baseUrl = url || (typeof window !== 'undefined' && window.__LB?.url) || '';
+  const key = anonKey || (typeof window !== 'undefined' && window.__LB?.anonKey) || '';
+  if (!baseUrl || !key) return false;
+
+  const cleanBase = baseUrl.replace(/\/+$/, '');
+  const endpoint = `${cleanBase}/functions/v1/challenge-event`;
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer = null;
+  if (controller && timeoutMs > 0) {
+    timer = setTimeout(() => {
+      try { controller.abort(); } catch {}
+    }, timeoutMs);
+  }
+
+  try {
+    const res = await fetchFn(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': key,
+      },
+      body: JSON.stringify({ code, kind }),
+      signal: controller?.signal,
+    });
+    if (timer) clearTimeout(timer);
+    return res.status === 200;
+  } catch {
+    if (timer) clearTimeout(timer);
+    return false;
+  }
+}
+

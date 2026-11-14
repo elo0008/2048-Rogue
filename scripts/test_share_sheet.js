@@ -393,6 +393,7 @@ async function main() {
     const dailyGaps390 = await measureShareSheetGaps(cdp);
     console.log(`  [Daily 390x742 Gaps] Above: ${dailyGaps390.gapAbove}px, Below: ${dailyGaps390.gapBelow}px, DistToSheetBottom: ${dailyGaps390.distToSheetBottom}px, DistToVpBottom: ${dailyGaps390.distToVpBottom}px`);
     assertShareSheetGapsAndPadding(dailyGaps390, { minGap: 12, label: 'Daily Ready 390x742' });
+    assert.ok(dailyGaps390.gapBelow >= 16, `Daily Ready 390x742: gap above SEND LINK (${dailyGaps390.gapBelow}px) must be >= 16px`);
 
     // Test SEND LINK with navigator.share stub
     await cdp.eval(`
@@ -535,6 +536,10 @@ async function main() {
     const freeGaps390 = await measureShareSheetGaps(cdp);
     console.log(`  [Free 390x742 Gaps] Above: ${freeGaps390.gapAbove}px, Below: ${freeGaps390.gapBelow}px (below meta: ${freeGaps390.gapBelowMeta}px), DistToSheetBottom: ${freeGaps390.distToSheetBottom}px, DistToVpBottom: ${freeGaps390.distToVpBottom}px`);
     assertShareSheetGapsAndPadding(freeGaps390, { minGap: 12, label: 'Free Ready 390x742' });
+    assert.ok(freeGaps390.gapBelow >= 16, `Free Ready 390x742: gap above SEND LINK (${freeGaps390.gapBelow}px) must be >= 16px`);
+    if (freeGaps390.gapBelowMeta !== null) {
+      assert.ok(freeGaps390.gapBelowMeta >= 16, `Free Ready 390x742: gap below meta-stack (${freeGaps390.gapBelowMeta}px) must be >= 16px`);
+    }
 
     await cdp.eval(`window.__testCloseShareSheet();`);
     console.log('✔ Test 2 PASSED: Free run card layout and share flow verified.\n');
@@ -979,12 +984,14 @@ async function main() {
         if (vp.w === 390) {
           assert.ok(vpGaps.gapAbove >= 12, `390x742 gapAbove >= 12px (got ${vpGaps.gapAbove}px)`);
           assert.ok(vpGaps.gapBelow >= 12, `390x742 gapBelow >= 12px (got ${vpGaps.gapBelow}px)`);
+          assert.ok(vpGaps.gapBelow >= 16, `390x742 gap above SEND LINK >= 16px (got ${vpGaps.gapBelow}px)`);
           assert.ok(vpGaps.distToSheetBottom >= 12, `390x742 distToSheetBottom >= 12px (got ${vpGaps.distToSheetBottom}px)`);
           assert.ok(vpGaps.distToVpBottom > 0, `390x742 distToVpBottom > 0 (got ${vpGaps.distToVpBottom}px)`);
           assert.ok(vpGaps.distToVpBottom >= 12, `390x742 distToVpBottom >= 12px (got ${vpGaps.distToVpBottom}px)`);
         } else if (vp.w === 320) {
           assert.ok(vpGaps.gapAbove >= 8, `320x568 gapAbove >= 8px (got ${vpGaps.gapAbove}px)`);
           assert.ok(vpGaps.gapBelow >= 8, `320x568 gapBelow >= 8px (got ${vpGaps.gapBelow}px)`);
+          assert.ok(vpGaps.gapBelow >= 10, `320x568 gap above SEND LINK >= 10px (got ${vpGaps.gapBelow}px)`);
           assert.ok(vpGaps.distToSheetBottom >= 12, `320x568 distToSheetBottom >= 12px (got ${vpGaps.distToSheetBottom}px)`);
           assert.ok(vpGaps.distToVpBottom > 0, `320x568 distToVpBottom > 0 (got ${vpGaps.distToVpBottom}px)`);
           assert.ok(vpGaps.distToVpBottom >= 12, `320x568 distToVpBottom >= 12px (got ${vpGaps.distToVpBottom}px)`);
@@ -1128,6 +1135,25 @@ async function main() {
       console.log(`  ✔ Temp copy on disk (4px gap) successfully failed assertion: ${e.message}`);
     }
     assert.strictEqual(tempDiskCopyFailed, true, 'Self-check: temp copy on disk with 4px gap successfully fails assertion');
+
+    // Self-check: verify that gap below 16px fails 16px threshold and gap below 10px fails 10px threshold
+    let selfCheck14pxAt16Failed = false;
+    try {
+      const fake14px = 14;
+      assert.ok(fake14px >= 16, 'gap above SEND LINK must be >= 16px (got 14px)');
+    } catch {
+      selfCheck14pxAt16Failed = true;
+    }
+    assert.strictEqual(selfCheck14pxAt16Failed, true, 'Self-check: 14px gap MUST throw for >= 16px threshold');
+
+    let selfCheck8pxAt10Failed = false;
+    try {
+      const fake8px = 8;
+      assert.ok(fake8px >= 10, '320x568 gap above SEND LINK must be >= 10px (got 8px)');
+    } catch {
+      selfCheck8pxAt10Failed = true;
+    }
+    assert.strictEqual(selfCheck8pxAt10Failed, true, 'Self-check: 8px gap MUST throw for >= 10px threshold');
     console.log('✔ Test 13 PASSED: Deliberate self-check capability verified.\n');
     passedTests++;
 

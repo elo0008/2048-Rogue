@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <base href="/">
   <title>Rogue 2048</title>
   <meta name="description" content="A roguelike 2048 puzzle game featuring tactical relic draft choices, stone hazards, and deterministic run progression.">
   <meta name="theme-color" content="#100f11">
@@ -23,6 +24,19 @@
           for (var i = 0; i < params.length; i++) {
             if (new RegExp('[?&]' + params[i] + '(=|&|$)').test(q)) return;
           }
+        }
+        var pathname = window.location.pathname || '';
+        var chalMatch = pathname.match(/^\/c\/([A-Za-z0-9]{12})\/?$/);
+        if (chalMatch) {
+          document.documentElement.classList.add('challenge-active');
+          window.__challengeCode = chalMatch[1];
+          // 1500ms Fallback: If scripts fail or challenge not handled, drop challenge-active
+          setTimeout(function() {
+            if (!window.__challengeHandled) {
+              document.documentElement.classList.remove('challenge-active');
+            }
+          }, 1500);
+          return;
         }
         var seen = localStorage.getItem('2048_rogue_tutorial_seen');
         if (!seen) {
@@ -46,7 +60,8 @@
         pointer-events: auto !important;
         transform: none !important;
       }
-      #tutorial-overlay {
+      #tutorial-overlay,
+      #challenge-overlay {
         display: none !important;
       }
     </style>
@@ -221,6 +236,49 @@
         <button class="sheetbutton btn-sound-toggle" id="btn-sound-start" type="button" aria-label="Toggle sound">SOUND: ON <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: middle; display: inline-block; margin-left: 6px;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg></button>
         <button class="link" id="btn-start-how" type="button">How to play</button>
         <div id="start-build-id" class="foot start-build-footer">BUILD: __BUILD_ID__</div>
+      </div>
+    </div>
+
+    <!-- Challenge Preview Overlay -->
+    <div id="challenge-overlay" class="overlay modal-overlay challenge-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="challenge-sender-name">
+      <div id="challenge-card" class="modal challenge-card">
+        <div class="challenge-top-bar">
+          <div class="challenge-logo">R·2</div>
+        </div>
+        <div id="challenge-card-content" class="challenge-card-content">
+          <div class="challenge-skeleton-shimmer">
+            <div class="challenge-skeleton-avatar"></div>
+            <div class="challenge-skeleton-line short"></div>
+            <div class="challenge-skeleton-line med"></div>
+            <div class="challenge-skeleton-score"></div>
+            <div class="challenge-skeleton-board">
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+              <div class="challenge-skeleton-cell"></div>
+            </div>
+            <div class="challenge-skeleton-stats">
+              <div class="challenge-skeleton-stat"></div>
+              <div class="challenge-skeleton-stat"></div>
+            </div>
+            <div class="challenge-loading-label">
+              <span class="challenge-spinner" aria-hidden="true"></span>
+              <span>LOADING CHALLENGE...</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -407,6 +465,11 @@
           <p class="sub pause-subtitle">Take a breath. The grid can wait.</p>
         </div>
 
+        <div id="pause-challenge-strip" class="challenge-strip-inline hidden" aria-label="Challenge active">
+          <span class="challenge-strip-bullet" aria-hidden="true">●</span>
+          <span class="challenge-strip-text">CHALLENGE · vs <span id="pause-challenge-vs-name">...</span></span>
+        </div>
+
         <div class="pause-time pause-time-box" id="pause-time-wrap" aria-label="Elapsed run time">
           <span class="pause-time-icon" aria-hidden="true">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -526,10 +589,14 @@
 
     <!-- Game Over Screen Overlay -->
     <div id="end-overlay" class="overlay modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="end-score">
-      <div class="modal end-card gameover-card">
+      <div id="gameover-normal-card" class="modal end-card gameover-card">
         <div class="end-header-row card-header-row" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
           <div class="eyebrow run-complete-tag" style="margin:0">Run complete · score</div>
           <span id="end-clean-slate-chip" class="clean-slate-chip modifier-badge hidden">CLEAN SLATE x 1</span>
+        </div>
+        <div id="gameover-challenge-strip" class="challenge-strip-inline hidden" aria-label="Challenge active">
+          <span class="challenge-strip-bullet" aria-hidden="true">●</span>
+          <span class="challenge-strip-text">CHALLENGE · vs <span id="gameover-challenge-vs-name">...</span></span>
         </div>
         <div id="end-score" class="final end-score-val score-display">0</div>
         <div style="text-align:center"><span id="end-new-best-badge" class="newbest badge-new-best hidden">✦ NEW BEST</span></div>
@@ -599,6 +666,128 @@
             <button id="btn-copy-log" class="secondary btn btn-secondary btn-copy-log-half" type="button" title="Copy run log summary">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
               <span>COPY LOG</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Challenge Result Card -->
+      <div id="challenge-result-card" class="modal challenge-result-card hidden" role="region" aria-label="Challenge Result">
+        <div class="card-top">
+          <span class="kicker">CHALLENGE RESULT</span>
+          <span class="mode-chip" id="challenge-result-mode-chip">DAILY</span>
+        </div>
+
+        <div class="expired-banner hidden" id="challenge-result-expired-banner">Challenge link expired while you played</div>
+
+        <div class="verdict-wrap">
+          <h1 class="verdict-headline verdict-win" id="challenge-result-verdict">YOU WIN</h1>
+          <div class="margin-line" id="challenge-result-margin">+0 points</div>
+        </div>
+
+        <div class="compare-grid">
+          <div class="player-col winner" id="challenge-result-col-you">
+            <div class="player-id">
+              <div class="avatar-circle" id="challenge-result-avatar-you">YO</div>
+              <div class="player-name">YOU</div>
+            </div>
+            <div class="score-block">
+              <div class="score-val" id="challenge-result-score-you">0</div>
+              <div class="score-lbl">Points</div>
+            </div>
+            <div class="sub-stats">
+              <div class="stat-item">
+                <span class="stat-v" id="challenge-result-moves-you">0</span>
+                <span class="stat-k">Moves</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-v" id="challenge-result-max-you">2</span>
+                <span class="stat-k">Max</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="player-col" id="challenge-result-col-sender">
+            <div class="player-id">
+              <div class="avatar-circle" id="challenge-result-avatar-sender">AP</div>
+              <div class="player-name" id="challenge-result-name-sender">Anonymous Player</div>
+            </div>
+            <div class="score-block">
+              <div class="score-val" id="challenge-result-score-sender">0</div>
+              <div class="score-lbl">Points</div>
+            </div>
+            <div class="sub-stats">
+              <div class="stat-item">
+                <span class="stat-v" id="challenge-result-moves-sender">0</span>
+                <span class="stat-k">Moves</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-v" id="challenge-result-max-sender">2</span>
+                <span class="stat-k">Max</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="boards-section">
+          <div class="boards-header">
+            <span class="boards-lbl">FINAL BOARDS</span>
+          </div>
+          <div class="boards-pair">
+            <div class="mini-board-wrap">
+              <div class="mini-board" id="challenge-result-board-you" aria-label="Your final board"></div>
+            </div>
+            <div class="mini-board-wrap" id="challenge-result-sender-board-wrap">
+              <div class="mini-board" id="challenge-result-board-sender" aria-label="Sender final board"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="daily-rank hidden" id="challenge-result-daily-rank">
+          <div class="daily-rank-left">
+            <span class="rank-emblem" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+                <path d="M4 22h16"/>
+                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
+                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
+                <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+              </svg>
+            </span>
+            <span class="rank-label">Your Daily rank</span>
+          </div>
+          <span class="rank-pill" id="challenge-result-rank-pill"><strong>#--</strong> of --</span>
+        </div>
+
+        <div class="btn-stack action-buttons" id="challenge-result-actions">
+          <button class="btn btn-primary" id="btn-challenge-result-back" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/>
+              <line x1="13" y1="19" x2="19" y2="13"/>
+              <line x1="16" y1="16" x2="20" y2="20"/>
+              <line x1="19" y1="21" x2="21" y2="19"/>
+              <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/>
+              <line x1="5" y1="14" x2="9" y2="18"/>
+              <line x1="7" y1="17" x2="4" y2="20"/>
+              <line x1="3" y1="19" x2="5" y2="21"/>
+            </svg>
+            <span>CHALLENGE BACK</span>
+          </button>
+          <div class="btn-row">
+            <button class="btn btn-secondary" id="btn-challenge-result-again" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+              </svg>
+              <span>PLAY AGAIN</span>
+            </button>
+            <button class="btn btn-secondary" id="btn-challenge-result-home" type="button" title="Return to Main Menu">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/>
+                <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              </svg>
+              <span>HOME</span>
             </button>
           </div>
         </div>

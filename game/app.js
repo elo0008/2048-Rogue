@@ -56,6 +56,13 @@ import {
   formatPoints,
   getMondayUtc,
   createChallenge,
+  getChallenge,
+  sendChallengeEvent,
+  recordMyChallenge,
+  getMyChallenges,
+  isMyChallenge,
+  recordChallengeResult,
+  getChallengeResult,
 } from './leaderboard.js';
 
 const DEFAULT_POOL = [
@@ -740,6 +747,325 @@ let dailyRunStartDay = null;
 let displayedRunId = null;
 let countdownIntervalId = null;
 
+let challengeContext = null;
+let challengeExpiryInterval = null;
+let pendingChallengeTutorialAction = null;
+
+/**
+ * Renders a 4x4 board into mini-board cells for the challenge result screen.
+ */
+function renderChallengeResultBoard(boardArray, boardEl, wrapEl) {
+  if (!boardArray || !Array.isArray(boardArray) || boardArray.length !== 16) {
+    if (wrapEl) {
+      wrapEl.innerHTML = '<div class="mini-board-placeholder">Board not available</div>';
+    }
+    return;
+  }
+  if (wrapEl && !wrapEl.querySelector('.mini-board')) {
+    wrapEl.innerHTML = '<div class="mini-board" id="challenge-result-board-sender" aria-label="Sender final board"></div>';
+  }
+  const targetBoard = (wrapEl && wrapEl.querySelector('.mini-board')) || boardEl;
+  if (!targetBoard) return;
+  targetBoard.replaceChildren();
+  for (let i = 0; i < 16; i++) {
+    const val = boardArray[i];
+    const cell = document.createElement('div');
+    if (val === 'S' || val === 'STONE' || val === -1) {
+      cell.className = 'm-cell stone ms mini-stone';
+      cell.setAttribute('aria-label', 'Permanent stone');
+    } else if (typeof val === 'number' && val > 0) {
+      cell.className = `m-cell t${val} tile-${val}`;
+      cell.textContent = String(val);
+      const strVal = String(val);
+      if (strVal.length >= 4) {
+        cell.classList.add('digits-4');
+        cell.style.fontSize = '8px';
+      } else if (strVal.length === 3) {
+        cell.classList.add('digits-3');
+        cell.style.fontSize = '9px';
+      } else {
+        cell.classList.add('digits-2');
+        cell.style.fontSize = '10.5px';
+      }
+    } else {
+      cell.className = 'm-cell tile-empty';
+    }
+    targetBoard.appendChild(cell);
+  }
+}
+
+/**
+ * Challenge Outcome Screen Hook: Populates and displays the challenge outcome card.
+ *
+ * @param {object} ctx - challengeContext active during the run.
+ * @param {object} runSummary - Summary of points, moves, maxTile, finalBoard, ranked, relics, seed.
+ */
+let activeChallengeRunSummary = null;
+
+export function showChallengeResult(ctx, runSummary) {
+  if (!ctx || !runSummary) return;
+  challengeContext = ctx;
+  activeChallengeRunSummary = runSummary;
+
+  const mode = ctx.mode || 'free';
+  const isDaily = mode === 'daily';
+  const isRanked = Boolean(runSummary.ranked);
+
+  const youPoints = typeof runSummary.points === 'number' ? runSummary.points : 0;
+  const youMoves = typeof runSummary.moves === 'number' ? runSummary.moves : 0;
+  const youMaxTile = typeof runSummary.maxTile === 'number' ? runSummary.maxTile : 2;
+  const youBoard = runSummary.finalBoard || [];
+
+  const senderPoints = typeof ctx.points === 'number' ? ctx.points : 0;
+  const senderMoves = typeof ctx.moves === 'number' ? ctx.moves : 0;
+  const senderMaxTile = typeof ctx.maxTile === 'number' ? ctx.maxTile : 2;
+  const senderBoard = ctx.finalBoard;
+  const senderDisplayName = ctx.senderName || 'Anonymous Player';
+  const senderInitials = avatarInitials(senderDisplayName);
+
+  // Verdict calculation
+  let verdict = 'YOU WIN';
+  let verdictClass = 'verdict-win';
+  let margin = '';
+  let youWinner = false;
+  let senderWinner = false;
+
+  if (youPoints > senderPoints) {
+    verdict = 'YOU WIN';
+    verdictClass = 'verdict-win';
+    margin = `+${(youPoints - senderPoints).toLocaleString('en-US')} points`;
+    youWinner = true;
+  } else if (youPoints < senderPoints) {
+    verdict = 'YOU LOSE';
+    verdictClass = 'verdict-lose';
+    margin = `−${(senderPoints - youPoints).toLocaleString('en-US')} points`;
+    senderWinner = true;
+  } else {
+    // Points equal -> more moves wins
+    if (youMoves > senderMoves) {
+      verdict = 'YOU WIN';
+      verdictClass = 'verdict-win';
+      margin = `Tied on points. ${youMoves.toLocaleString('en-US')} vs ${senderMoves.toLocaleString('en-US')} moves.`;
+      youWinner = true;
+    } else if (youMoves < senderMoves) {
+      verdict = 'YOU LOSE';
+      verdictClass = 'verdict-lose';
+      margin = `Tied on points. ${youMoves.toLocaleString('en-US')} vs ${senderMoves.toLocaleString('en-US')} moves.`;
+      senderWinner = true;
+    } else {
+      verdict = 'TIE';
+      verdictClass = 'verdict-tie';
+      margin = 'Exact tie: same points and moves';
+    }
+  }
+
+  // Populate header & expired banner
+  const modeChipEl = document.getElementById('challenge-result-mode-chip');
+  if (modeChipEl) modeChipEl.textContent = isDaily ? 'DAILY' : 'FREE RUN';
+
+  const expiredBannerEl = document.getElementById('challenge-result-expired-banner');
+  const isExpired = Boolean(ctx.expiresAt && new Date(ctx.expiresAt).getTime() <= Date.now());
+  if (expiredBannerEl) {
+    if (isExpired) {
+      expiredBannerEl.classList.remove('hidden');
+    } else {
+      expiredBannerEl.classList.add('hidden');
+    }
+  }
+
+  // Verdict & margin
+  const verdictEl = document.getElementById('challenge-result-verdict');
+  if (verdictEl) {
+    verdictEl.textContent = verdict;
+    verdictEl.className = 'verdict-headline ' + verdictClass;
+  }
+  const marginEl = document.getElementById('challenge-result-margin');
+  if (marginEl) marginEl.textContent = margin;
+
+  // YOU column
+  const colYouEl = document.getElementById('challenge-result-col-you');
+  if (colYouEl) colYouEl.className = 'player-col' + (youWinner ? ' winner' : '');
+  const avatarYouEl = document.getElementById('challenge-result-avatar-you');
+  if (avatarYouEl) avatarYouEl.textContent = 'YO';
+  const scoreYouEl = document.getElementById('challenge-result-score-you');
+  if (scoreYouEl) scoreYouEl.textContent = youPoints.toLocaleString('en-US');
+  const movesYouEl = document.getElementById('challenge-result-moves-you');
+  if (movesYouEl) movesYouEl.textContent = youMoves.toLocaleString('en-US');
+  const maxYouEl = document.getElementById('challenge-result-max-you');
+  if (maxYouEl) maxYouEl.textContent = youMaxTile.toLocaleString('en-US');
+
+  // Sender column
+  const colSenderEl = document.getElementById('challenge-result-col-sender');
+  if (colSenderEl) colSenderEl.className = 'player-col' + (senderWinner ? ' winner' : '');
+  const avatarSenderEl = document.getElementById('challenge-result-avatar-sender');
+  if (avatarSenderEl) avatarSenderEl.textContent = senderInitials;
+  const nameSenderEl = document.getElementById('challenge-result-name-sender');
+  if (nameSenderEl) nameSenderEl.textContent = senderDisplayName;
+  const scoreSenderEl = document.getElementById('challenge-result-score-sender');
+  if (scoreSenderEl) scoreSenderEl.textContent = senderPoints.toLocaleString('en-US');
+  const movesSenderEl = document.getElementById('challenge-result-moves-sender');
+  if (movesSenderEl) movesSenderEl.textContent = senderMoves.toLocaleString('en-US');
+  const maxSenderEl = document.getElementById('challenge-result-max-sender');
+  if (maxSenderEl) maxSenderEl.textContent = senderMaxTile.toLocaleString('en-US');
+
+  // Final boards
+  const boardYouEl = document.getElementById('challenge-result-board-you');
+  if (boardYouEl) renderChallengeResultBoard(youBoard, boardYouEl);
+
+  const boardSenderEl = document.getElementById('challenge-result-board-sender');
+  const senderBoardWrapEl = document.getElementById('challenge-result-sender-board-wrap');
+  renderChallengeResultBoard(senderBoard, boardSenderEl, senderBoardWrapEl);
+
+  // Daily rank row
+  const dailyRankEl = document.getElementById('challenge-result-daily-rank');
+  const rankPillEl = document.getElementById('challenge-result-rank-pill');
+  if (dailyRankEl && rankPillEl) {
+    if (isRanked) {
+      dailyRankEl.classList.remove('hidden');
+      if (typeof runSummary.rank === 'number') {
+        rankPillEl.replaceChildren();
+        const strong = document.createElement('strong');
+        strong.textContent = `#${runSummary.rank}`;
+        rankPillEl.appendChild(strong);
+        if (typeof runSummary.totalPlayers === 'number') {
+          rankPillEl.appendChild(document.createTextNode(` of ${runSummary.totalPlayers}`));
+        }
+      } else {
+        rankPillEl.textContent = 'Calculating rank…';
+      }
+    } else {
+      dailyRankEl.classList.add('hidden');
+    }
+  }
+
+  // Action buttons
+  const btnBack = document.getElementById('btn-challenge-result-back');
+  if (btnBack) {
+    if (youMoves < 10) {
+      btnBack.disabled = true;
+      btnBack.title = 'Play a few more moves to challenge a friend.';
+      btnBack.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" y1="14" x2="9" y2="18"/><line x1="7" y1="17" x2="4" y2="20"/><line x1="3" y1="19" x2="5" y2="21"/></svg><span>CHALLENGE BACK</span>';
+    } else if (isRanked && typeof runSummary.rank !== 'number') {
+      btnBack.disabled = true;
+      btnBack.removeAttribute('title');
+      btnBack.innerHTML = '<span class="challenge-spinner" aria-hidden="true"></span><span>CHALLENGE BACK</span>';
+    } else {
+      btnBack.disabled = false;
+      btnBack.removeAttribute('title');
+      btnBack.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" y1="14" x2="9" y2="18"/><line x1="7" y1="17" x2="4" y2="20"/><line x1="3" y1="19" x2="5" y2="21"/></svg><span>CHALLENGE BACK</span>';
+    }
+
+    btnBack.onclick = () => {
+      initAudio();
+      playClick();
+      const checkMoves = typeof youMoves === 'number' ? youMoves : (currentRunLog?.totalMoves ?? currentRunLog?.moves ?? 0);
+      if (checkMoves < 10) return;
+      if (isRanked) {
+        openShareSheet('daily', {
+          day: dailyRunStartDay || utcDateString(new Date()),
+          points: youPoints,
+          moves: youMoves,
+        });
+      } else {
+        openShareSheet('free', {
+          seed: currentRunLog?.seed ?? runSummary?.seed,
+          points: youPoints,
+          moves: youMoves,
+          runLog: currentRunLog || { seed: runSummary?.seed, points: youPoints, totalMoves: youMoves },
+        });
+      }
+    };
+  }
+
+  const btnAgain = document.getElementById('btn-challenge-result-again');
+  if (btnAgain) {
+    btnAgain.onclick = () => {
+      initAudio();
+      playClick();
+      const seedToReplay = (challengeContext && challengeContext.seed !== undefined) ? challengeContext.seed : ctx.seed;
+      startNewGame(seedToReplay, isDaily, true);
+    };
+  }
+
+  const btnHome = document.getElementById('btn-challenge-result-home');
+  if (btnHome) {
+    btnHome.onclick = () => {
+      initAudio();
+      playClick();
+      challengeContext = null;
+      const pauseStrip = document.getElementById('pause-challenge-strip');
+      if (pauseStrip) pauseStrip.classList.add('hidden');
+      const goStrip = document.getElementById('gameover-challenge-strip');
+      if (goStrip) goStrip.classList.add('hidden');
+      const chalResultCard = document.getElementById('challenge-result-card');
+      if (chalResultCard) chalResultCard.classList.add('hidden');
+      const normalCard = document.getElementById('gameover-normal-card');
+      if (normalCard) normalCard.classList.remove('hidden');
+      const endOverlay = document.getElementById('end-overlay');
+      if (endOverlay) endOverlay.classList.add('hidden');
+      const startOverlay = document.getElementById('start-overlay');
+      if (startOverlay) {
+        startOverlay.classList.remove('hidden');
+        updateStartOverlayLeaderboardControls();
+      }
+    };
+  }
+
+  // Toggle card displays
+  const normalCard = document.getElementById('gameover-normal-card');
+  const chalResultCard = document.getElementById('challenge-result-card');
+  if (normalCard) normalCard.classList.add('hidden');
+  if (chalResultCard) chalResultCard.classList.remove('hidden');
+  const endOverlay = document.getElementById('end-overlay');
+  if (endOverlay) endOverlay.classList.remove('hidden');
+}
+
+/**
+ * Updates the Daily rank row and Challenge Back button on the challenge result card.
+ */
+export function updateChallengeResultRank(rank, total, status = 'accepted') {
+  const chalResultCard = document.getElementById('challenge-result-card');
+  if (!chalResultCard || chalResultCard.classList.contains('hidden')) return;
+
+  const dailyRankEl = document.getElementById('challenge-result-daily-rank');
+  const rankPillEl = document.getElementById('challenge-result-rank-pill');
+  const btnBack = document.getElementById('btn-challenge-result-back');
+  const moves = activeChallengeRunSummary?.moves ?? (currentRunLog ? (currentRunLog.totalMoves ?? currentRunLog.moves ?? 0) : 0);
+
+  if (status === 'accepted' && typeof rank === 'number') {
+    if (dailyRankEl) dailyRankEl.classList.remove('hidden');
+    if (rankPillEl) {
+      rankPillEl.replaceChildren();
+      const strong = document.createElement('strong');
+      strong.textContent = `#${rank}`;
+      rankPillEl.appendChild(strong);
+      if (typeof total === 'number') {
+        rankPillEl.appendChild(document.createTextNode(` of ${total}`));
+      }
+    }
+    if (btnBack && moves >= 10) {
+      btnBack.disabled = false;
+      btnBack.removeAttribute('title');
+      btnBack.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" y1="14" x2="9" y2="18"/><line x1="7" y1="17" x2="4" y2="20"/><line x1="3" y1="19" x2="5" y2="21"/></svg><span>CHALLENGE BACK</span>';
+    }
+  } else if (status === 'not_better' && typeof rank === 'number') {
+    if (dailyRankEl) dailyRankEl.classList.remove('hidden');
+    if (rankPillEl) {
+      rankPillEl.replaceChildren();
+      const strong = document.createElement('strong');
+      strong.textContent = `#${rank}`;
+      rankPillEl.appendChild(strong);
+    }
+    if (btnBack && moves >= 10) {
+      btnBack.disabled = false;
+      btnBack.removeAttribute('title');
+      btnBack.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" y1="14" x2="9" y2="18"/><line x1="7" y1="17" x2="4" y2="20"/><line x1="3" y1="19" x2="5" y2="21"/></svg><span>CHALLENGE BACK</span>';
+    }
+  } else {
+    if (dailyRankEl) dailyRankEl.classList.add('hidden');
+  }
+}
+
 const FORBIDDEN_DAILY_PARAMS = [
   'seed', 'stones', 'start', 'ascension', 'shatter', 'siphon',
   'diag', 'eraser', 'rewind', 'maxcharges', 'cap', 'laststand',
@@ -843,23 +1169,29 @@ function flushLeaderboardQueue(targetStatusEl = null, force = false, targetRunId
               points: item.runLog ? item.runLog.points : 0,
               day: item.day,
             });
+            updateChallengeResultRank(rankInfo.rank, rankInfo.total_players, 'accepted');
           } else {
             statusEl.textContent = 'Submitted';
             renderGameOverRankingCard(3, { day: item.day });
+            updateChallengeResultRank(null, null, 'failed');
           }
         } catch {
           statusEl.textContent = 'Submitted';
           renderGameOverRankingCard(3, { day: item.day });
+          updateChallengeResultRank(null, null, 'failed');
         }
       } else if (status === 'VERSION_MISMATCH') {
         statusEl.textContent = 'Saved · leaderboard updating';
         renderGameOverRankingCard(6, { day: item.day });
+        updateChallengeResultRank(null, null, 'queued');
       } else if (status === 'RETRY') {
         statusEl.textContent = 'Saved · will retry';
         renderGameOverRankingCard(5, { day: item.day });
+        updateChallengeResultRank(null, null, 'queued');
       } else if (status === 'REJECTED') {
         statusEl.textContent = 'Not accepted';
         renderGameOverRankingCard(7, { day: item.day });
+        updateChallengeResultRank(null, null, 'rejected');
       }
     },
   }).catch(() => { });
@@ -4885,6 +5217,7 @@ function handleGameOver() {
               }).then(rankRes => {
                 if (rankRes.ok && rankRes.row) {
                   renderGameOverRankingCard(4, { bestPoints, bestRank: rankRes.row.rank, day });
+                  updateChallengeResultRank(rankRes.row.rank, null, 'not_better');
                 }
               }).catch(() => { });
             }
@@ -4900,15 +5233,64 @@ function handleGameOver() {
     }
   }
 
+  if (challengeContext) {
+    const finalScore = currentRunLog.points || 0;
+    const finalMoves = currentRunLog.totalMoves ?? currentRunLog.moves ?? 0;
+    const isRankedDaily = Boolean(dailyRunActive && persistenceEnabled && canShowDailyButton());
+    recordChallengeResult(challengeContext.code, {
+      points: finalScore,
+      moves: finalMoves,
+      at: new Date().toISOString(),
+    }, localStorage);
+
+    const normalCard = document.getElementById('gameover-normal-card');
+    const chalResultCard = document.getElementById('challenge-result-card');
+    if (normalCard) normalCard.classList.add('hidden');
+    if (chalResultCard) chalResultCard.classList.remove('hidden');
+
+    showChallengeResult(challengeContext, {
+      points: finalScore,
+      moves: finalMoves,
+      maxTile: currentRunLog.maxTile || 2,
+      finalBoard: controller ? controller.getBoard() : [],
+      ranked: isRankedDaily,
+      relics: currentRunLog.relicsOwned || [],
+      seed: currentRunLog.seed,
+    });
+
+    const strip = document.getElementById('gameover-challenge-strip');
+    const nameEl = document.getElementById('gameover-challenge-vs-name');
+    if (strip && nameEl) {
+      nameEl.textContent = challengeContext.senderName || 'Anonymous Player';
+      strip.classList.remove('hidden');
+    }
+  } else {
+    const normalCard = document.getElementById('gameover-normal-card');
+    const chalResultCard = document.getElementById('challenge-result-card');
+    if (normalCard) normalCard.classList.remove('hidden');
+    if (chalResultCard) chalResultCard.classList.add('hidden');
+
+    const strip = document.getElementById('gameover-challenge-strip');
+    if (strip) strip.classList.add('hidden');
+  }
+
   endOverlay.classList.remove('hidden');
 }
 
 /* -------------------------------------------------------------
  * Run Initialization
  * ------------------------------------------------------------- */
-function startNewGame(seed = null, isDaily = false) {
+function startNewGame(seed = null, isDaily = false, fromChallenge = false) {
   dailyRunActive = Boolean(isDaily);
   stopDailyCountdown();
+
+  if (!fromChallenge) {
+    challengeContext = null;
+  }
+  const pauseStrip = document.getElementById('pause-challenge-strip');
+  if (pauseStrip && !challengeContext) pauseStrip.classList.add('hidden');
+  const goStrip = document.getElementById('gameover-challenge-strip');
+  if (goStrip && !challengeContext) goStrip.classList.add('hidden');
 
   if (isDaily) {
     dailyRunStartDay = utcDateString(new Date());
@@ -4948,6 +5330,10 @@ function startNewGame(seed = null, isDaily = false) {
   if (pauseOverlay) pauseOverlay.classList.add('hidden');
   if (cleanSlateBanner) cleanSlateBanner.classList.add('hidden');
   if (endCleanSlateChip) endCleanSlateChip.classList.add('hidden');
+  const chalResultCard = document.getElementById('challenge-result-card');
+  if (chalResultCard) chalResultCard.classList.add('hidden');
+  const normalCard = document.getElementById('gameover-normal-card');
+  if (normalCard) normalCard.classList.remove('hidden');
   clearMasonMode();
   cancelTargeting();
 
@@ -5443,6 +5829,17 @@ if (btnPauseMenu && pauseOverlay) {
     lastFocusBeforePause = btnPauseMenu;
     closePauseConfirm(false);
     if (pauseTimeVal) pauseTimeVal.textContent = formatPlayTime(activePlayMs);
+    if (challengeContext) {
+      const strip = document.getElementById('pause-challenge-strip');
+      const nameEl = document.getElementById('pause-challenge-vs-name');
+      if (strip && nameEl) {
+        nameEl.textContent = challengeContext.senderName || 'Anonymous Player';
+        strip.classList.remove('hidden');
+      }
+    } else {
+      const strip = document.getElementById('pause-challenge-strip');
+      if (strip) strip.classList.add('hidden');
+    }
     pauseOverlay.classList.remove('hidden');
     void pauseOverlay.offsetWidth;
     if (btnPauseResume) btnPauseResume.focus();
@@ -5628,7 +6025,21 @@ if (btnPlayAgain) {
   btnPlayAgain.addEventListener('click', () => {
     initAudio();
     playClick();
-    startNewGame(null, false);
+    if (challengeContext) {
+      const todayStr = utcDateString(new Date());
+      const isRankedDaily = challengeContext.mode === 'daily' && challengeContext.dayUtc === todayStr;
+      if (isRankedDaily) {
+        startNewGame(dailySeed(challengeContext.dayUtc), true, true);
+        dailyRunStartDay = challengeContext.dayUtc;
+      } else {
+        const runSeed = challengeContext.mode === 'daily' ? dailySeed(challengeContext.dayUtc) : Number(challengeContext.seed);
+        startNewGame(runSeed, false, true);
+        dailyRunActive = false;
+        dailyRunStartDay = null;
+      }
+    } else {
+      startNewGame(null, false, false);
+    }
   });
 }
 
@@ -6394,6 +6805,11 @@ if (btnEndHome) {
   btnEndHome.addEventListener('click', () => {
     initAudio();
     playClick();
+    challengeContext = null;
+    const pauseStrip = document.getElementById('pause-challenge-strip');
+    if (pauseStrip) pauseStrip.classList.add('hidden');
+    const goStrip = document.getElementById('gameover-challenge-strip');
+    if (goStrip) goStrip.classList.add('hidden');
     if (endOverlay) endOverlay.classList.add('hidden');
     if (startOverlay) {
       startOverlay.classList.remove('hidden');
@@ -7110,6 +7526,7 @@ function openShareSheet(mode = 'daily', runData = {}) {
   const chipEl = document.getElementById('share-mode-chip');
   const closeBtn = document.getElementById('btn-share-sheet-close');
   const gameoverCard = document.querySelector('.gameover-card');
+  const chalResultCard = document.getElementById('challenge-result-card');
 
   if (!sheet) return;
 
@@ -7121,6 +7538,9 @@ function openShareSheet(mode = 'daily', runData = {}) {
 
   if (gameoverCard) {
     gameoverCard.setAttribute('inert', '');
+  }
+  if (chalResultCard) {
+    chalResultCard.setAttribute('inert', '');
   }
 
   if (backdrop) backdrop.classList.remove('hidden');
@@ -7140,6 +7560,20 @@ function openShareSheet(mode = 'daily', runData = {}) {
     ? `daily_${day}_${points}`
     : (currentRunLog?.runId || `free_${currentRunLog?.seed ?? '0'}_${points}_${moves}`));
 
+  if (runData.code) {
+    cachedChallengeResult = {
+      code: runData.code,
+      mode: runData.mode || mode,
+      expiresAt: runData.expiresAt || new Date(Date.now() + 86400000).toISOString(),
+      url: `${window.location.origin}/c/${runData.code}`,
+      points,
+      day,
+    };
+    activeShareSheetRunKey = runKey;
+    renderShareSheetReady(cachedChallengeResult);
+    return;
+  }
+
   if (activeShareSheetRunKey === runKey && cachedChallengeResult) {
     renderShareSheetReady(cachedChallengeResult);
   } else {
@@ -7158,9 +7592,13 @@ function closeShareSheet() {
   const backdrop = document.getElementById('share-sheet-backdrop');
   const sheet = document.getElementById('share-sheet');
   const gameoverCard = document.querySelector('.gameover-card');
+  const chalResultCard = document.getElementById('challenge-result-card');
 
   if (gameoverCard) {
     gameoverCard.removeAttribute('inert');
+  }
+  if (chalResultCard) {
+    chalResultCard.removeAttribute('inert');
   }
 
   if (backdrop) backdrop.classList.add('hidden');
@@ -7202,6 +7640,12 @@ async function requestCreateChallenge(mode, payload = {}) {
     }
 
     if (res.ok) {
+      recordMyChallenge(res.code, res.createdAt || new Date().toISOString(), {
+        mode: res.mode || mode,
+        points: payload.points,
+        moves: payload.moves,
+        seed: payload.seed,
+      }, localStorage);
       cachedChallengeResult = {
         code: res.code,
         mode: res.mode || mode,
@@ -7741,6 +8185,815 @@ if (window.TutorialController) {
 
 // Reveal start screen at its final layout with zero flash or layout jump
 document.documentElement.classList.add('app-ready');
+
+/* ==========================================================================
+ * Challenge Preview & Entry Controller
+ * ========================================================================== */
+
+function getPlayerDisplayName() {
+  try {
+    return localStorage.getItem('rogue2048_display_name') || 'You';
+  } catch {
+    return 'You';
+  }
+}
+
+function formatRemainingTime(expiresAt) {
+  if (!expiresAt) return '';
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) return 'Expired';
+  if (diff < 24 * 3600 * 1000) {
+    const hours = Math.floor(diff / 3600000);
+    const mins = Math.floor((diff % 3600000) / 60000);
+    return `${String(hours).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m`;
+  }
+  const days = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  return `${days}d ${hours}h`;
+}
+
+function renderChallengeMiniBoardHtml(finalBoard) {
+  if (!finalBoard || !Array.isArray(finalBoard) || finalBoard.length !== 16) {
+    return '<div class="challenge-mini-board-placeholder"><span>Board not available for this run</span></div>';
+  }
+  let cells = '';
+  for (let i = 0; i < 16; i++) {
+    const v = finalBoard[i];
+    if (v === 'S' || v === 'STONE' || v === -1) {
+      cells += '<div class="challenge-mini-tile stone-face mini-stone" aria-label="Permanent stone">S</div>';
+    } else if (typeof v === 'number' && v > 0) {
+      cells += `<div class="challenge-mini-tile tile-${v}">${v}</div>`;
+    } else {
+      cells += '<div class="challenge-mini-tile tile-empty"></div>';
+    }
+  }
+  return `<div class="challenge-mini-board-wrap"><div class="challenge-mini-board">${cells}</div></div>`;
+}
+
+function renderChallengeRelicsRow(relicsOwned) {
+  if (!relicsOwned || !Array.isArray(relicsOwned) || relicsOwned.length === 0) {
+    return null;
+  }
+  const count = relicsOwned.length;
+  const list = relicsOwned.slice(0, 8);
+  const wrap = document.createElement('div');
+  wrap.className = 'challenge-relics-wrap';
+  const title = document.createElement('div');
+  title.className = 'challenge-relics-title';
+  title.textContent = `Relics Collected (${count})`;
+  wrap.appendChild(title);
+  const row = document.createElement('div');
+  row.className = 'challenge-relics-row';
+  for (const rid of list) {
+    const chip = document.createElement('div');
+    chip.className = 'challenge-relic-chip';
+    chip.setAttribute('data-relic', rid);
+    chip.setAttribute('title', RELIC_NAMES[rid] || rid);
+    chip.appendChild(getRelicIconElement(rid, 18));
+    row.appendChild(chip);
+  }
+  wrap.appendChild(row);
+  return wrap;
+}
+
+function setChallengeCardContent(domNodeOrHtml) {
+  const container = document.getElementById('challenge-card-content');
+  if (!container) return;
+  if (typeof domNodeOrHtml === 'string') {
+    container.innerHTML = domNodeOrHtml;
+  } else {
+    container.innerHTML = '';
+    container.appendChild(domNodeOrHtml);
+  }
+}
+
+function renderChallengeSkeleton() {
+  setChallengeCardContent(`
+    <div class="challenge-skeleton-shimmer">
+      <div class="challenge-skeleton-avatar"></div>
+      <div class="challenge-skeleton-line short"></div>
+      <div class="challenge-skeleton-line med"></div>
+      <div class="challenge-skeleton-score"></div>
+      <div class="challenge-skeleton-board">
+        ${Array(16).fill('<div class="challenge-skeleton-cell"></div>').join('')}
+      </div>
+      <div class="challenge-skeleton-stats">
+        <div class="challenge-skeleton-stat"></div>
+        <div class="challenge-skeleton-stat"></div>
+      </div>
+      <div class="challenge-loading-label">
+        <span class="challenge-spinner" aria-hidden="true"></span>
+        <span>LOADING CHALLENGE...</span>
+      </div>
+    </div>
+  `);
+}
+
+function renderChallengeNotFound() {
+  if (challengeExpiryInterval) {
+    clearInterval(challengeExpiryInterval);
+    challengeExpiryInterval = null;
+  }
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'padding: 16px 0; text-align: center; display: flex; flex-direction: column; align-items: center; width: 100%;';
+
+  const iconBox = document.createElement('div');
+  iconBox.style.cssText = 'width: 52px; height: 52px; border-radius: 14px; background: #171311; border: 1px solid #2f2722; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; color: var(--accent);';
+  iconBox.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
+  wrap.appendChild(iconBox);
+
+  const title = document.createElement('h2');
+  title.className = 'challenge-sender-name';
+  title.textContent = 'CHALLENGE NOT FOUND';
+  wrap.appendChild(title);
+
+  const desc = document.createElement('p');
+  desc.style.cssText = 'font-size: 11px; color: var(--muted); margin: 0 0 16px 0; max-width: 280px; line-height: 1.4;';
+  desc.textContent = "This challenge link isn't valid anymore.";
+  wrap.appendChild(desc);
+
+  const actions = document.createElement('div');
+  actions.className = 'challenge-actions';
+  const goBtn = document.createElement('button');
+  goBtn.id = 'btn-challenge-goto-game';
+  goBtn.className = 'btn-challenge-primary';
+  goBtn.textContent = 'GO TO GAME';
+  goBtn.addEventListener('click', () => {
+    initAudio();
+    playClick();
+    dismissChallengeToStart();
+  });
+  actions.appendChild(goBtn);
+
+  const howBtn = document.createElement('button');
+  howBtn.id = 'btn-challenge-how';
+  howBtn.className = 'challenge-how-link';
+  howBtn.textContent = 'How to play';
+  howBtn.addEventListener('click', () => {
+    initAudio();
+    playClick();
+    openChallengeHowToPlay();
+  });
+  actions.appendChild(howBtn);
+
+  wrap.appendChild(actions);
+  setChallengeCardContent(wrap);
+}
+
+function renderChallengeNetworkError(code) {
+  if (challengeExpiryInterval) {
+    clearInterval(challengeExpiryInterval);
+    challengeExpiryInterval = null;
+  }
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'padding: 16px 0; text-align: center; display: flex; flex-direction: column; align-items: center; width: 100%;';
+
+  const iconBox = document.createElement('div');
+  iconBox.style.cssText = 'width: 52px; height: 52px; border-radius: 14px; background: #171311; border: 1px solid #2f2722; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; color: #f59e0b;';
+  iconBox.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 1l22 22"></path><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>';
+  wrap.appendChild(iconBox);
+
+  const title = document.createElement('h2');
+  title.className = 'challenge-sender-name';
+  title.textContent = 'CONNECTION ERROR';
+  wrap.appendChild(title);
+
+  const desc = document.createElement('p');
+  desc.style.cssText = 'font-size: 11px; color: var(--muted); margin: 0 0 16px 0; max-width: 280px; line-height: 1.4;';
+  desc.textContent = 'Unable to reach the server. Please check your internet connection and try again.';
+  wrap.appendChild(desc);
+
+  const actions = document.createElement('div');
+  actions.className = 'challenge-actions';
+  const retryBtn = document.createElement('button');
+  retryBtn.id = 'btn-challenge-retry';
+  retryBtn.className = 'btn-challenge-primary';
+  retryBtn.textContent = 'RETRY';
+  retryBtn.addEventListener('click', () => {
+    initAudio();
+    playClick();
+    renderChallengeSkeleton();
+    initChallengeFetch(code);
+  });
+  actions.appendChild(retryBtn);
+
+  const contBtn = document.createElement('button');
+  contBtn.id = 'btn-challenge-continue';
+  contBtn.className = 'btn-challenge-secondary';
+  contBtn.textContent = 'CONTINUE TO GAME';
+  contBtn.addEventListener('click', () => {
+    initAudio();
+    playClick();
+    dismissChallengeToStart();
+  });
+  actions.appendChild(contBtn);
+
+  wrap.appendChild(actions);
+  setChallengeCardContent(wrap);
+}
+
+function dismissChallengeToStart() {
+  const chalOverlay = document.getElementById('challenge-overlay');
+  if (chalOverlay) chalOverlay.classList.add('hidden');
+  document.documentElement.classList.remove('challenge-active');
+  try {
+    window.history.replaceState(null, '', '/');
+  } catch {}
+  if (startOverlay) {
+    startOverlay.classList.remove('hidden');
+    if (canShowDailyButton()) {
+      startDailyCountdown();
+    }
+    updateStartOverlayLeaderboardControls();
+  }
+}
+
+function openChallengeHowToPlay() {
+  pendingChallengeTutorialAction = 'preview';
+  const chalOverlay = document.getElementById('challenge-overlay');
+  if (chalOverlay) chalOverlay.classList.add('hidden');
+  if (window.TutorialController) {
+    window.TutorialController.open('challenge');
+  }
+}
+
+function acceptChallenge(data) {
+  sendChallengeEvent({
+    code: data.code,
+    kind: 'accept',
+    fetchFn: window.fetch.bind(window),
+  });
+
+  challengeContext = {
+    code: data.code,
+    mode: data.mode,
+    senderName: data.sender_display_name || 'Anonymous Player',
+    points: data.points,
+    moves: data.total_moves,
+    maxTile: data.max_tile,
+    finalBoard: data.final_board,
+    seed: data.seed,
+    dayUtc: data.day_utc,
+    expiresAt: data.expires_at,
+  };
+
+  const chalOverlay = document.getElementById('challenge-overlay');
+  if (chalOverlay) chalOverlay.classList.add('hidden');
+  document.documentElement.classList.remove('challenge-active');
+  try {
+    window.history.replaceState(null, '', '/');
+  } catch {}
+
+  const seen = localStorage.getItem('2048_rogue_tutorial_seen');
+  if (!seen && window.TutorialController) {
+    pendingChallengeTutorialAction = 'accept';
+    window.TutorialController.open('challenge-accept');
+  } else {
+    startChallengeRun(challengeContext);
+  }
+}
+
+function startChallengeRun(ctx) {
+  const todayStr = utcDateString(new Date());
+  const isRankedDaily = ctx.mode === 'daily' && ctx.dayUtc === todayStr;
+
+  if (isRankedDaily) {
+    startNewGame(dailySeed(ctx.dayUtc), true, true);
+    dailyRunStartDay = ctx.dayUtc;
+  } else {
+    const runSeed = ctx.mode === 'daily' ? dailySeed(ctx.dayUtc) : Number(ctx.seed);
+    startNewGame(runSeed, false, true);
+    dailyRunActive = false;
+    dailyRunStartDay = null;
+  }
+}
+
+function renderChallengeCardView({ type, data, localResult = null, ownRecord = null }) {
+  if (challengeExpiryInterval) {
+    clearInterval(challengeExpiryInterval);
+    challengeExpiryInterval = null;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'challenge-view-wrap';
+  wrap.style.cssText = 'display: flex; flex-direction: column; width: 100%;';
+
+  const isOwn = type === 'own';
+  const isAlreadyPlayed = type === 'already_played';
+  const isExpiredDaily = type === 'expired_daily';
+  const isExpiredFree = type === 'expired_free';
+  const isValid = type === 'valid';
+
+  const senderName = isOwn
+    ? getPlayerDisplayName()
+    : (data.sender_display_name || 'Anonymous Player');
+  const initials = avatarInitials(senderName);
+
+  // Profile hero
+  const profile = document.createElement('div');
+  profile.className = 'challenge-sender-profile';
+
+  const avatarWrap = document.createElement('div');
+  avatarWrap.className = 'challenge-avatar-wrap';
+  const avatar = document.createElement('div');
+  avatar.className = 'challenge-avatar';
+  const avatarText = document.createElement('span');
+  avatarText.className = 'challenge-avatar-initials';
+  avatarText.textContent = initials;
+  avatar.appendChild(avatarText);
+  avatarWrap.appendChild(avatar);
+  profile.appendChild(avatarWrap);
+
+  const tagline = document.createElement('span');
+  tagline.className = 'challenge-tagline';
+  tagline.textContent = isOwn
+    ? 'CHALLENGE CREATED BY'
+    : (isExpiredDaily ? 'RUN COMPLETED BY' : (isExpiredFree ? 'RUN ARCHIVED BY' : 'CHALLENGED BY'));
+  profile.appendChild(tagline);
+
+  const nameEl = document.createElement('h2');
+  nameEl.className = 'challenge-sender-name';
+  nameEl.id = 'challenge-sender-name';
+  nameEl.textContent = senderName;
+  profile.appendChild(nameEl);
+
+  // Badges row
+  const badgesRow = document.createElement('div');
+  badgesRow.className = 'challenge-badges-row';
+
+  const modeBadge = document.createElement('span');
+  modeBadge.className = 'challenge-mode-badge';
+  if (isOwn) {
+    modeBadge.classList.add('own');
+    modeBadge.textContent = 'YOUR RUN';
+  } else if (isAlreadyPlayed) {
+    modeBadge.classList.add('completed');
+    modeBadge.textContent = data.mode === 'daily' ? 'DAILY COMPLETED' : 'RUN COMPLETED';
+  } else if (isExpiredDaily) {
+    modeBadge.classList.add('expired');
+    modeBadge.textContent = 'DAILY EXPIRED';
+  } else if (isExpiredFree) {
+    modeBadge.classList.add('expired');
+    modeBadge.textContent = 'EXPIRED';
+  } else {
+    if (data.mode === 'daily') {
+      modeBadge.textContent = 'DAILY RUN';
+    } else {
+      modeBadge.classList.add('free');
+      modeBadge.textContent = 'FREE RUN';
+    }
+  }
+  badgesRow.appendChild(modeBadge);
+
+  // Expiry tag or subtext
+  if (isValid && data.expires_at) {
+    const expiryTag = document.createElement('span');
+    expiryTag.className = 'challenge-expiry-tag';
+    const diff = new Date(data.expires_at).getTime() - Date.now();
+    const isUrgent = diff > 0 && diff < 2 * 3600 * 1000;
+    if (isUrgent) expiryTag.classList.add('expiring-soon');
+
+    const updateExpiryText = () => {
+      const remaining = formatRemainingTime(data.expires_at);
+      expiryTag.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><span>Expires ${remaining}</span>`;
+    };
+    updateExpiryText();
+    challengeExpiryInterval = setInterval(updateExpiryText, 60000);
+    badgesRow.appendChild(expiryTag);
+  } else if (isExpiredDaily) {
+    const sub = document.createElement('span');
+    sub.className = 'challenge-expiry-tag';
+    sub.textContent = data.day_utc ? `Concluded ${data.day_utc}` : 'Challenge Concluded';
+    badgesRow.appendChild(sub);
+  } else if (isExpiredFree) {
+    const sub = document.createElement('span');
+    sub.className = 'challenge-expiry-tag';
+    sub.textContent = 'Challenge Inactive';
+    badgesRow.appendChild(sub);
+  } else if (isOwn) {
+    const sub = document.createElement('span');
+    sub.className = 'challenge-expiry-tag';
+    const seedVal = data.mode === 'daily' ? dailySeed(data.day_utc) : data.seed;
+    sub.textContent = `Seed #${seedVal}`;
+    badgesRow.appendChild(sub);
+  }
+  profile.appendChild(badgesRow);
+  wrap.appendChild(profile);
+
+  // Banners for specific states
+  if (isOwn) {
+    const banner = document.createElement('div');
+    banner.className = 'challenge-banner gold';
+    const bTitle = document.createElement('div');
+    bTitle.className = 'challenge-banner-title';
+    bTitle.textContent = 'THIS IS YOUR CHALLENGE';
+    banner.appendChild(bTitle);
+    const bText = document.createElement('p');
+    bText.className = 'challenge-banner-text';
+    bText.textContent = 'Share this link with a friend to test if they can beat your high score.';
+    banner.appendChild(bText);
+    wrap.appendChild(banner);
+  } else if (isAlreadyPlayed && localResult) {
+    const banner = document.createElement('div');
+    banner.className = 'challenge-banner emerald';
+    const bTitle = document.createElement('div');
+    bTitle.className = 'challenge-banner-title';
+    const myPts = localResult.points;
+    const oppPts = data.points;
+    const myMvs = localResult.moves;
+    const oppMvs = data.total_moves;
+    let outcome = 'TIED';
+    if (myPts > oppPts) outcome = 'WON';
+    else if (myPts < oppPts) outcome = 'LOST';
+    else {
+      if (myMvs < oppMvs) outcome = 'WON';
+      else if (myMvs > oppMvs) outcome = 'LOST';
+      else outcome = 'TIED';
+    }
+    bTitle.textContent = `CHALLENGE ${outcome}`;
+    banner.appendChild(bTitle);
+    const bText = document.createElement('p');
+    bText.className = 'challenge-banner-text';
+    bText.textContent = `You scored ${formatPoints(myPts)} in ${myMvs} moves. Target: ${formatPoints(oppPts)} in ${oppMvs} moves.`;
+    banner.appendChild(bText);
+    wrap.appendChild(banner);
+
+    // Comparison card
+    const compCard = document.createElement('div');
+    compCard.className = 'challenge-comparison-card';
+    const compGrid = document.createElement('div');
+    compGrid.className = 'challenge-comparison-grid';
+
+    const col1 = document.createElement('div');
+    col1.className = 'challenge-comparison-col';
+    col1.innerHTML = `<span class="challenge-stat-label">Your Score</span><div class="challenge-comparison-score ${outcome.toLowerCase()}">${formatPoints(myPts)}</div><span class="challenge-comparison-sub ${outcome.toLowerCase()}">${myMvs} moves</span>`;
+    compGrid.appendChild(col1);
+
+    const col2 = document.createElement('div');
+    col2.className = 'challenge-comparison-col';
+    col2.innerHTML = `<span class="challenge-stat-label">Target Score</span><div class="challenge-comparison-score tied">${formatPoints(oppPts)}</div><span class="challenge-comparison-sub">${oppMvs} moves</span>`;
+    compGrid.appendChild(col2);
+
+    compCard.appendChild(compGrid);
+    wrap.appendChild(compCard);
+  } else if (isExpiredDaily) {
+    const banner = document.createElement('div');
+    banner.className = 'challenge-banner rose';
+    const bText = document.createElement('p');
+    bText.className = 'challenge-banner-text';
+    bText.textContent = `This daily run has ended. You can still see ${senderName}'s performance and play today's board.`;
+    banner.appendChild(bText);
+    wrap.appendChild(banner);
+  } else if (isExpiredFree) {
+    const banner = document.createElement('div');
+    banner.className = 'challenge-banner dark';
+    const bTitle = document.createElement('div');
+    bTitle.className = 'challenge-banner-title';
+    bTitle.textContent = 'Challenge Inactive';
+    banner.appendChild(bTitle);
+    const bText = document.createElement('p');
+    bText.className = 'challenge-banner-text';
+    bText.textContent = 'This challenge link is no longer accepting new attempts.';
+    banner.appendChild(bText);
+    wrap.appendChild(banner);
+  }
+
+  // Score callout (if not already played)
+  if (!isAlreadyPlayed) {
+    const scoreCallout = document.createElement('div');
+    scoreCallout.className = 'challenge-score-callout';
+    const sLabel = document.createElement('div');
+    sLabel.className = 'challenge-score-label';
+    sLabel.textContent = isOwn
+      ? 'YOUR RECORD SCORE'
+      : (isExpiredDaily ? 'ORIGINAL SCORE' : (isExpiredFree ? 'FINAL SCORE ACHIEVED' : 'SCORE TO BEAT'));
+    scoreCallout.appendChild(sLabel);
+    const sVal = document.createElement('div');
+    sVal.className = 'challenge-score-val';
+    if (isExpiredDaily || isExpiredFree) sVal.classList.add('dimmed');
+    sVal.textContent = formatPoints(data.points);
+    scoreCallout.appendChild(sVal);
+    wrap.appendChild(scoreCallout);
+  }
+
+  // Mini board
+  const miniBoardHtml = renderChallengeMiniBoardHtml(data.final_board);
+  const boardContainer = document.createElement('div');
+  boardContainer.innerHTML = miniBoardHtml;
+  wrap.appendChild(boardContainer);
+
+  // Stats boxes
+  const statsGrid = document.createElement('div');
+  statsGrid.className = 'challenge-stats-grid';
+
+  const movesBox = document.createElement('div');
+  movesBox.className = 'challenge-stat-box';
+  movesBox.innerHTML = `<div class="challenge-stat-label">Moves Survived</div><div class="challenge-stat-val">${data.total_moves}</div>`;
+  statsGrid.appendChild(movesBox);
+
+  const tileBox = document.createElement('div');
+  tileBox.className = 'challenge-stat-box';
+  tileBox.innerHTML = `<div class="challenge-stat-label">Max Tile</div><div class="challenge-stat-val gold">${data.max_tile}</div>`;
+  statsGrid.appendChild(tileBox);
+  wrap.appendChild(statsGrid);
+
+  // Seed box
+  const seedBox = document.createElement('div');
+  seedBox.className = 'challenge-seed-box';
+  const seedLabel = document.createElement('span');
+  seedLabel.className = 'challenge-stat-label';
+  seedLabel.textContent = data.mode === 'daily' ? 'DAILY SEED' : 'RUN SEED';
+  seedBox.appendChild(seedLabel);
+  const seedVal = document.createElement('span');
+  seedVal.className = 'challenge-seed-val';
+  seedVal.textContent = data.mode === 'daily' ? String(dailySeed(data.day_utc)) : String(data.seed);
+  seedBox.appendChild(seedVal);
+  wrap.appendChild(seedBox);
+
+  // Relics row
+  if (data.relics_owned && data.relics_owned.length > 0) {
+    const relicsEl = renderChallengeRelicsRow(data.relics_owned);
+    if (relicsEl) wrap.appendChild(relicsEl);
+  }
+
+  // Actions
+  const actions = document.createElement('div');
+  actions.className = 'challenge-actions';
+
+  if (isValid) {
+    const acceptBtn = document.createElement('button');
+    acceptBtn.id = 'btn-challenge-primary';
+    acceptBtn.className = 'btn-challenge-primary';
+    acceptBtn.innerHTML = '<span>ACCEPT CHALLENGE</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>';
+    acceptBtn.addEventListener('click', () => {
+      initAudio();
+      playClick();
+      acceptChallenge(data);
+    });
+    actions.appendChild(acceptBtn);
+
+    const howBtn = document.createElement('button');
+    howBtn.id = 'btn-challenge-how';
+    howBtn.className = 'challenge-how-link';
+    howBtn.textContent = 'How to play';
+    howBtn.addEventListener('click', () => {
+      initAudio();
+      playClick();
+      openChallengeHowToPlay();
+    });
+    actions.appendChild(howBtn);
+  } else if (isExpiredDaily) {
+    const playTodayBtn = document.createElement('button');
+    playTodayBtn.id = 'btn-challenge-primary';
+    playTodayBtn.className = 'btn-challenge-primary';
+    playTodayBtn.innerHTML = '<span>PLAY TODAY\'S DAILY</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>';
+    playTodayBtn.addEventListener('click', () => {
+      initAudio();
+      playClick();
+      dismissChallengeToStart();
+      startNewGame(dailySeed(utcDateString(new Date())), true);
+    });
+    actions.appendChild(playTodayBtn);
+
+    const howBtn = document.createElement('button');
+    howBtn.id = 'btn-challenge-how';
+    howBtn.className = 'challenge-how-link';
+    howBtn.textContent = 'How to play';
+    howBtn.addEventListener('click', () => {
+      initAudio();
+      playClick();
+      openChallengeHowToPlay();
+    });
+    actions.appendChild(howBtn);
+  } else if (isExpiredFree) {
+    const newRunBtn = document.createElement('button');
+    newRunBtn.id = 'btn-challenge-primary';
+    newRunBtn.className = 'btn-challenge-primary';
+    newRunBtn.innerHTML = '<span>START A NEW RUN</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>';
+    newRunBtn.addEventListener('click', () => {
+      initAudio();
+      playClick();
+      dismissChallengeToStart();
+      startNewGame();
+    });
+    actions.appendChild(newRunBtn);
+
+    const howBtn = document.createElement('button');
+    howBtn.id = 'btn-challenge-how';
+    howBtn.className = 'challenge-how-link';
+    howBtn.textContent = 'How to play';
+    howBtn.addEventListener('click', () => {
+      initAudio();
+      playClick();
+      openChallengeHowToPlay();
+    });
+    actions.appendChild(howBtn);
+  } else if (isOwn) {
+    const copyBtn = document.createElement('button');
+    copyBtn.id = 'btn-challenge-copy';
+    copyBtn.className = 'btn-challenge-primary';
+    copyBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>COPY LINK</span>';
+    copyBtn.addEventListener('click', () => {
+      initAudio();
+      playClick();
+      openShareSheet(data.mode || 'free', {
+        code: data.code,
+        runKey: `own_${data.code}`,
+        points: data.points,
+        moves: data.total_moves,
+        day: data.day_utc,
+        expiresAt: data.expires_at,
+      });
+    });
+    actions.appendChild(copyBtn);
+
+    const howBtn = document.createElement('button');
+    howBtn.id = 'btn-challenge-how';
+    howBtn.className = 'challenge-how-link';
+    howBtn.textContent = 'How to play';
+    howBtn.addEventListener('click', () => {
+      initAudio();
+      playClick();
+      openChallengeHowToPlay();
+    });
+    actions.appendChild(howBtn);
+  } else if (isAlreadyPlayed && localResult) {
+    const chalBackBtn = document.createElement('button');
+    chalBackBtn.id = 'btn-challenge-back';
+    chalBackBtn.className = 'btn-challenge-primary';
+    chalBackBtn.innerHTML = '<span>CHALLENGE BACK</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>';
+    chalBackBtn.addEventListener('click', () => {
+      initAudio();
+      playClick();
+      openShareSheet(data.mode || 'free', {
+        points: localResult.points,
+        moves: localResult.moves,
+        day: data.day_utc,
+      });
+    });
+    actions.appendChild(chalBackBtn);
+
+    const replayBtn = document.createElement('button');
+    replayBtn.id = 'btn-challenge-play-again';
+    replayBtn.className = 'btn-challenge-secondary';
+    replayBtn.textContent = 'PLAY AGAIN';
+    replayBtn.addEventListener('click', () => {
+      initAudio();
+      playClick();
+      acceptChallenge(data);
+    });
+    actions.appendChild(replayBtn);
+  }
+
+  wrap.appendChild(actions);
+  setChallengeCardContent(wrap);
+}
+
+async function initChallengeFetch(code) {
+  sendChallengeEvent({
+    code,
+    kind: 'open',
+    fetchFn: window.fetch.bind(window),
+  });
+
+  const res = await getChallenge({
+    code,
+    fetchFn: window.fetch.bind(window),
+  });
+
+  if (!res.ok) {
+    if (res.error === 'network') {
+      renderChallengeNetworkError(code);
+    } else {
+      renderChallengeNotFound();
+    }
+    return;
+  }
+
+  const data = res.data;
+  if (!data || data.status === 'not_found') {
+    renderChallengeNotFound();
+    return;
+  }
+
+  data.code = code;
+
+  const localResult = getChallengeResult(code, localStorage);
+  if (localResult) {
+    renderChallengeCardView({ type: 'already_played', data, localResult });
+    return;
+  }
+
+  if (data.status === 'expired') {
+    if (data.mode === 'daily') {
+      renderChallengeCardView({ type: 'expired_daily', data });
+    } else {
+      renderChallengeCardView({ type: 'expired_free', data });
+    }
+    return;
+  }
+
+  renderChallengeCardView({ type: 'valid', data });
+}
+
+function initChallengeEntry() {
+  const pathname = window.location.pathname || '';
+  const chalMatch = pathname.match(/^\/c\/([A-Za-z0-9]{12})\/?$/);
+  const code = chalMatch ? chalMatch[1] : (window.__challengeCode || null);
+
+  if (!code || !/^[A-Za-z0-9]{12}$/.test(code)) {
+    document.documentElement.classList.remove('challenge-active');
+    return;
+  }
+
+  if (!window.__LB || !window.__LB.url || !window.__LB.anonKey) {
+    document.documentElement.classList.remove('challenge-active');
+    return;
+  }
+
+  // Check dev params
+  if (window.location.search) {
+    const q = window.location.search;
+    for (const p of FORBIDDEN_DAILY_PARAMS) {
+      if (new RegExp('[?&]' + p + '(=|&|$)').test(q)) {
+        document.documentElement.classList.remove('challenge-active');
+        return;
+      }
+    }
+  }
+
+  window.__challengeHandled = true;
+  const chalOverlay = document.getElementById('challenge-overlay');
+  if (chalOverlay) chalOverlay.classList.remove('hidden');
+
+  if (isMyChallenge(code, localStorage)) {
+    const myChallenges = getMyChallenges(localStorage);
+    const myRec = myChallenges[code] || {};
+    const mockOwnData = {
+      code,
+      mode: myRec.mode || 'free',
+      sender_display_name: getPlayerDisplayName(),
+      points: myRec.points || 0,
+      total_moves: myRec.moves || 0,
+      max_tile: myRec.maxTile || 2,
+      relics_owned: myRec.relics || [],
+      final_board: myRec.finalBoard || null,
+      seed: myRec.seed || 0,
+      day_utc: myRec.day || null,
+      expires_at: myRec.expiresAt || null,
+    };
+    renderChallengeCardView({ type: 'own', data: mockOwnData, ownRecord: myRec });
+    return;
+  }
+
+  renderChallengeSkeleton();
+  initChallengeFetch(code);
+}
+
+// Observe tutorial close for challenge flows
+const tutOverlay = document.getElementById('tutorial-overlay');
+if (tutOverlay && typeof MutationObserver !== 'undefined') {
+  const tutObserver = new MutationObserver(() => {
+    if (tutOverlay.classList.contains('hidden') && pendingChallengeTutorialAction) {
+      const action = pendingChallengeTutorialAction;
+      pendingChallengeTutorialAction = null;
+      if (action === 'preview') {
+        if (startOverlay) startOverlay.classList.add('hidden');
+        const chalOverlay = document.getElementById('challenge-overlay');
+        if (chalOverlay) {
+          chalOverlay.classList.remove('hidden');
+          const howBtn = document.getElementById('btn-challenge-how');
+          if (howBtn) howBtn.focus();
+        }
+      } else if (action === 'accept') {
+        if (startOverlay) startOverlay.classList.add('hidden');
+        const chalOverlay = document.getElementById('challenge-overlay');
+        if (chalOverlay) chalOverlay.classList.add('hidden');
+        if (challengeContext) {
+          startChallengeRun(challengeContext);
+        }
+      }
+    }
+  });
+  tutObserver.observe(tutOverlay, { attributes: true, attributeFilter: ['class'] });
+}
+
+// Initialize challenge entry
+initChallengeEntry();
+
+// Testing hooks
+if (typeof window !== 'undefined') {
+  window.__testInitChallengeEntry = initChallengeEntry;
+  window.__testRenderChallengeCardView = renderChallengeCardView;
+  window.__testAcceptChallenge = acceptChallenge;
+  window.__challengeContext = () => challengeContext;
+  window.recordMyChallenge = recordMyChallenge;
+  window.getMyChallenges = getMyChallenges;
+  window.recordChallengeResult = recordChallengeResult;
+  window.getChallengeResult = getChallengeResult;
+  window.showChallengeResult = showChallengeResult;
+  window.updateChallengeResultRank = updateChallengeResultRank;
+}
 
 /*DEV_LAB_BEGIN*/
 (function initDevLabModule() {

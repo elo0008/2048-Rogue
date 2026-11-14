@@ -44,8 +44,10 @@ const server = http.createServer((req, res) => {
   const safePath = path.normalize(pathname).replace(/^(\.\.[/\\])+/, '');
   let filePath = path.join(targetDir, safePath);
 
-  if (pathname === '/' || pathname === '/index.html') {
-    filePath = path.join(targetDir, 'index.html');
+  if (pathname === '/' || pathname === '/index.html' || pathname.startsWith('/c/')) {
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+      filePath = path.join(targetDir, 'index.html');
+    }
   }
 
   // If directory, check for index.html
