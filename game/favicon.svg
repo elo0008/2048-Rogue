@@ -1,4 +1,52 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="148" fill="#f2c77e"/>
-  <text x="256" y="278" font-family="'Outfit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="192" font-weight="950" fill="#2b1d0d" text-anchor="middle" dominant-baseline="central" letter-spacing="-2">R·2</text>
-</svg>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="211.54823mm"
+   height="211.62158mm"
+   viewBox="0 0 211.54823 211.62158"
+   version="1.1"
+   id="svg1"
+   xml:space="preserve"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"><defs
+     id="defs1" /><g
+     id="layer1"
+     transform="translate(559.05469,159.17167)"><g
+       id="g2"
+       transform="rotate(4.7074286,-453.28058,-53.360875)"><g
+         id="g3"
+         transform="rotate(-10.091241,810.01086,-584.50179)"><rect
+           style="fill:#f2c77e;fill-opacity:1;stroke:#000000;stroke-width:0"
+           id="rect1"
+           width="200"
+           height="200"
+           x="-626.80194"
+           y="-382.92679"
+           rx="35.033943"
+           ry="35.49041" /><circle
+           style="fill:#2a2325;fill-opacity:1;stroke:#000000;stroke-width:0"
+           id="path1"
+           cx="-526.80194"
+           cy="-282.92679"
+           r="7.5" /><text
+           xml:space="preserve"
+           style="font-style:normal;font-variant:normal;font-weight:900;font-stretch:normal;font-size:57.701px;font-family:Outfit;-inkscape-font-specification:'Outfit, Heavy';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;letter-spacing:-3.95287px;word-spacing:0px;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#2a2325;fill-opacity:1;stroke:#000000;stroke-width:0"
+           x="-553.48755"
+           y="-262.38522"
+           id="text1"><tspan
+             id="tspan1"
+             x="-555.46399"
+             y="-262.38522"
+             style="font-style:normal;font-variant:normal;font-weight:900;font-stretch:normal;font-size:57.701px;font-family:Outfit;-inkscape-font-specification:'Outfit, Heavy';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;letter-spacing:-3.95287px;word-spacing:0px;writing-mode:lr-tb;fill:#2a2325;fill-opacity:1;stroke-width:0"
+             rotate="0 0">R</tspan></text><text
+           xml:space="preserve"
+           style="font-style:normal;font-variant:normal;font-weight:900;font-stretch:normal;font-size:57.701px;font-family:Outfit;-inkscape-font-specification:'Outfit, Heavy';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:center;letter-spacing:-3.95287px;word-spacing:0px;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#2a2325;fill-opacity:1;stroke:#000000;stroke-width:0"
+           x="-503.11685"
+           y="-262.039"
+           id="text1-7"><tspan
+             id="tspan1-1"
+             x="-505.09329"
+             y="-262.039"
+             style="font-style:normal;font-variant:normal;font-weight:900;font-stretch:normal;font-size:57.701px;font-family:Outfit;-inkscape-font-specification:'Outfit, Heavy';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;letter-spacing:-3.95287px;word-spacing:0px;writing-mode:lr-tb;fill:#2a2325;fill-opacity:1;stroke-width:0"
+             rotate="0 0">2</tspan></text></g></g></g></svg>
