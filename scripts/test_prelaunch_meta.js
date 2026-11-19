@@ -14,6 +14,30 @@ const distDir = path.join(rootDir, 'dist');
 const EXPECTED_ENGINE_HASH = '7EE89200FAB78AE2B5F333244CA2E59B9D7DEC261E6A9DF4FDFB28CDD734569B';
 const EXPECTED_REPLAY_VERSION = '3C7C88F57E5B29A1DFA196A55C054F40D748CF948101C50E4E834FBFAD33EE98';
 
+export function getJpegDimensions(buffer) {
+  if (buffer.length < 4 || buffer[0] !== 0xFF || buffer[1] !== 0xD8) {
+    throw new Error('Not a valid JPEG file (missing SOI marker 0xFFD8)');
+  }
+  let offset = 2;
+  while (offset < buffer.length) {
+    if (buffer[offset] !== 0xFF) {
+      offset++;
+      continue;
+    }
+    const marker = buffer[offset + 1];
+    // SOF markers: 0xC0 (SOF0 Baseline), 0xC1 (SOF1 Extended), 0xC2 (SOF2 Progressive), 0xC3 (SOF3 Lossless)
+    if (marker >= 0xC0 && marker <= 0xC3) {
+      const height = buffer.readUInt16BE(offset + 5);
+      const width = buffer.readUInt16BE(offset + 7);
+      return { width, height, marker: '0x' + marker.toString(16).toUpperCase() };
+    }
+    if (offset + 3 >= buffer.length) break;
+    const length = buffer.readUInt16BE(offset + 2);
+    offset += 2 + length;
+  }
+  throw new Error('SOF marker not found in JPEG file');
+}
+
 export function validateHtmlMetadata(htmlContent, distPath = distDir) {
   // Extract <head>...</head>
   const headMatch = htmlContent.match(/<head[\s\S]*?>([\s\S]*?)<\/head>/i);
@@ -92,8 +116,8 @@ export function validateHtmlMetadata(htmlContent, distPath = distDir) {
     'og:title': 'Rogue 2048 — Outlast the grid',
     'og:description': expectedDescription,
     'og:url': 'https://rogue2048.vercel.app/',
-    'og:image': 'https://rogue2048.vercel.app/og-image.png',
-    'og:image:type': 'image/png',
+    'og:image': 'https://rogue2048.vercel.app/og-image.jpg',
+    'og:image:type': 'image/jpeg',
     'og:image:width': '1200',
     'og:image:height': '630',
     'og:image:alt': 'Rogue 2048: a rotated roguelike 2048 board next to the title and the line Outlast the grid',
@@ -116,7 +140,7 @@ export function validateHtmlMetadata(htmlContent, distPath = distDir) {
     'twitter:card': 'summary_large_image',
     'twitter:title': 'Rogue 2048 — Outlast the grid',
     'twitter:description': expectedDescription,
-    'twitter:image': 'https://rogue2048.vercel.app/og-image.png',
+    'twitter:image': 'https://rogue2048.vercel.app/og-image.jpg',
     'twitter:image:alt': 'Rogue 2048: a rotated roguelike 2048 board next to the title and the line Outlast the grid',
   };
 
@@ -135,12 +159,15 @@ export function validateHtmlMetadata(htmlContent, distPath = distDir) {
   assert.ok(expectedOg['og:image'].startsWith('https://rogue2048.vercel.app/'), 'og:image must be absolute https URL on rogue2048.vercel.app');
   assert.ok(expectedTwitter['twitter:image'].startsWith('https://rogue2048.vercel.app/'), 'twitter:image must be absolute https URL on rogue2048.vercel.app');
 
-  // 11. Check that dist/og-image.png exists and dimensions match
-  const ogImagePath = path.join(distPath, 'og-image.png');
-  assert.ok(fs.existsSync(ogImagePath), `og-image.png must exist in dist root at ${ogImagePath}`);
-  const ogImageBuf = fs.readFileSync(ogImagePath);
-  const realWidth = ogImageBuf.readUInt32BE(16);
-  const realHeight = ogImageBuf.readUInt32BE(20);
+  // 11. Check that dist/og-image.jpg exists, dimensions match, size < 300000, and og-image.png does NOT exist
+  const ogPngPath = path.join(distPath, 'og-image.png');
+  assert.strictEqual(fs.existsSync(ogPngPath), false, `dist/og-image.png must NOT exist in dist`);
+
+  const ogJpgPath = path.join(distPath, 'og-image.jpg');
+  assert.ok(fs.existsSync(ogJpgPath), `og-image.jpg must exist in dist root at ${ogJpgPath}`);
+  const ogJpgBuf = fs.readFileSync(ogJpgPath);
+  assert.ok(ogJpgBuf.length < 300000, `og-image.jpg file size must be < 300000 bytes (got ${ogJpgBuf.length} bytes)`);
+  const { width: realWidth, height: realHeight } = getJpegDimensions(ogJpgBuf);
   assert.strictEqual(String(realWidth), expectedOg['og:image:width'], `og:image:width (${expectedOg['og:image:width']}) must match image header width (${realWidth})`);
   assert.strictEqual(String(realHeight), expectedOg['og:image:height'], `og:image:height (${expectedOg['og:image:height']}) must match image header height (${realHeight})`);
 
@@ -230,11 +257,22 @@ async function run() {
       const tampered = originalHtml.replace('index,follow,max-image-preview:large', 'noindex, nofollow');
       validateHtmlMetadata(tampered);
     } else if (failArg === '--self-check-fail=relative-image') {
-      const tampered = originalHtml.replace('https://rogue2048.vercel.app/og-image.png', '/og-image.png');
+      const tampered = originalHtml.replace('https://rogue2048.vercel.app/og-image.jpg', '/og-image.jpg');
       validateHtmlMetadata(tampered);
     } else if (failArg === '--self-check-fail=disallow-c') {
       const robotsContent = fs.readFileSync(path.join(distDir, 'robots.txt'), 'utf8') + '\nDisallow: /c/\n';
       validateRobotsTxt(distDir, robotsContent);
+    } else if (failArg === '--self-check-fail=oversized-image') {
+      const tempOversizedDist = path.join(rootDir, '.temp_cli_oversized_test');
+      fs.mkdirSync(tempOversizedDist, { recursive: true });
+      try {
+        const realJpg = fs.readFileSync(path.join(distDir, 'og-image.jpg'));
+        const oversizedBuf = Buffer.concat([realJpg, Buffer.alloc(300001 - realJpg.length)]);
+        fs.writeFileSync(path.join(tempOversizedDist, 'og-image.jpg'), oversizedBuf);
+        validateHtmlMetadata(originalHtml, tempOversizedDist);
+      } finally {
+        try { fs.rmSync(tempOversizedDist, { recursive: true, force: true }); } catch {}
+      }
     } else {
       throw new Error(`Unknown self-check failure target: ${failArg}`);
     }
@@ -280,7 +318,7 @@ async function run() {
   // Tamper 2: relative og:image
   let caughtRelativeImage = false;
   try {
-    const tamperedRelative = distIndexHtml.replace('https://rogue2048.vercel.app/og-image.png', '/og-image.png');
+    const tamperedRelative = distIndexHtml.replace('https://rogue2048.vercel.app/og-image.jpg', '/og-image.jpg');
     validateHtmlMetadata(tamperedRelative, distDir);
   } catch (err) {
     caughtRelativeImage = true;
@@ -299,6 +337,23 @@ async function run() {
     console.log(`  ✔ Tamper 3 (Disallow: /c/ restored): correctly caught failure (${err.message})`);
   }
   assert.strictEqual(caughtDisallowC, true, 'Self-check MUST fail when "Disallow: /c/" is present in robots.txt');
+
+  // Tamper 4: oversized og-image.jpg (> 300000 bytes)
+  let caughtOversizedImage = false;
+  const tempOversizedDist = path.join(rootDir, '.temp_oversized_test');
+  try {
+    fs.mkdirSync(tempOversizedDist, { recursive: true });
+    const realJpg = fs.readFileSync(path.join(distDir, 'og-image.jpg'));
+    const oversizedBuf = Buffer.concat([realJpg, Buffer.alloc(300001 - realJpg.length)]);
+    fs.writeFileSync(path.join(tempOversizedDist, 'og-image.jpg'), oversizedBuf);
+    validateHtmlMetadata(distIndexHtml, tempOversizedDist);
+  } catch (err) {
+    caughtOversizedImage = true;
+    console.log(`  ✔ Tamper 4 (oversized og-image.jpg > 300000 bytes): correctly caught failure (${err.message})`);
+  } finally {
+    try { fs.rmSync(tempOversizedDist, { recursive: true, force: true }); } catch {}
+  }
+  assert.strictEqual(caughtOversizedImage, true, 'Self-check MUST fail when og-image.jpg is >= 300000 bytes');
 
   console.log('\n================================================================================');
   console.log('ALL PRE-LAUNCH METADATA CHECKS PASSED');
