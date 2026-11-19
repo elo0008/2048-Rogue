@@ -62,7 +62,9 @@ if (!fs.existsSync(outDir)) {
   fs.mkdirSync(outDir, { recursive: true });
 }
 
-const isSelfCheckFail = process.argv.includes('--self-check-fail');
+const selfCheckArg = process.argv.find(a => a.startsWith('--self-check-fail'));
+const selfCheckTarget = selfCheckArg ? (selfCheckArg.split('=')[1] || 'all') : null;
+const isSelfCheckFail = Boolean(selfCheckTarget);
 
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
@@ -184,6 +186,151 @@ class CdpSession {
     return res.result?.value;
   }
 
+  async waitFor(predicateExpr, { timeoutMs = 8000, pollMs = 50, label = '' } = {}) {
+    const start = Date.now();
+    let lastState = null;
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const res = await this.eval(`
+          (() => {
+            let val = null;
+            try {
+              val = (${predicateExpr});
+            } catch (e) {
+              val = null;
+            }
+            if (val) return { done: true, val };
+
+            const labelStr = ${JSON.stringify(label)} || '';
+            const exprStr = ${JSON.stringify(predicateExpr)} || '';
+            const combined = labelStr + ' ' + exprStr;
+            const idMatch = combined.match(/getElementById\\(['"]([^'"]+)['"]\\)/) || combined.match(/#([a-zA-Z0-9_-]+)/);
+            const queryMatch = combined.match(/querySelector\\(['"]([^'"]+)['"]\\)/);
+
+            let target = null;
+            if (idMatch) {
+              target = document.getElementById(idMatch[1]);
+            } else if (queryMatch) {
+              target = document.querySelector(queryMatch[1]);
+            }
+
+            let state = { present: false, visible: false, disabled: false };
+            if (target) {
+              const cs = window.getComputedStyle(target);
+              state = {
+                present: true,
+                visible: cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity || '1') > 0,
+                disabled: Boolean(target.disabled),
+                display: cs.display,
+                visibility: cs.visibility,
+                opacity: cs.opacity,
+              };
+            }
+            return { done: false, state };
+          })()
+        `);
+        if (res && res.done) {
+          return res.val;
+        }
+        if (res && res.state) {
+          lastState = res.state;
+        }
+      } catch (err) {
+        lastState = { error: err.message };
+      }
+      await sleep(pollMs);
+    }
+    const targetLabel = label || predicateExpr;
+    const stateStr = lastState ? JSON.stringify(lastState) : 'unknown';
+    throw new Error(`waitFor timed out after ${timeoutMs}ms for: "${targetLabel}". Last observed state: ${stateStr}`);
+  }
+
+  async waitAndClick(selectorOrId, options = {}) {
+    const isId = !selectorOrId.startsWith('#') && !selectorOrId.startsWith('.') && !selectorOrId.includes(' ');
+    const sel = isId ? `#${selectorOrId}` : selectorOrId;
+    const label = options.label || `clickable element ${sel}`;
+    await this.waitFor(`
+      (() => {
+        const el = document.querySelector(${JSON.stringify(sel)});
+        if (!el) return false;
+        const cs = window.getComputedStyle(el);
+        const isVisible = cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity || '1') > 0;
+        const notDisabled = !el.disabled;
+        return (isVisible && notDisabled) ? true : false;
+      })()
+    `, { timeoutMs: options.timeoutMs || 8000, pollMs: options.pollMs || 50, label });
+    await this.eval(`document.querySelector(${JSON.stringify(sel)}).click()`);
+  }
+
+  async waitForCardSettled(cardSelector = '#challenge-card', options = {}) {
+    const timeoutMs = options.timeoutMs || 8000;
+    const label = options.label || `settled entrance animation on ${cardSelector}`;
+    await this.waitFor(`
+      (() => {
+        const card = document.querySelector(${JSON.stringify(cardSelector)});
+        if (!card) return false;
+        const cs = window.getComputedStyle(card);
+        return cs.display !== 'none' && cs.visibility !== 'hidden';
+      })()
+    `, { timeoutMs, label: `${cardSelector} visible in DOM` });
+
+    const settled = await this.eval(`
+      new Promise((resolve) => {
+        const startTime = Date.now();
+        const timeout = ${timeoutMs};
+        const card = document.querySelector(${JSON.stringify(cardSelector)});
+        if (!card) return resolve({ ok: false, reason: 'card not found' });
+
+        function poll() {
+          if (Date.now() - startTime > timeout) {
+            return resolve({ ok: false, reason: 'timeout waiting for card to settle' });
+          }
+
+          const allDescendants = [card, ...card.querySelectorAll('*')];
+          let hasRunningEntrance = false;
+          if (typeof document.getAnimations === 'function') {
+            const runningAnims = document.getAnimations().filter(a => a.playState === 'running');
+            for (const a of runningAnims) {
+              if (a.effect && a.effect.target && allDescendants.includes(a.effect.target)) {
+                const animName = a.animationName || '';
+                if (animName === 'appear' || (a.effect.getComputedTiming && a.effect.getComputedTiming().iterations !== Infinity)) {
+                  hasRunningEntrance = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          const cs = window.getComputedStyle(card);
+          const isTransformIdentity = !cs.transform || cs.transform === 'none' || cs.transform === 'matrix(1, 0, 0, 1, 0, 0)';
+
+          if (!hasRunningEntrance || isTransformIdentity) {
+            const r1 = card.getBoundingClientRect();
+            requestAnimationFrame(() => {
+              const r2 = card.getBoundingClientRect();
+              const dx = Math.abs(r1.left - r2.left);
+              const dy = Math.abs(r1.top - r2.top);
+              const dw = Math.abs(r1.width - r2.width);
+              const dh = Math.abs(r1.height - r2.height);
+              if (dx < 0.05 && dy < 0.05 && dw < 0.05 && dh < 0.05) {
+                return resolve({ ok: true });
+              }
+              requestAnimationFrame(poll);
+            });
+          } else {
+            requestAnimationFrame(poll);
+          }
+        }
+
+        requestAnimationFrame(poll);
+      })
+    `);
+
+    if (!settled || !settled.ok) {
+      throw new Error(`waitForCardSettled failed for ${cardSelector}: ${settled?.reason || 'unknown'}`);
+    }
+  }
+
   async setViewport(width, height) {
     await this.send('Emulation.setDeviceMetricsOverride', {
       width,
@@ -229,11 +376,6 @@ async function main() {
   assert.strictEqual(replayVer, EXPECTED_REPLAY_VERSION, `replayVersion must match ${EXPECTED_REPLAY_VERSION}`);
   console.log(`✔ Verified sim/engine.js SHA-256: ${engineHash}`);
   console.log(`✔ Verified replayVersion:         ${replayVer}\n`);
-
-  if (isSelfCheckFail) {
-    console.log('Running deliberate self-check failure...');
-    assert.strictEqual('actual', 'expected', 'Deliberate self-check: suite can fail');
-  }
 
   // Setup hermetic test environment with Mock Leaderboard Server
   const mock = createMockLeaderboardServer();
@@ -348,7 +490,9 @@ async function main() {
 
     // Navigate to /c/<code12>
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/${validCode}` });
-    await sleep(200);
+    await cdp.waitFor(`Boolean(window.__challengeCode) && Boolean(document.getElementById('challenge-overlay'))`, {
+      label: 'challenge-overlay gating on /c/'
+    });
 
     const gatingCheck = await cdp.eval(`
       (() => {
@@ -383,7 +527,9 @@ async function main() {
     console.log('\n--- TEST 2: Invalid Paths & Dev Parameters Bypass ---');
     // Invalid length
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/invalid` });
-    await sleep(200);
+    await cdp.waitFor(`Boolean(document.getElementById('start-overlay')) && window.getComputedStyle(document.getElementById('start-overlay')).display === 'flex'`, {
+      label: 'invalid code fallback start overlay'
+    });
     const invalidCheck = await cdp.eval(`
       (() => {
         return {
@@ -397,7 +543,9 @@ async function main() {
 
     // Dev param present
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/${validCode}?seed=999` });
-    await sleep(200);
+    await cdp.waitFor(`!document.documentElement.classList.contains('challenge-active') && Boolean(window.controller)`, {
+      label: 'dev param bypass: challenge-active removed and game started'
+    });
     const devParamCheck = await cdp.eval(`
       (() => {
         return {
@@ -731,19 +879,23 @@ async function main() {
       }
 
       await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/${testCase.code}` });
-      await sleep(100);
       if (!testCase.isSkeleton) {
-        for (let i = 0; i < 50; i++) {
-          const loaded = await cdp.eval(`Boolean(
-            document.getElementById('challenge-sender-name') ||
-            document.querySelector('.challenge-network-error') ||
-            document.querySelector('.challenge-not-found') ||
-            document.querySelector('.challenge-comparison-card') ||
-            document.getElementById('btn-challenge-retry')
-          )`);
-          if (loaded) break;
-          await sleep(20);
-        }
+        await cdp.waitFor(`Boolean(
+          (document.getElementById('challenge-sender-name') ||
+           document.querySelector('.challenge-sender-name') ||
+           document.getElementById('btn-challenge-primary') ||
+           document.getElementById('btn-challenge-goto-game') ||
+           document.getElementById('btn-challenge-retry') ||
+           document.querySelector('.challenge-network-error') ||
+           document.querySelector('.challenge-not-found') ||
+           document.querySelector('.challenge-comparison-card')) &&
+          !document.querySelector('.challenge-skeleton-shimmer')
+        )`, { label: `state loaded: ${testCase.id}` });
+        await cdp.waitForCardSettled('#challenge-card');
+      } else {
+        await cdp.waitFor(`Boolean(document.querySelector('.challenge-skeleton-shimmer'))`, {
+          label: `skeleton state loaded: ${testCase.id}`
+        });
       }
 
       // Inspect card data
@@ -806,7 +958,7 @@ async function main() {
 
       // Capture screenshot at 320x568
       await cdp.setViewport(320, 568);
-      await sleep(50);
+      await cdp.waitForCardSettled('#challenge-card', { label: `screenshot viewport 320x568 for ${testCase.id}` });
       const shot320 = path.join(outDir, `challenge_${testCase.id}_320x568.png`);
       await cdp.screenshot(shot320);
 
@@ -827,11 +979,17 @@ async function main() {
     for (const vp of viewports) {
       await cdp.setViewport(vp.w, vp.h);
       await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/WORSTCASE013` });
-      await sleep(100);
-      for (let i = 0; i < 50; i++) {
-        const loaded = await cdp.eval(`Boolean(document.getElementById('challenge-sender-name'))`);
-        if (loaded) break;
-        await sleep(20);
+      await cdp.waitFor(`Boolean(document.getElementById('challenge-sender-name'))`, {
+        label: `WORSTCASE013 challenge-sender-name rendered at ${vp.w}x${vp.h}`
+      });
+      await cdp.waitForCardSettled('#challenge-card');
+
+      if (selfCheckTarget === 'height' || selfCheckTarget === '30px') {
+        await cdp.eval(`
+          const style = document.createElement('style');
+          style.textContent = '#btn-challenge-how { height: 30px !important; min-height: 30px !important; max-height: 30px !important; }';
+          document.head.appendChild(style);
+        `);
       }
 
       const metrics = await cdp.eval(`
@@ -846,6 +1004,10 @@ async function main() {
               smallHitTargets.push({ id: b.id || b.className, w: r.width, h: r.height });
             }
           }
+
+          const howBtn = document.getElementById('btn-challenge-how');
+          const howBtnRect = howBtn ? howBtn.getBoundingClientRect() : null;
+          const howBtnHeight = howBtnRect ? howBtnRect.height : null;
 
           // Check text font sizes
           const textElements = Array.from(card.querySelectorAll('span, p, h1, h2, small, div, strong, button'));
@@ -873,9 +1035,14 @@ async function main() {
             hasHorizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
             smallHitTargets,
             smallFonts,
+            howBtnHeight,
           };
         })()
       `);
+
+      if (metrics.howBtnHeight !== null) {
+        console.log(`  [Hit Target] ${vp.w}x${vp.h}: btn-challenge-how height = ${metrics.howBtnHeight.toFixed(2)}px`);
+      }
 
       assert.strictEqual(metrics.hasHorizontalOverflow, false, `${vp.w}x${vp.h}: must have zero horizontal overflow`);
       assert.strictEqual(metrics.smallHitTargets.length, 0, `${vp.w}x${vp.h}: All hit targets must be >= 36px (found ${JSON.stringify(metrics.smallHitTargets)})`);
@@ -941,7 +1108,9 @@ async function main() {
     });
 
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/${xssCode}` });
-    await sleep(200);
+    await cdp.waitFor(`Boolean(document.getElementById('challenge-sender-name'))`, {
+      label: 'XSS challenge-sender-name'
+    });
 
     const xssCheck = await cdp.eval(`
       (() => {
@@ -964,10 +1133,10 @@ async function main() {
     // 7A: Telemetry 'accept' event and history replaceState
     mock.clearRequests();
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/DAILYVAL0001` });
-    await sleep(200);
-
-    await cdp.eval(`document.getElementById('btn-challenge-primary').click()`);
-    await sleep(250);
+    await cdp.waitAndClick('btn-challenge-primary', { label: '#btn-challenge-primary on DAILYVAL0001' });
+    await cdp.waitFor(`window.location.pathname === '/' && document.getElementById('challenge-overlay')?.classList.contains('hidden')`, {
+      label: 'accepted challenge overlay hidden and pathname /'
+    });
 
     const acceptChecks = await cdp.eval(`
       (() => {
@@ -991,10 +1160,19 @@ async function main() {
     console.log('Checking unranked challenge run submission suppression...');
     mock.clearRequests();
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/FREEVALD0002` });
-    await sleep(200);
 
-    await cdp.eval(`document.getElementById('btn-challenge-primary').click()`);
-    await sleep(200);
+    if (selfCheckTarget === 'timeout' || selfCheckTarget === 'never-appear' || selfCheckTarget === 'test7') {
+      console.log('Running deliberate self-check: waiting for element that never appears...');
+      await cdp.waitFor(`Boolean(document.getElementById('btn-challenge-never-exists'))`, {
+        timeoutMs: 8000,
+        label: '#btn-challenge-never-exists (deliberate self-check timeout)'
+      });
+    }
+
+    await cdp.waitAndClick('btn-challenge-primary', { label: '#btn-challenge-primary on FREEVALD0002' });
+    await cdp.waitFor(`document.getElementById('challenge-overlay')?.classList.contains('hidden') && Boolean(window.controller)`, {
+      label: 'controller active after accepting unranked challenge'
+    });
 
     // End run via controller and verify 0 submissions sent
     await cdp.eval(`
@@ -1006,7 +1184,9 @@ async function main() {
         }
       })()
     `);
-    await sleep(250);
+    await cdp.waitFor(`Boolean(window.controller && window.controller.isGameOver())`, {
+      label: 'game over after endRun()'
+    });
 
     const submitRequests = mock.getRequests().filter(r => (r.path || r.pathname) === '/functions/v1/submit-run');
     assert.strictEqual(submitRequests.length, 0, 'Unranked Free challenge run must NEVER submit to leaderboard');
@@ -1031,10 +1211,10 @@ async function main() {
 
     mock.clearRequests();
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/${rankedCode}` });
-    await sleep(200);
-
-    await cdp.eval(`document.getElementById('btn-challenge-primary').click()`);
-    await sleep(200);
+    await cdp.waitAndClick('btn-challenge-primary', { label: '#btn-challenge-primary on ranked Daily' });
+    await cdp.waitFor(`Boolean(window.__challengeContext && window.__challengeContext())`, {
+      label: 'ranked challenge context active'
+    });
 
     const rankedState = await cdp.eval(`
       (() => {
@@ -1072,10 +1252,10 @@ async function main() {
     // 9A: When tutorial unseen, clicking Accept opens tutorial first with origin 'challenge-accept'
     await cdp.eval(`localStorage.removeItem('2048_rogue_tutorial_seen')`);
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/DAILYVAL0001` });
-    await sleep(200);
-
-    await cdp.eval(`document.getElementById('btn-challenge-primary').click()`);
-    await sleep(200);
+    await cdp.waitAndClick('btn-challenge-primary', { label: '#btn-challenge-primary (TEST 9A)' });
+    await cdp.waitFor(`!document.getElementById('tutorial-overlay')?.classList.contains('hidden')`, {
+      label: 'tutorial overlay visible (TEST 9A)'
+    });
 
     const tutAcceptOpen = await cdp.eval(`
       (() => {
@@ -1089,7 +1269,11 @@ async function main() {
 
     // Finish tutorial
     await cdp.eval(`window.TutorialController.finish()`);
-    await sleep(200);
+    await cdp.waitFor(`
+      document.getElementById('tutorial-overlay')?.classList.contains('hidden') &&
+      document.getElementById('challenge-overlay')?.classList.contains('hidden') &&
+      Boolean(window.__challengeContext && window.__challengeContext())
+    `, { label: 'tutorial finished and run active (TEST 9A)' });
 
     const postTutState = await cdp.eval(`
       (() => {
@@ -1107,16 +1291,19 @@ async function main() {
 
     // 9B: How to play link opens tutorial with origin 'challenge' and closing returns to preview
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/DAILYVAL0001` });
-    await sleep(200);
-
-    await cdp.eval(`document.getElementById('btn-challenge-how').click()`);
-    await sleep(200);
+    await cdp.waitAndClick('btn-challenge-how', { label: '#btn-challenge-how (TEST 9B)' });
+    await cdp.waitFor(`!document.getElementById('tutorial-overlay')?.classList.contains('hidden')`, {
+      label: 'tutorial overlay visible (TEST 9B)'
+    });
 
     const howTutVisible = await cdp.eval(`!document.getElementById('tutorial-overlay').classList.contains('hidden')`);
     assert.strictEqual(howTutVisible, true, 'How to play must open tutorial overlay');
 
     await cdp.eval(`window.TutorialController.finish()`);
-    await sleep(200);
+    await cdp.waitFor(`
+      document.getElementById('tutorial-overlay')?.classList.contains('hidden') &&
+      !document.getElementById('challenge-overlay')?.classList.contains('hidden')
+    `, { label: 'returned to challenge preview after tutorial (TEST 9B)' });
 
     const returnToPreview = await cdp.eval(`
       (() => {
@@ -1172,20 +1359,19 @@ async function main() {
     // Viewport 390x742
     await cdp.setViewport(390, 742);
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/FREEVALD0002` });
-    for (let i = 0; i < 50; i++) {
-      const ready = await cdp.eval(`Boolean(document.getElementById('btn-challenge-primary'))`);
-      if (ready) break;
-      await sleep(20);
-    }
-    await cdp.eval(`document.getElementById('btn-challenge-primary').click()`);
-    await sleep(200);
+    await cdp.waitAndClick('btn-challenge-primary', { label: '#btn-challenge-primary (TEST 11)' });
+    await cdp.waitFor(`
+      Boolean(document.getElementById('game-board') && Math.round(document.getElementById('game-board').getBoundingClientRect().top) === 178)
+    `, { label: 'game-board top == 178 at 390x742' });
 
     const boardTop390 = await cdp.eval(`Math.round(document.getElementById('game-board').getBoundingClientRect().top)`);
     assert.strictEqual(boardTop390, 178, `At 390x742 board top Y must stay 178 (got ${boardTop390})`);
 
     // Viewport 320x568
     await cdp.setViewport(320, 568);
-    await sleep(50);
+    await cdp.waitFor(`
+      Boolean(document.getElementById('game-board') && Math.round(document.getElementById('game-board').getBoundingClientRect().top) === 170)
+    `, { label: 'game-board top == 170 at 320x568' });
     const boardTop320 = await cdp.eval(`Math.round(document.getElementById('game-board').getBoundingClientRect().top)`);
     assert.strictEqual(boardTop320, 170, `At 320x568 board top Y must stay 170 (got ${boardTop320})`);
     console.log('✔ Board top Y invariants confirmed: 178 at 390x742, 170 at 320x568');
@@ -1198,7 +1384,9 @@ async function main() {
       features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
     });
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/DAILYVAL0001` });
-    await sleep(200);
+    await cdp.waitFor(`Boolean(document.getElementById('btn-challenge-primary'))`, {
+      label: '#btn-challenge-primary under reduced motion'
+    });
 
     const motionCheck = await cdp.eval(`
       (() => {
@@ -1227,12 +1415,10 @@ async function main() {
       }))
     `);
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/OWNCHAL00009` });
-    await sleep(100);
-    for (let i = 0; i < 50; i++) {
-      const loaded = await cdp.eval(`Boolean(document.getElementById('btn-challenge-copy'))`);
-      if (loaded) break;
-      await sleep(20);
-    }
+    await cdp.waitFor(`Boolean(document.getElementById('btn-challenge-copy'))`, {
+      label: '#btn-challenge-copy on own challenge'
+    });
+    await cdp.waitForCardSettled('#challenge-card', { label: 'own challenge card settled' });
     const ownCheck = await cdp.eval(`(() => {
       const container = document.getElementById('challenge-card-content');
       const seedEl = container.querySelector('.challenge-seed-val');
@@ -1333,17 +1519,12 @@ async function main() {
         `);
 
         await cdp.send('Page.navigate', { url: `http://127.0.0.1:${staticSrv.port}/c/${chalCode14}` });
-        await sleep(150);
-
-        for (let i = 0; i < 50; i++) {
-          const loaded = await cdp.eval(`Boolean(
-            document.querySelector('.challenge-banner-title') &&
-            document.getElementById('challenge-card') &&
-            document.getElementById('challenge-card').getBoundingClientRect().height > 0
-          )`);
-          if (loaded) break;
-          await sleep(40);
-        }
+        await cdp.waitFor(`Boolean(
+          document.querySelector('.challenge-banner-title') &&
+          document.getElementById('challenge-card') &&
+          document.getElementById('challenge-card').getBoundingClientRect().height > 0
+        )`, { label: `already-played card ready (${outc.name} ${vp.name})` });
+        await cdp.waitForCardSettled('#challenge-card', { label: `already-played card settled (${outc.name} ${vp.name})` });
 
         const res = await cdp.eval(`(() => {
           const overlay = document.getElementById('challenge-overlay');
