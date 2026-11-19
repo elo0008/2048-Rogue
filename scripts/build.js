@@ -275,13 +275,16 @@ export async function build(options = {}) {
     }
   }
 
-  // Copy favicon, app icons, and web manifest
+  // Copy favicon, app icons, web manifest, and SEO metadata files
   const staticFilesToCopy = [
     'favicon.svg',
     'apple-touch-icon.png',
     'icon-192.png',
     'icon-512.png',
     'manifest.webmanifest',
+    'og-image.png',
+    'robots.txt',
+    'sitemap.xml',
   ];
   for (const file of staticFilesToCopy) {
     const src = path.join(targetRootDir, 'game', file);
