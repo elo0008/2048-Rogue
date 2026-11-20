@@ -261,6 +261,12 @@ export async function build(options = {}) {
     options.leaderboardUrl ?? process.env.LEADERBOARD_URL,
     options.leaderboardAnonKey ?? process.env.LEADERBOARD_ANON_KEY
   );
+  const isFunnelEnabled = options.funnelEnabled !== undefined
+    ? Boolean(options.funnelEnabled === true || options.funnelEnabled === '1')
+    : (process.env.FUNNEL_ENABLED === '1');
+  if (lbConfig && isFunnelEnabled) {
+    lbConfig.funnel = true;
+  }
   const lbConfigJs = lbConfig
     ? `window.__LB = ${JSON.stringify(lbConfig)};\n`
     : `window.__LB = null;\n`;

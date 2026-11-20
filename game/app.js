@@ -63,6 +63,7 @@ import {
   isMyChallenge,
   recordChallengeResult,
   getChallengeResult,
+  trackFunnel,
 } from './leaderboard.js';
 
 const DEFAULT_POOL = [
@@ -5038,6 +5039,9 @@ function postMoveResolution(res) {
  * Game Over & End Screen
  * ------------------------------------------------------------- */
 function handleGameOver() {
+  try {
+    trackFunnel('run_end');
+  } catch {}
   tickPlayTimer();
   isRunActive = false;
   if (playTimerInterval) {
@@ -5281,7 +5285,13 @@ function handleGameOver() {
 /* -------------------------------------------------------------
  * Run Initialization
  * ------------------------------------------------------------- */
-function startNewGame(seed = null, isDaily = false, fromChallenge = false) {
+function startNewGame(seed = null, isDaily = false, fromChallenge = false, isInitial = false) {
+  if (!isInitial) {
+    try {
+      trackFunnel('run_start');
+    } catch {}
+  }
+
   dailyRunActive = Boolean(isDaily);
   stopDailyCountdown();
 
@@ -7544,6 +7554,10 @@ function openShareSheet(mode = 'daily', runData = {}) {
 
   if (!sheet) return;
 
+  try {
+    trackFunnel('share_tap');
+  } catch {}
+
   lastShareTriggerBtn = document.activeElement;
 
   if (chipEl) {
@@ -8166,7 +8180,7 @@ const hasLaunchParams = window.location.search && window.location.search.length 
 if (hasLaunchParams) {
   startNewGame(initialSeed);
 } else {
-  startNewGame(null);
+  startNewGame(null, false, false, true);
   if (startOverlay) {
     startOverlay.classList.remove('hidden');
     startDailyCountdown();
@@ -8432,6 +8446,10 @@ function openChallengeHowToPlay() {
 }
 
 function acceptChallenge(data) {
+  try {
+    trackFunnel('challenge_accept');
+  } catch {}
+
   sendChallengeEvent({
     code: data.code,
     kind: 'accept',
@@ -8493,6 +8511,12 @@ function renderChallengeCardView({ type, data, localResult = null, ownRecord = n
   const isExpiredDaily = type === 'expired_daily';
   const isExpiredFree = type === 'expired_free';
   const isValid = type === 'valid';
+
+  if (isValid) {
+    try {
+      trackFunnel('challenge_open');
+    } catch {}
+  }
 
   const wrap = document.createElement('div');
   wrap.className = 'challenge-view-wrap';
@@ -8995,6 +9019,10 @@ if (tutOverlay && typeof MutationObserver !== 'undefined') {
 
 // Initialize challenge entry
 initChallengeEntry();
+
+try {
+  trackFunnel('visit');
+} catch {}
 
 // Testing hooks
 if (typeof window !== 'undefined') {

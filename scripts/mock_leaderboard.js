@@ -237,6 +237,12 @@ export function createMockLeaderboardServer(initialDb = null) {
         res.end(JSON.stringify(result));
         return;
       }
+
+      if (pathname === '/rest/v1/rpc/record_funnel_event') {
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(null));
+        return;
+      }
     }
 
     // 6. Submit-Run Edge Function

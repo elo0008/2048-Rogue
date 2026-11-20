@@ -1221,3 +1221,52 @@ export async function sendChallengeEvent({
   }
 }
 
+const DEV_PARAMS_LIST = [
+  'seed', 'stones', 'start', 'ascension', 'shatter', 'siphon',
+  'diag', 'eraser', 'rewind', 'maxcharges', 'cap', 'laststand',
+  'pool', 'draft', 'first', 'debug', 'nodraft', 'lab', 'ramp', 'hints'
+];
+
+/**
+ * Tracks an anonymous funnel counter event.
+ * Fire-and-forget: sends exactly { p_event: event } to PostgREST record_funnel_event RPC.
+ * Does nothing if window.__LB is missing url/anonKey/funnel===true, or if dev URL params are present.
+ * Writes NOTHING to storage, swallows all errors silently.
+ *
+ * @param {string} event - One of 'visit', 'run_start', 'run_end', 'share_tap', 'challenge_open', 'challenge_accept'
+ */
+export function trackFunnel(event) {
+  try {
+    if (typeof window === 'undefined') return;
+    const lb = window.__LB;
+    if (!lb || !lb.url || !lb.anonKey || lb.funnel !== true) return;
+    if (typeof event !== 'string' || !event) return;
+
+    const q = window.location && window.location.search;
+    if (q) {
+      for (let i = 0; i < DEV_PARAMS_LIST.length; i++) {
+        if (new RegExp('[?&]' + DEV_PARAMS_LIST[i] + '(=|&|$)').test(q)) {
+          return;
+        }
+      }
+    }
+
+    const cleanBase = lb.url.replace(/\/+$/, '');
+    const endpoint = `${cleanBase}/rest/v1/rpc/record_funnel_event`;
+
+    const fetchFn = typeof fetch === 'function' ? fetch : (window.fetch && window.fetch.bind(window));
+    if (!fetchFn) return;
+
+    fetchFn(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': lb.anonKey,
+      },
+      body: JSON.stringify({ p_event: event }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {}
+}
+
+
