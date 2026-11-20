@@ -44,6 +44,10 @@ const server = http.createServer((req, res) => {
   const safePath = path.normalize(pathname).replace(/^(\.\.[/\\])+/, '');
   let filePath = path.join(targetDir, safePath);
 
+  if (pathname === '/privacy') {
+    filePath = path.join(targetDir, 'privacy.html');
+  }
+
   if (pathname === '/' || pathname === '/index.html' || pathname.startsWith('/c/')) {
     if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
       filePath = path.join(targetDir, 'index.html');

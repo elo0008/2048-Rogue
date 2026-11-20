@@ -289,6 +289,7 @@ export async function build(options = {}) {
     'icon-512.png',
     'manifest.webmanifest',
     'og-image.jpg',
+    'privacy.html',
     'robots.txt',
     'sitemap.xml',
   ];

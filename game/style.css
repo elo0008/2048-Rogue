@@ -2452,6 +2452,40 @@ html.app-ready #start-overlay .start-card {
   margin-top: 15px;
 }
 
+/* Start Card Bottom Links Row */
+.start-links-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.start-links-row .link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: var(--soft);
+  font-size: 11px;
+  cursor: pointer;
+  box-sizing: border-box;
+  font-family: inherit;
+  margin: 0;
+}
+
+.start-links-row .link:hover,
+.start-links-row .link:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
 /* Daily Leaderboard Controls */
 .daily-disclosure-container {
   height: 48px;

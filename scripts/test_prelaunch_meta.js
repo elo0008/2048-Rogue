@@ -202,8 +202,13 @@ export function validateSitemapXml(distPath = distDir) {
   assert.ok(fs.existsSync(sitemapPath), `dist/sitemap.xml must exist at ${sitemapPath}`);
   const content = fs.readFileSync(sitemapPath, 'utf8');
   assert.ok(content.includes('<loc>https://rogue2048.vercel.app/</loc>'), 'sitemap.xml must contain homepage URL');
-  const todayIso = new Date().toISOString().slice(0, 10);
-  assert.ok(content.includes(`<lastmod>${todayIso}</lastmod>`), `sitemap.xml must contain lastmod with today's date (${todayIso})`);
+  const match = content.match(/<lastmod>(\d{4}-\d{2}-\d{2})<\/lastmod>/);
+  assert.ok(match, 'sitemap.xml must contain lastmod with YYYY-MM-DD date');
+  const lastmodStr = match[1];
+  const lastmodDate = new Date(lastmodStr + 'T00:00:00Z');
+  assert.ok(!isNaN(lastmodDate.getTime()), 'lastmod must be a valid date');
+  const todayUtcStr = new Date().toISOString().slice(0, 10);
+  assert.ok(lastmodStr <= todayUtcStr, `sitemap.xml lastmod (${lastmodStr}) must not be in the future (today is ${todayUtcStr})`);
 }
 
 export function validateVercelJson(configPath = path.join(rootDir, 'vercel.json')) {
@@ -354,6 +359,21 @@ async function run() {
     try { fs.rmSync(tempOversizedDist, { recursive: true, force: true }); } catch {}
   }
   assert.strictEqual(caughtOversizedImage, true, 'Self-check MUST fail when og-image.jpg is >= 300000 bytes');
+
+  // Tamper 5: future sitemap lastmod date (> today)
+  let caughtFutureDate = false;
+  const tempFutureDist = path.join(rootDir, '.temp_future_sitemap_test');
+  try {
+    fs.mkdirSync(tempFutureDist, { recursive: true });
+    fs.writeFileSync(path.join(tempFutureDist, 'sitemap.xml'), '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://rogue2048.vercel.app/</loc><lastmod>2099-01-01</lastmod></url></urlset>');
+    validateSitemapXml(tempFutureDist);
+  } catch (err) {
+    caughtFutureDate = true;
+    console.log(`  ✔ Tamper 5 (future sitemap lastmod): correctly caught failure (${err.message})`);
+  } finally {
+    try { fs.rmSync(tempFutureDist, { recursive: true, force: true }); } catch {}
+  }
+  assert.strictEqual(caughtFutureDate, true, 'Self-check MUST fail when sitemap lastmod is in the future');
 
   console.log('\n================================================================================');
   console.log('ALL PRE-LAUNCH METADATA CHECKS PASSED');

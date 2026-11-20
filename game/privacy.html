@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy — Rogue 2048</title>
+  <meta name="description"
+    content="What Rogue 2048 stores and what it sends. Plainly stated: no cookies, no ads, no trackers.">
+  <meta name="theme-color" content="#100f11">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://rogue2048.vercel.app/privacy">
+  <meta name="robots" content="index,follow">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>
+    @font-face {
+      font-family: 'Outfit';
+      src: url('/fonts/outfit-latin-variable.woff2') format('woff2');
+      font-weight: 100 900;
+      font-display: swap;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #100f11;
+      color: #f5eee5;
+      font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 64px;
+    }
+
+    .page-container {
+      width: 100%;
+      max-width: 64ch;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      min-width: 44px;
+      color: #f2c77e;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 16px;
+      margin-bottom: 24px;
+    }
+
+    .back-link:hover,
+    .back-link:focus-visible {
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: #f5eee5;
+      margin-bottom: 12px;
+    }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #f2c77e;
+      margin-top: 36px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 17px;
+      font-weight: 700;
+      color: #f5eee5;
+      margin-top: 20px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin-bottom: 14px;
+      color: #f5eee5;
+    }
+
+    .subtitle {
+      color: #ddd0c3;
+      margin-bottom: 28px;
+    }
+
+    ul {
+      list-style-type: disc;
+      padding-left: 24px;
+      margin-bottom: 16px;
+    }
+
+    li {
+      margin-bottom: 8px;
+      color: #f5eee5;
+    }
+
+    a {
+      color: #f2c77e;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    a:hover,
+    a:focus-visible {
+      color: #f5eee5;
+    }
+
+    .footer-note {
+      margin-top: 48px;
+      font-size: 14px;
+      color: #b5a9a0;
+      border-top: 1px solid #332823;
+      padding-top: 16px;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="page-container">
+    <a href="/" class="back-link">&larr; Back to the game</a>
+    <h1>Privacy</h1>
+    <p class="subtitle">Rogue 2048 is a small game made by one person. This page says plainly what it stores and what it
+      sends. Last updated: 20 November 2026.</p>
+
+    <h2>What stays on your device</h2>
+    <p>The game saves a few things in your browser's local storage. It does not use cookies.</p>
+    <ul>
+      <li>A random player ID, created the first time you play. It is not your name and is not tied to an account.</li>
+      <li>Your display name, if you set one.</li>
+      <li>Your best score and best runs, a short history of your runs, your sound setting, and which hints and tutorial
+        you have seen.</li>
+      <li>Daily runs waiting to be sent when you are back online, and a note of the Daily result you already sent.</li>
+      <li>The challenge links you have made or played, and your results on them.</li>
+      <li>A small error log kept on your device for debugging. It is never sent anywhere.</li>
+    </ul>
+    <p>Clearing your browser data deletes all of this, and you will get a new player ID next time.</p>
+
+    <h2>What is sent to the server</h2>
+    <p>Only when you play the Daily, set your name, create or open a challenge, or look at a leaderboard, the game talks
+      to its server. Depending on what you do, this includes: your player ID, your display name, the moves of the run
+      (so the server can replay it and check that it is real), and the challenge code.</p>
+    <p>The server keeps: Daily runs with their moves and final board, your display name next to your player ID, and the
+      challenges you create. Opening or accepting a challenge sends only the challenge code and which of the two it was.
+    </p>
+    <p>Leaderboards publicly show a display name, points, moves and the highest tile. A display name is either generated
+      for you or one you choose (3 to 16 letters, numbers, spaces, dashes or underscores, checked against a filter).
+      Please do not use your real name or anything personal.</p>
+
+    <h2>Anonymous totals</h2>
+    <p>The site counts how often a few things happen each day: the page opened, a run started, a run ended, the share
+      button tapped, a challenge opened, a challenge accepted. These are plain daily totals. They carry no ID and
+      nothing links them to you.</p>
+
+    <h2>What the game does not do</h2>
+    <p>No cookies. No ads. No third-party analytics or tracking scripts. No selling of your data, and no sharing of it
+      with anyone except the hosting providers named below. The font is served from this site, not from a font service.
+    </p>
+
+    <h2>Hosting and abuse protection</h2>
+    <p>The site is hosted on Vercel and the game data is stored with Supabase in Mumbai. These providers keep their own
+      server logs, which can include IP addresses and browser details. The game does not read those logs.</p>
+    <p>To slow down cheating and spam, the server also keeps short-lived counters tied to the IP address a request came
+      from. For one of these limits the counter also includes your player ID. They are never shown publicly. They are
+      removed automatically once they are older than two days; the cleanup runs as the game is used, so a record can
+      sometimes stay a little longer.</p>
+
+    <h2>Your choices</h2>
+    <p>You can clear your browser data at any time. To ask for your leaderboard entries or display name to be removed,
+      email the address below with your display name and roughly when you played. There are no accounts, so entries can
+      only be found by display name and date.</p>
+
+    <h2>Contact</h2>
+    <p><a href="mailto:elotriplezeroeight@gmail.com">elotriplezeroeight@gmail.com</a></p>
+
+    <p class="footer-note">If this page changes, the date at the top changes.</p>
+  </main>
+</body>
+
+</html>
